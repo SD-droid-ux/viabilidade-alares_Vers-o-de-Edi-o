@@ -3567,8 +3567,10 @@
           <!-- 1. Número do ALA -->
           <div class="form-group">
             <label for="numeroALA">1. Número do ALA <span class="required">*</span></label>
-            <div class="ala-input-wrapper">
-              <span class="ala-prefix">ALA-</span>
+            <div class="ala-input-wrapper" class:has-value={reportForm.numeroALA.replace(/^ALA-/i, '').length > 0}>
+              {#if reportForm.numeroALA.replace(/^ALA-/i, '').length > 0}
+                <span class="ala-prefix">ALA-</span>
+              {/if}
               <input 
                 type="text" 
                 id="numeroALA"
@@ -4903,6 +4905,11 @@
     border-right: 1px solid #ddd;
     user-select: none;
     font-family: 'Inter', sans-serif;
+    flex-shrink: 0;
+  }
+
+  .ala-input-wrapper:not(.has-value) .ala-input {
+    padding-left: 0.75rem;
   }
 
   .ala-input {
