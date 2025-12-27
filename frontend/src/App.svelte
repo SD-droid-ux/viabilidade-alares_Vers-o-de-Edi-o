@@ -3579,6 +3579,7 @@
                 placeholder="Digite apenas números"
                 class:error={reportFormErrors.numeroALA}
                 class="ala-input"
+                class:has-prefix={reportForm.numeroALA.replace(/^ALA-/i, '').length > 0}
               />
             </div>
             {#if reportFormErrors.numeroALA}
@@ -4885,6 +4886,7 @@
     background: white;
     transition: border-color 0.3s;
     box-sizing: border-box;
+    overflow: hidden;
   }
 
   .ala-input-wrapper:focus-within {
@@ -4906,10 +4908,27 @@
     user-select: none;
     font-family: 'Inter', sans-serif;
     flex-shrink: 0;
+    margin: 0;
+    display: inline-block;
   }
 
-  .ala-input-wrapper:not(.has-value) .ala-input {
+  .ala-input {
+    flex: 1;
+    border: none;
+    padding: 0.75rem;
+    font-size: 1rem;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+    background: transparent;
+    min-width: 0;
+  }
+
+  .ala-input:not(.has-prefix) {
     padding-left: 0.75rem;
+  }
+
+  .ala-input.has-prefix {
+    padding-left: 0.5rem;
   }
 
   .ala-input {
