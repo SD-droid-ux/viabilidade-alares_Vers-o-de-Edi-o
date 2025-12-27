@@ -3268,6 +3268,15 @@
           </div>
         {/if}
 
+        {#if clientCoords}
+          <div class="ctos-list-container">
+            <div class="export-buttons">
+              <button class="export-btn pdf-btn" on:click={openReportModal}>
+                Gerar Relatório
+              </button>
+            </div>
+          </div>
+        {/if}
 
         {#if ctos.length > 0}
           <div class="results-info">
@@ -3362,12 +3371,6 @@
           </div>
 
           <div class="ctos-list-container">
-            <div class="export-buttons">
-              <button class="export-btn pdf-btn" on:click={openReportModal}>
-                Gerar Relatório
-              </button>
-            </div>
-
             <div class="ctos-list">
               {#each ctos as cto, index}
                 {@const ctoColor = getCTOColor(cto.pct_ocup || 0)}
