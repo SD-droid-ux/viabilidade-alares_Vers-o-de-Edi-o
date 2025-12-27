@@ -3054,6 +3054,12 @@
           generatingPDF = false;
           if (printTimeoutId) clearTimeout(printTimeoutId);
           if (safetyTimeoutId) clearTimeout(safetyTimeoutId);
+          
+          // Limpar apenas os campos que devem ser preenchidos manualmente
+          reportForm.numeroALA = '';
+          reportForm.tabulacaoFinal = '';
+          reportFormErrors = {};
+          
           closeReportModal();
         }
       };
