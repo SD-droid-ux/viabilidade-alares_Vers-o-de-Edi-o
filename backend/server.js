@@ -1762,7 +1762,7 @@ async function readVIALABaseFromSupabase() {
     
     const { data, error } = await supabase
       .from('vi_ala')
-      .select('vi_ala, ala, data, projetista, cidade, endereco, latitude, longitude')
+      .select('vi_ala, ala, data, projetista, cidade, endereco, latitude, longitude, created_at')
       .order('created_at', { ascending: false });
     
     if (error) {
@@ -1771,16 +1771,43 @@ async function readVIALABaseFromSupabase() {
     }
     
     // Converter para formato compatível com Excel (mesma estrutura)
-    const records = (data || []).map(row => ({
-      'VI ALA': row.vi_ala || '',
-      'ALA': row.ala || '',
-      'DATA': row.data || '',
-      'PROJETISTA': row.projetista || '',
-      'CIDADE': row.cidade || '',
-      'ENDEREÇO': row.endereco || '',
-      'LATITUDE': row.latitude || '',
-      'LONGITUDE': row.longitude || ''
-    }));
+    const records = (data || []).map(row => {
+      // Usar created_at se disponível (tem timestamp completo), senão usar data
+      let dataFormatada = '';
+      if (row.created_at) {
+        // Usar created_at que tem timestamp completo
+        const dateObj = new Date(row.created_at);
+        const day = String(dateObj.getDate()).padStart(2, '0');
+        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const year = dateObj.getFullYear();
+        const hour = String(dateObj.getHours()).padStart(2, '0');
+        const minute = String(dateObj.getMinutes()).padStart(2, '0');
+        dataFormatada = `${day}/${month}/${year} ${hour}:${minute}`;
+      } else if (row.data) {
+        // Se não tiver created_at, usar data (pode estar em formato YYYY-MM-DD)
+        const dataStr = String(row.data);
+        if (dataStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+          // Formato YYYY-MM-DD, converter para DD/MM/YYYY
+          const partes = dataStr.split(' ')[0].split('-');
+          if (partes.length === 3) {
+            dataFormatada = `${partes[2]}/${partes[1]}/${partes[0]}`;
+          }
+        } else {
+          dataFormatada = dataStr;
+        }
+      }
+      
+      return {
+        'VI ALA': row.vi_ala || '',
+        'ALA': row.ala || '',
+        'DATA': dataFormatada,
+        'PROJETISTA': row.projetista || '',
+        'CIDADE': row.cidade || '',
+        'ENDEREÇO': row.endereco || '',
+        'LATITUDE': row.latitude || '',
+        'LONGITUDE': row.longitude || ''
+      };
+    });
     
     console.log(`✅ [Supabase] ${records.length} VI ALAs carregados do Supabase`);
     
