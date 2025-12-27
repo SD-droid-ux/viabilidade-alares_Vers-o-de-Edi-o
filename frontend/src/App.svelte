@@ -2102,11 +2102,12 @@
   // Função para lidar com entrada do número do ALA (apenas números)
   function handleNumeroALAInput(event) {
     const input = event.target.value;
-    // Remover qualquer caractere que não seja número
-    let numbersOnly = input.replace(/[^0-9]/g, '');
+    // Remover "ALA-" se o usuário digitou e qualquer caractere que não seja número
+    let numbersOnly = input.replace(/^ALA-/i, '').replace(/[^0-9]/g, '');
     
-    // Verificar se havia caracteres não numéricos no input original
-    const hadNonNumeric = input.length > numbersOnly.length;
+    // Verificar se havia caracteres não numéricos (além do prefixo ALA-)
+    const inputWithoutPrefix = input.replace(/^ALA-/i, '');
+    const hadNonNumeric = inputWithoutPrefix.length > numbersOnly.length;
     
     if (hadNonNumeric) {
       // Se tentou digitar letras ou caracteres especiais, mostrar erro
@@ -2118,12 +2119,11 @@
       }
     }
     
-    // Atualizar valor com prefixo ALA- (sempre com prefixo, mesmo se vazio)
+    // Atualizar valor com prefixo ALA- (sempre com prefixo quando houver números)
     reportForm.numeroALA = numbersOnly ? `ALA-${numbersOnly}` : '';
     
-    // Atualizar o valor do input para mostrar apenas os números (sem ALA-)
-    // Isso garante que o usuário veja apenas números no campo
-    event.target.value = numbersOnly;
+    // Atualizar o valor do input para mostrar "ALA-" + números
+    event.target.value = numbersOnly ? `ALA-${numbersOnly}` : '';
   }
 
   // Função para validar formulário
@@ -3567,21 +3567,14 @@
           <!-- 1. Número do ALA -->
           <div class="form-group">
             <label for="numeroALA">1. Número do ALA <span class="required">*</span></label>
-            <div class="ala-input-wrapper" class:has-value={reportForm.numeroALA.replace(/^ALA-/i, '').length > 0}>
-              {#if reportForm.numeroALA.replace(/^ALA-/i, '').length > 0}
-                <span class="ala-prefix">ALA-</span>
-              {/if}
-              <input 
-                type="text" 
-                id="numeroALA"
-                value={reportForm.numeroALA.replace(/^ALA-/i, '')}
-                on:input={handleNumeroALAInput}
-                placeholder="Digite apenas números"
-                class:error={reportFormErrors.numeroALA}
-                class="ala-input"
-                class:has-prefix={reportForm.numeroALA.replace(/^ALA-/i, '').length > 0}
-              />
-            </div>
+            <input 
+              type="text" 
+              id="numeroALA"
+              value={reportForm.numeroALA}
+              on:input={handleNumeroALAInput}
+              placeholder="Digite apenas números"
+              class:error={reportFormErrors.numeroALA}
+            />
             {#if reportFormErrors.numeroALA}
               <span class="error-message">{reportFormErrors.numeroALA}</span>
             {/if}
@@ -4875,74 +4868,6 @@
     color: #F44336;
     font-size: 0.85rem;
     margin-top: 0.25rem;
-  }
-
-  .ala-input-wrapper {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    border: 2px solid #ddd;
-    border-radius: 6px;
-    background: white;
-    transition: border-color 0.3s;
-    box-sizing: border-box;
-    overflow: hidden;
-  }
-
-  .ala-input-wrapper:focus-within {
-    border-color: #7B68EE;
-    box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.1);
-  }
-
-  .ala-input-wrapper.error {
-    border-color: #F44336;
-  }
-
-  .ala-prefix {
-    padding: 0.75rem 0.5rem 0.75rem 0.75rem;
-    background: #f5f5f5;
-    color: #333;
-    font-weight: 600;
-    font-size: 1rem;
-    border-right: 1px solid #ddd;
-    user-select: none;
-    font-family: 'Inter', sans-serif;
-    flex-shrink: 0;
-    margin: 0;
-    display: inline-block;
-  }
-
-  .ala-input {
-    flex: 1;
-    border: none;
-    padding: 0.75rem;
-    font-size: 1rem;
-    font-family: 'Inter', sans-serif;
-    outline: none;
-    background: transparent;
-    min-width: 0;
-  }
-
-  .ala-input:not(.has-prefix) {
-    padding-left: 0.75rem;
-  }
-
-  .ala-input.has-prefix {
-    padding-left: 0.5rem;
-  }
-
-  .ala-input {
-    flex: 1;
-    border: none;
-    padding: 0.75rem;
-    font-size: 1rem;
-    font-family: 'Inter', sans-serif;
-    outline: none;
-    background: transparent;
-  }
-
-  .ala-input::placeholder {
-    color: #999;
   }
 
   .password-input-wrapper {
