@@ -2624,6 +2624,102 @@ app.put('/api/projetistas/:nome/name', async (req, res) => {
 // OTIMIZAÇÃO: Aceita tanto Buffer (memória) quanto caminho de arquivo (disco)
 // Função para processar Excel em STREAMING REAL usando exceljs (para arquivos grandes)
 // Esta função usa streaming reader que processa linha por linha SEM carregar arquivo na memória
+// Função para normalizar chaves (extraída para uso compartilhado)
+function normalizeKey(key) {
+  const lower = String(key || '').toLowerCase().trim();
+  const mapping = {
+    'cid_rede': 'cid_rede', 'cid rede': 'cid_rede', 'estado': 'estado', 'pop': 'pop',
+    'olt': 'olt', 'slot': 'slot', 'pon': 'pon', 'id_cto': 'id_cto', 'id cto': 'id_cto', 'cto': 'cto',
+    'latitude': 'latitude', 'lat': 'latitude', 'longitude': 'longitude', 'long': 'longitude', 'lng': 'longitude',
+    'status_cto': 'status_cto', 'status cto': 'status_cto', 'data_cadastro': 'data_cadastro', 'data cadastro': 'data_cadastro',
+    'portas': 'portas', 'ocupado': 'ocupado', 'livre': 'livre', 'pct_ocup': 'pct_ocup', 'pct ocup': 'pct_ocup'
+  };
+  return mapping[lower] || lower;
+}
+
+// Função para validar colunas do arquivo Excel
+async function validateExcelColumns(filePath) {
+  try {
+    // Lista de colunas esperadas (mesmas que são usadas no processExcelStreaming)
+    const requiredColumns = [
+      'cid_rede',
+      'estado',
+      'pop',
+      'olt',
+      'slot',
+      'pon',
+      'id_cto',
+      'cto',
+      'latitude',
+      'longitude',
+      'status_cto',
+      'data_cadastro',
+      'portas',
+      'ocupado',
+      'livre',
+      'pct_ocup'
+    ];
+
+    console.log('🔍 [Validação] Validando colunas do arquivo Excel...');
+    
+    // Ler apenas a primeira linha (cabeçalho) usando streaming
+    const stream = fs.createReadStream(filePath);
+    const workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(stream, {
+      sharedStrings: 'cache',
+      hyperlinks: 'ignore',
+      styles: 'ignore',
+      worksheets: 'emit'
+    });
+    
+    let headersFound = new Set();
+    let foundFirstWorksheet = false;
+    
+    // Processar workbook em streaming até encontrar o cabeçalho
+    for await (const worksheetReaderItem of workbookReader) {
+      if (foundFirstWorksheet) break; // Só processar a primeira planilha
+      foundFirstWorksheet = true;
+      
+      // Ler apenas a primeira linha
+      for await (const row of worksheetReaderItem) {
+        // Processar cabeçalho
+        row.eachCell((cell, colNumber) => {
+          const headerValue = cell.value ? String(cell.value).trim() : '';
+          if (headerValue) {
+            const normalizedKey = normalizeKey(headerValue);
+            headersFound.add(normalizedKey);
+          }
+        });
+        break; // Só precisamos da primeira linha
+      }
+      break; // Só precisamos da primeira planilha
+    }
+    
+    // Verificar quais colunas estão faltando
+    const missingColumns = requiredColumns.filter(col => !headersFound.has(col));
+    
+    if (missingColumns.length > 0) {
+      console.log(`❌ [Validação] Colunas faltando: ${missingColumns.join(', ')}`);
+      return {
+        valid: false,
+        missingColumns: missingColumns,
+        error: `O arquivo está faltando as seguintes colunas obrigatórias: ${missingColumns.join(', ')}`
+      };
+    }
+    
+    console.log('✅ [Validação] Todas as colunas obrigatórias foram encontradas');
+    return {
+      valid: true,
+      foundColumns: Array.from(headersFound)
+    };
+  } catch (err) {
+    console.error('❌ [Validação] Erro ao validar colunas:', err);
+    return {
+      valid: false,
+      error: `Erro ao validar colunas do arquivo: ${err.message}`
+    };
+  }
+}
+
 async function processExcelStreaming(filePath, supabaseClient) {
   let totalRows = 0;
   let totalValid = 0;
@@ -2655,19 +2751,6 @@ async function processExcelStreaming(filePath, supabaseClient) {
       }
     }
     return null;
-  };
-  
-  // Função para normalizar chaves
-  const normalizeKey = (key) => {
-    const lower = String(key || '').toLowerCase().trim();
-    const mapping = {
-      'cid_rede': 'cid_rede', 'cid rede': 'cid_rede', 'estado': 'estado', 'pop': 'pop',
-      'olt': 'olt', 'slot': 'slot', 'pon': 'pon', 'id_cto': 'id_cto', 'id cto': 'id_cto', 'cto': 'cto',
-      'latitude': 'latitude', 'lat': 'latitude', 'longitude': 'longitude', 'long': 'longitude', 'lng': 'longitude',
-      'status_cto': 'status_cto', 'status cto': 'status_cto', 'data_cadastro': 'data_cadastro', 'data cadastro': 'data_cadastro',
-      'portas': 'portas', 'ocupado': 'ocupado', 'livre': 'livre', 'pct_ocup': 'pct_ocup', 'pct ocup': 'pct_ocup'
-    };
-    return mapping[lower] || lower;
   };
   
   // Função para inserir lote no Supabase (otimizada para velocidade)
@@ -2999,8 +3082,29 @@ app.post('/api/upload-base', (req, res, next) => {
     }
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     
+    // Validar colunas do arquivo ANTES de processar
+    console.log('🔍 [Upload] Validando colunas do arquivo...');
+    const validationResult = await validateExcelColumns(tempFilePath);
+    
+    if (!validationResult.valid) {
+      // Deletar arquivo temporário em caso de erro de validação
+      try {
+        await fsPromises.unlink(tempFilePath);
+        console.log('🗑️ [Upload] Arquivo temporário removido após erro de validação');
+      } catch (unlinkErr) {
+        console.warn('⚠️ [Upload] Erro ao remover arquivo temporário:', unlinkErr.message);
+      }
+      
+      return res.status(400).json({
+        success: false,
+        error: validationResult.error || 'Erro ao validar colunas do arquivo'
+      });
+    }
+    
+    console.log('✅ [Upload] Validação de colunas concluída com sucesso');
+    
     // RESPONDER IMEDIATAMENTE para evitar timeout do Railway
-    // Validar e processar em background
+    // Processar em background
     res.json({
       success: true,
       message: `Upload recebido! Validando e processando arquivo em background...`,
