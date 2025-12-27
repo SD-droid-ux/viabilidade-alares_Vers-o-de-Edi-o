@@ -1145,11 +1145,17 @@
                     <span class="vi-ala-date">
                       {(() => {
                         try {
-                          const dateStr = viAla.data_geracao.trim();
+                          let dateStr = String(viAla.data_geracao).trim();
                           
-                          // Formato esperado: "DD/MM/YYYY HH:MM" ou "DD/MM/YYYY"
+                          // Se for um objeto Date, converter para string ISO
+                          if (dateStr instanceof Date) {
+                            dateStr = dateStr.toISOString();
+                          }
+                          
+                          let date = null;
+                          
+                          // Tentar parsear formato DD/MM/YYYY HH:MM ou DD/MM/YYYY
                           if (dateStr.includes('/')) {
-                            // Separar data e hora se houver
                             const parts = dateStr.split(' ');
                             const datePart = parts[0]; // "DD/MM/YYYY"
                             const timePart = parts[1] || ''; // "HH:MM" ou vazio
@@ -1157,10 +1163,9 @@
                             const dateComponents = datePart.split('/');
                             if (dateComponents.length === 3) {
                               const day = parseInt(dateComponents[0], 10);
-                              const month = parseInt(dateComponents[1], 10) - 1; // Mês é 0-indexed
+                              const month = parseInt(dateComponents[1], 10) - 1; // Mês é 0-indexed no JavaScript
                               const year = parseInt(dateComponents[2], 10);
                               
-                              let date;
                               if (timePart && timePart.includes(':')) {
                                 // Tem hora: "DD/MM/YYYY HH:MM"
                                 const timeComponents = timePart.split(':');
@@ -1171,25 +1176,15 @@
                                 // Só tem data: "DD/MM/YYYY"
                                 date = new Date(year, month, day);
                               }
-                              
-                              if (!isNaN(date.getTime())) {
-                                const formattedDate = date.toLocaleDateString('pt-BR', {
-                                  day: '2-digit',
-                                  month: '2-digit',
-                                  year: 'numeric'
-                                });
-                                const formattedTime = date.toLocaleTimeString('pt-BR', {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                });
-                                return `${formattedDate} - ${formattedTime}`;
-                              }
                             }
+                          } else {
+                            // Tentar parsear como ISO ou outro formato padrão
+                            date = new Date(dateStr);
                           }
                           
-                          // Tentar parsear como ISO ou outro formato
-                          const date = new Date(dateStr);
-                          if (!isNaN(date.getTime())) {
+                          // Verificar se a data é válida
+                          if (date && !isNaN(date.getTime())) {
+                            // Formatar data e hora usando locale brasileiro (timezone local do navegador)
                             const formattedDate = date.toLocaleDateString('pt-BR', {
                               day: '2-digit',
                               month: '2-digit',
@@ -1197,7 +1192,8 @@
                             });
                             const formattedTime = date.toLocaleTimeString('pt-BR', {
                               hour: '2-digit',
-                              minute: '2-digit'
+                              minute: '2-digit',
+                              hour12: false
                             });
                             return `${formattedDate} - ${formattedTime}`;
                           }
@@ -1205,7 +1201,8 @@
                           // Se não conseguir parsear, retornar original
                           return dateStr;
                         } catch (err) {
-                          return viAla.data_geracao || '';
+                          console.error('Erro ao formatar data do VI ALA:', err);
+                          return String(viAla.data_geracao || '');
                         }
                       })()}
                     </span>
