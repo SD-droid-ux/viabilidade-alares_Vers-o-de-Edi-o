@@ -1775,13 +1775,27 @@ async function readVIALABaseFromSupabase() {
       // Usar created_at se disponível (tem timestamp completo), senão usar data
       let dataFormatada = '';
       if (row.created_at) {
-        // Usar created_at que tem timestamp completo
+        // Usar created_at que tem timestamp completo (vem em UTC do Supabase)
+        // Converter para timezone do Brasil (America/Sao_Paulo)
         const dateObj = new Date(row.created_at);
-        const day = String(dateObj.getDate()).padStart(2, '0');
-        const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-        const year = dateObj.getFullYear();
-        const hour = String(dateObj.getHours()).padStart(2, '0');
-        const minute = String(dateObj.getMinutes()).padStart(2, '0');
+        
+        // Usar toLocaleString com timezone do Brasil para converter corretamente
+        const dateBr = new Intl.DateTimeFormat('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).formatToParts(dateObj);
+        
+        const day = dateBr.find(part => part.type === 'day').value;
+        const month = dateBr.find(part => part.type === 'month').value;
+        const year = dateBr.find(part => part.type === 'year').value;
+        const hour = dateBr.find(part => part.type === 'hour').value;
+        const minute = dateBr.find(part => part.type === 'minute').value;
+        
         dataFormatada = `${day}/${month}/${year} ${hour}:${minute}`;
       } else if (row.data) {
         // Se não tiver created_at, usar data (pode estar em formato YYYY-MM-DD)
