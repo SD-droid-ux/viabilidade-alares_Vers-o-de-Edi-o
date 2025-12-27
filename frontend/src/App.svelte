@@ -1830,11 +1830,6 @@
 
   // Função para abrir modal de relatório
   async function openReportModal() {
-    if (ctos.length === 0) {
-      error = 'Nenhuma CTO para exportar';
-      return;
-    }
-
     // Pré-preencher o projetista com o usuário logado
     reportForm.projetista = currentUser || '';
 
@@ -1871,7 +1866,7 @@
 
   // Função para capturar automaticamente o mapa
   async function captureMapAutomatically() {
-    if (!map || !clientCoords || ctos.length === 0) {
+    if (!map || !clientCoords) {
       throw new Error('Mapa não está pronto para captura');
     }
 
@@ -1880,14 +1875,16 @@
       const currentCenter = map.getCenter();
       const currentZoom = map.getZoom();
 
-      // Criar bounds incluindo cliente e todas as CTOs
+      // Criar bounds incluindo cliente
       const bounds = new google.maps.LatLngBounds();
       bounds.extend(clientCoords);
 
-      // Adicionar todas as CTOs aos bounds
-      ctos.forEach(cto => {
-        bounds.extend({ lat: cto.latitude, lng: cto.longitude });
-      });
+      // Adicionar todas as CTOs aos bounds (se houver)
+      if (ctos.length > 0) {
+        ctos.forEach(cto => {
+          bounds.extend({ lat: cto.latitude, lng: cto.longitude });
+        });
+      }
 
       // Usar fitBounds com padding mínimo para maximizar o zoom
       map.fitBounds(bounds, {
@@ -1940,8 +1937,8 @@
 
         let allVisible = testBounds.contains(clientCoords);
         
-        // Verificar todas as CTOs
-        if (allVisible) {
+        // Verificar todas as CTOs (se houver)
+        if (allVisible && ctos.length > 0) {
           for (const cto of ctos) {
             if (!testBounds.contains({ lat: cto.latitude, lng: cto.longitude })) {
               allVisible = false;
