@@ -3262,19 +3262,18 @@
           {loading ? 'Localizando...' : 'Localizar no Mapa'}
         </button>
 
+        {#if clientCoords}
+          <button 
+            class="search-button"
+            on:click={openReportModal}
+          >
+            Gerar Relatório
+          </button>
+        {/if}
+
         {#if error}
           <div class="error-message">
             {error}
-          </div>
-        {/if}
-
-        {#if clientCoords}
-          <div class="ctos-list-container">
-            <div class="export-buttons">
-              <button class="export-btn pdf-btn" on:click={openReportModal}>
-                Gerar Relatório
-              </button>
-            </div>
           </div>
         {/if}
 
