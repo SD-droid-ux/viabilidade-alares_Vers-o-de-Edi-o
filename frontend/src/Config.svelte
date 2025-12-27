@@ -833,7 +833,8 @@
           // Tentar parsear como JSON se possível
           try {
             const errorData = JSON.parse(errorText);
-            throw new Error(errorData.error || `Erro do servidor (${response.status}): ${errorText.substring(0, 100)}`);
+            // Usar a mensagem de erro do servidor diretamente (já vem formatada)
+            throw new Error(errorData.error || `Erro do servidor (${response.status})`);
           } catch {
             throw new Error(`Erro do servidor (${response.status}): ${errorText.substring(0, 200) || response.statusText}`);
           }
@@ -1002,7 +1003,8 @@
       } else if (err.message.includes('504')) {
         uploadMessage = 'Timeout do servidor. O arquivo pode ser muito grande ou o processamento está demorando. Tente novamente.';
       } else {
-        uploadMessage = `Erro ao fazer upload: ${err.message}`;
+        // Exibir mensagem de erro diretamente (já vem formatada do backend)
+        uploadMessage = err.message;
       }
       
       console.error('❌ [Upload] Erro ao fazer upload da base:', err);
@@ -2302,3 +2304,4 @@
       0 4px 6px rgba(244, 67, 54, 0.3);
   }
 </style>
+
