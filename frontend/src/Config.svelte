@@ -860,8 +860,8 @@
       if (data.success) {
         // Se o backend indicou que está processando em background
         if (data.processing) {
-          uploadSuccess = false; // Ainda não é sucesso definitivo
-          uploadMessage = data.message || 'Upload recebido! Processando arquivo em background...';
+          uploadSuccess = true; // Verde indicando que está tudo correto, é só aguardar
+          uploadMessage = data.message || 'Upload recebido! Validando e processando arquivo em background...';
           uploadingBase = true; // Manter flag de upload ativo
           
           // Limpar qualquer polling anterior
