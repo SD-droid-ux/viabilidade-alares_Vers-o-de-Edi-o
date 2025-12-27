@@ -166,13 +166,30 @@
       const text = await response.text();
       if (text && text.trim() !== '') {
         const data = JSON.parse(text);
-        if (data.success && data.lastModified) {
-          baseLastModified = new Date(data.lastModified);
-          // Salvar no localStorage para próxima vez
-          try {
-            localStorage.setItem('baseLastModified', data.lastModified);
-          } catch (err) {
-            console.error('Erro ao salvar no localStorage:', err);
+        if (data.success) {
+          // Verificar se há dados na base
+          if (data.hasData === false) {
+            // Não há dados na tabela ctos
+            baseLastModified = null;
+            baseDataExists = false;
+            // Limpar localStorage
+            try {
+              localStorage.removeItem('baseLastModified');
+            } catch (err) {
+              console.error('Erro ao limpar localStorage:', err);
+            }
+            return;
+          }
+          
+          if (data.lastModified) {
+            baseLastModified = new Date(data.lastModified);
+            baseDataExists = true;
+            // Salvar no localStorage para próxima vez
+            try {
+              localStorage.setItem('baseLastModified', data.lastModified);
+            } catch (err) {
+              console.error('Erro ao salvar no localStorage:', err);
+            }
           }
         }
       }
@@ -1249,9 +1266,9 @@
                 minute: '2-digit'
               })}
             </p>
-          {:else if !baseDataExists}
-            <p class="last-modified-text" style="color: #F44336;">
-              Não existe base carregada. Por favor carregar nova base.
+          {:else}
+            <p class="last-modified-text" style="color: #7B68EE;">
+              Não consta nenhuma base de dados
             </p>
           {/if}
           
