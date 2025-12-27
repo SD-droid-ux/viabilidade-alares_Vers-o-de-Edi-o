@@ -1830,6 +1830,12 @@
 
   // Função para abrir modal de relatório
   async function openReportModal() {
+    // Limpar erros anteriores
+    reportFormErrors = {};
+    
+    // Limpar número do ALA (será preenchido pelo usuário)
+    reportForm.numeroALA = '';
+    
     // Pré-preencher o projetista com o usuário logado
     reportForm.projetista = currentUser || '';
 
@@ -2093,14 +2099,49 @@
   }
 
 
+  // Função para lidar com entrada do número do ALA (apenas números)
+  function handleNumeroALAInput(event) {
+    const input = event.target.value;
+    // Remover qualquer caractere que não seja número
+    let numbersOnly = input.replace(/[^0-9]/g, '');
+    
+    // Verificar se havia caracteres não numéricos no input original
+    const hadNonNumeric = input.length > numbersOnly.length;
+    
+    if (hadNonNumeric) {
+      // Se tentou digitar letras ou caracteres especiais, mostrar erro
+      reportFormErrors.numeroALA = 'Digite apenas números';
+    } else {
+      // Limpar erro se estiver correto
+      if (reportFormErrors.numeroALA === 'Digite apenas números') {
+        reportFormErrors.numeroALA = '';
+      }
+    }
+    
+    // Atualizar valor com prefixo ALA- (sempre com prefixo, mesmo se vazio)
+    reportForm.numeroALA = numbersOnly ? `ALA-${numbersOnly}` : '';
+    
+    // Atualizar o valor do input para mostrar apenas os números (sem ALA-)
+    // Isso garante que o usuário veja apenas números no campo
+    event.target.value = numbersOnly;
+  }
+
   // Função para validar formulário
   function validateReportForm() {
     reportFormErrors = {};
     let isValid = true;
 
+    // Validar número do ALA
     if (!reportForm.numeroALA.trim()) {
       reportFormErrors.numeroALA = 'Campo obrigatório';
       isValid = false;
+    } else {
+      // Verificar se contém apenas números após "ALA-"
+      const numeroSemPrefixo = reportForm.numeroALA.replace(/^ALA-/i, '');
+      if (!numeroSemPrefixo || !/^\d+$/.test(numeroSemPrefixo)) {
+        reportFormErrors.numeroALA = 'Digite apenas números';
+        isValid = false;
+      }
     }
     if (!reportForm.cidade.trim()) {
       reportFormErrors.cidade = 'Campo obrigatório';
@@ -3526,13 +3567,18 @@
           <!-- 1. Número do ALA -->
           <div class="form-group">
             <label for="numeroALA">1. Número do ALA <span class="required">*</span></label>
-            <input 
-              type="text" 
-              id="numeroALA"
-              bind:value={reportForm.numeroALA}
-              placeholder="Digite o número do ALA"
-              class:error={reportFormErrors.numeroALA}
-            />
+            <div class="ala-input-wrapper">
+              <span class="ala-prefix">ALA-</span>
+              <input 
+                type="text" 
+                id="numeroALA"
+                value={reportForm.numeroALA.replace(/^ALA-/i, '')}
+                on:input={handleNumeroALAInput}
+                placeholder="Digite apenas números"
+                class:error={reportFormErrors.numeroALA}
+                class="ala-input"
+              />
+            </div>
             {#if reportFormErrors.numeroALA}
               <span class="error-message">{reportFormErrors.numeroALA}</span>
             {/if}
@@ -4826,6 +4872,51 @@
     color: #F44336;
     font-size: 0.85rem;
     margin-top: 0.25rem;
+  }
+
+  .ala-input-wrapper {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    background: white;
+    transition: border-color 0.3s;
+    box-sizing: border-box;
+  }
+
+  .ala-input-wrapper:focus-within {
+    border-color: #7B68EE;
+    box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.1);
+  }
+
+  .ala-input-wrapper.error {
+    border-color: #F44336;
+  }
+
+  .ala-prefix {
+    padding: 0.75rem 0.5rem 0.75rem 0.75rem;
+    background: #f5f5f5;
+    color: #333;
+    font-weight: 600;
+    font-size: 1rem;
+    border-right: 1px solid #ddd;
+    user-select: none;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .ala-input {
+    flex: 1;
+    border: none;
+    padding: 0.75rem;
+    font-size: 1rem;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+    background: transparent;
+  }
+
+  .ala-input::placeholder {
+    color: #999;
   }
 
   .password-input-wrapper {
