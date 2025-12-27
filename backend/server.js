@@ -2699,10 +2699,21 @@ async function validateExcelColumns(filePath) {
     
     if (missingColumns.length > 0) {
       console.log(`❌ [Validação] Colunas faltando: ${missingColumns.join(', ')}`);
+      
+      // Formatar mensagem de erro mais amigável e clara
+      let errorMessage;
+      if (missingColumns.length === 1) {
+        errorMessage = `O arquivo está faltando a coluna obrigatória: ${missingColumns[0]}`;
+      } else {
+        // Formatar lista de colunas de forma mais legível
+        const columnsList = missingColumns.join(', ');
+        errorMessage = `O arquivo está faltando ${missingColumns.length} colunas obrigatórias: ${columnsList}. Por favor, verifique se todas as colunas necessárias estão presentes no arquivo.`;
+      }
+      
       return {
         valid: false,
         missingColumns: missingColumns,
-        error: `O arquivo está faltando as seguintes colunas obrigatórias: ${missingColumns.join(', ')}`
+        error: errorMessage
       };
     }
     
