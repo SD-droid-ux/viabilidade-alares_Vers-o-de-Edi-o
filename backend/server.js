@@ -1008,40 +1008,71 @@ app.get('/api/base-last-modified', async (req, res) => {
     res.setHeader('Access-Control-Allow-Credentials', 'true');
 
     let lastModified = null;
+    let hasData = false;
 
     if (supabase && isSupabaseAvailable()) {
-      // Tentar obter a data da última modificação do Supabase (ex: da tabela upload_history)
-      const { data, error } = await supabase
-        .from('upload_history')
-        .select('uploaded_at')
-        .order('uploaded_at', { ascending: false })
-        .limit(1);
+      // Primeiro verificar se existe dados na tabela ctos
+      const { count, error: countError } = await supabase
+        .from('ctos')
+        .select('*', { count: 'exact', head: true });
 
-      if (error) {
-        console.warn('⚠️ [API] Erro ao buscar lastModified do Supabase:', error.message);
-        // Fallback para arquivo local se Supabase falhar
-      } else if (data && data.length > 0) {
-        lastModified = data[0].uploaded_at;
-        console.log('✅ [API] LastModified do Supabase:', lastModified);
+      if (countError) {
+        console.warn('⚠️ [API] Erro ao contar CTOs do Supabase:', countError.message);
+      } else {
+        hasData = (count || 0) > 0;
+        console.log(`📊 [API] Total de CTOs no Supabase: ${count || 0}`);
+      }
+
+      // Se houver dados, tentar obter a data da última modificação
+      if (hasData) {
+        const { data, error } = await supabase
+          .from('upload_history')
+          .select('uploaded_at')
+          .order('uploaded_at', { ascending: false })
+          .limit(1);
+
+        if (error) {
+          console.warn('⚠️ [API] Erro ao buscar lastModified do Supabase:', error.message);
+          // Fallback para arquivo local se Supabase falhar
+        } else if (data && data.length > 0) {
+          lastModified = data[0].uploaded_at;
+          console.log('✅ [API] LastModified do Supabase:', lastModified);
+        }
       }
     }
 
-    if (!lastModified) {
-      // Se não obteve do Supabase, tentar do arquivo local
+    // Se Supabase não está disponível, verificar arquivo local
+    if (!supabase || !isSupabaseAvailable()) {
       const currentBasePath = await findCurrentBaseFile();
       if (currentBasePath && fs.existsSync(currentBasePath)) {
         const stats = await fsPromises.stat(currentBasePath);
         lastModified = stats.mtime.toISOString();
+        hasData = true;
         console.log('✅ [API] LastModified do arquivo local:', lastModified);
       } else {
-        console.log('ℹ️ [API] Nenhuma base de dados encontrada para lastModified.');
+        hasData = false;
+        console.log('ℹ️ [API] Nenhuma base de dados encontrada (arquivo local não existe).');
+      }
+    } else if (!lastModified && hasData) {
+      // Se Supabase está disponível, tem dados mas não tem lastModified, tentar arquivo local como fallback
+      const currentBasePath = await findCurrentBaseFile();
+      if (currentBasePath && fs.existsSync(currentBasePath)) {
+        const stats = await fsPromises.stat(currentBasePath);
+        lastModified = stats.mtime.toISOString();
+        console.log('✅ [API] LastModified do arquivo local (fallback):', lastModified);
       }
     }
 
+    // Se não há dados na tabela ctos (ou arquivo local), retornar indicando isso
+    if (!hasData) {
+      return res.json({ success: true, hasData: false, message: 'Não consta nenhuma base de dados' });
+    }
+
     if (lastModified) {
-      res.json({ success: true, lastModified });
+      res.json({ success: true, lastModified, hasData: true });
     } else {
-      res.status(404).json({ success: false, error: 'Nenhuma base de dados encontrada ou modificada.' });
+      // Se tem dados mas não tem lastModified, ainda retornar sucesso indicando que há dados
+      res.json({ success: true, hasData: true, message: 'Base de dados existe mas data de atualização não disponível' });
     }
   } catch (err) {
     console.error('❌ [API] Erro ao obter lastModified:', err);
