@@ -3494,11 +3494,8 @@
 {#if showReportModal}
   <div 
     class="modal-overlay" 
-    on:click={closeReportModal}
-    on:keydown={(e) => e.key === 'Escape' && closeReportModal()}
-    role="button"
+    role="dialog"
     tabindex="-1"
-    aria-label="Fechar modal"
   >
     <!-- Mensagem de pop-up bloqueado sobreposta ao modal -->
     {#if showPopupInstructions}
