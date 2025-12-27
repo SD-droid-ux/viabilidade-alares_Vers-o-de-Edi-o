@@ -3737,11 +3737,8 @@
 {#if showChangePasswordModal}
   <div 
     class="modal-overlay" 
-    on:click={closeChangePasswordModal}
-    on:keydown={(e) => e.key === 'Escape' && closeChangePasswordModal()}
-    role="button"
+    role="dialog"
     tabindex="-1"
-    aria-label="Fechar modal"
   >
     <div 
       class="modal-content add-projetista-modal" 
