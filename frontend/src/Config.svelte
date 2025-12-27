@@ -2009,7 +2009,7 @@
   }
 
   .btn-delete-confirm {
-    background: #bdbdbd;
+    background: linear-gradient(135deg, #F44336 0%, #E53935 100%);
     color: white;
     border: none;
     border-radius: 6px;
@@ -2017,18 +2017,26 @@
     cursor: pointer;
     font-size: 1rem;
     font-weight: 600;
-    transition: all 0.3s;
+    transition: all 0.3s ease;
     margin-left: 0.5rem;
+    box-shadow: 0 4px 6px rgba(244, 67, 54, 0.3);
   }
 
-  .btn-delete-confirm:hover {
-    background: #424242;
+  .btn-delete-confirm:hover:not(:disabled) {
+    background: linear-gradient(135deg, #EF5350 0%, #E53935 100%);
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 6px 12px rgba(244, 67, 54, 0.4);
   }
 
-  .btn-delete-confirm:active {
+  .btn-delete-confirm:active:not(:disabled) {
     transform: translateY(0);
+  }
+
+  .btn-delete-confirm:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    opacity: 0.6;
+    box-shadow: none;
   }
 
   .add-projetista-section {
