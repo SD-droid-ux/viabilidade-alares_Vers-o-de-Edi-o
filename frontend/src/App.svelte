@@ -4577,15 +4577,16 @@
   }
 
   .export-btn {
-    flex: 1;
-    min-width: 120px;
-    padding: 0.75rem 1rem;
+    width: 100%;
+    padding: 0.75rem;
     border: none;
-    border-radius: 6px;
-    font-size: 0.9rem;
+    border-radius: 8px;
+    font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.3s;
+    box-shadow: 0 4px 6px rgba(123, 104, 238, 0.3);
+    margin-bottom: 0.75rem;
     font-family: 'Inter', sans-serif;
   }
 
@@ -4594,9 +4595,15 @@
     color: white;
   }
 
-  .pdf-btn:hover {
+  .pdf-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #9370DB 0%, #7B9EE8 100%);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(123, 104, 238, 0.4);
+    box-shadow: 0 6px 12px rgba(123, 104, 238, 0.4);
+  }
+
+  .pdf-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
   }
 
   .ctos-list {
