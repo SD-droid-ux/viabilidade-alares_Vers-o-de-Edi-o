@@ -2124,6 +2124,53 @@
     
     // Atualizar o valor do input para mostrar "ALA-" + números
     event.target.value = numbersOnly ? `ALA-${numbersOnly}` : '';
+    
+    // Validar campo após atualizar valor
+    validateField('numeroALA');
+  }
+
+  // Função para validar um campo individual e limpar erro se válido
+  function validateField(fieldName) {
+    if (!reportFormErrors[fieldName]) {
+      return; // Se não há erro, não precisa validar
+    }
+
+    let isValid = false;
+
+    switch (fieldName) {
+      case 'numeroALA':
+        if (reportForm.numeroALA.trim()) {
+          const numeroSemPrefixo = reportForm.numeroALA.replace(/^ALA-/i, '');
+          if (numeroSemPrefixo && /^\d+$/.test(numeroSemPrefixo)) {
+            isValid = true;
+          }
+        }
+        break;
+      case 'cidade':
+        isValid = reportForm.cidade.trim().length > 0;
+        break;
+      case 'enderecoCompleto':
+        isValid = reportForm.enderecoCompleto.trim().length > 0;
+        break;
+      case 'numeroEndereco':
+        isValid = reportForm.numeroEndereco.trim().length > 0;
+        break;
+      case 'cep':
+        isValid = reportForm.cep.trim().length > 0;
+        break;
+      case 'tabulacaoFinal':
+        isValid = !!reportForm.tabulacaoFinal;
+        break;
+      case 'projetista':
+        isValid = reportForm.projetista && reportForm.projetista.trim().length > 0;
+        break;
+    }
+
+    if (isValid) {
+      // Limpar erro se o campo estiver válido
+      delete reportFormErrors[fieldName];
+      reportFormErrors = reportFormErrors; // Trigger reactivity
+    }
   }
 
   // Função para validar formulário
@@ -3590,6 +3637,7 @@
               type="text" 
               id="cidade"
               bind:value={reportForm.cidade}
+              on:input={() => validateField('cidade')}
               placeholder="Cidade"
               class:error={reportFormErrors.cidade}
             />
@@ -3605,6 +3653,7 @@
               type="text" 
               id="enderecoCompleto"
               bind:value={reportForm.enderecoCompleto}
+              on:input={() => validateField('enderecoCompleto')}
               placeholder="Endereço completo"
               class:error={reportFormErrors.enderecoCompleto}
             />
@@ -3620,6 +3669,7 @@
               type="text" 
               id="numeroEndereco"
               bind:value={reportForm.numeroEndereco}
+              on:input={() => validateField('numeroEndereco')}
               placeholder="Número do endereço"
               class:error={reportFormErrors.numeroEndereco}
             />
@@ -3635,6 +3685,7 @@
               type="text" 
               id="cep"
               bind:value={reportForm.cep}
+              on:input={() => validateField('cep')}
               placeholder="CEP"
               class:error={reportFormErrors.cep}
             />
@@ -3649,6 +3700,7 @@
             <select 
               id="tabulacaoFinal"
               bind:value={reportForm.tabulacaoFinal}
+              on:change={() => validateField('tabulacaoFinal')}
               class:error={reportFormErrors.tabulacaoFinal}
             >
               <option value="" disabled>Selecione uma opção</option>
