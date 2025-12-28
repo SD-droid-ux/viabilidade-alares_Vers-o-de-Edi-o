@@ -182,7 +182,10 @@
           origin: { lat: originLat, lng: originLng },
           destination: { lat: destLat, lng: destLng },
           travelMode: google.maps.TravelMode.WALKING, // Modo de caminhada para distância real
-          unitSystem: google.maps.UnitSystem.METRIC
+          unitSystem: google.maps.UnitSystem.METRIC,
+          region: 'BR', // Melhorar resultados para o Brasil
+          provideRouteAlternatives: false, // Não calcular rotas alternativas (otimização)
+          avoidHighways: true // Para modo de caminhada, evitar rodovias
         },
         (result, status) => {
           if (status === 'OK' && result.routes && result.routes.length > 0) {
@@ -230,7 +233,27 @@
             resolve(totalDistance);
           } else {
             // Se não conseguir calcular rota, usar distância linear como fallback
-            console.warn(`⚠️ Não foi possível calcular rota real, usando distância linear. Status: ${status}`);
+            let errorMessage = 'Não foi possível calcular rota real, usando distância linear.';
+            switch (status) {
+              case 'ZERO_RESULTS':
+                errorMessage = 'Nenhuma rota encontrada, usando distância linear.';
+                break;
+              case 'NOT_FOUND':
+                errorMessage = 'Origem ou destino não encontrados, usando distância linear.';
+                break;
+              case 'OVER_QUERY_LIMIT':
+                errorMessage = 'Limite de requisições excedido, usando distância linear.';
+                break;
+              case 'REQUEST_DENIED':
+                errorMessage = 'Requisição negada, usando distância linear.';
+                break;
+              case 'INVALID_REQUEST':
+                errorMessage = 'Requisição inválida, usando distância linear.';
+                break;
+              default:
+                errorMessage = `Erro ao calcular rota (Status: ${status}), usando distância linear.`;
+            }
+            console.warn(`⚠️ ${errorMessage}`);
             const linearDistance = calculateGeodesicDistance(originLat, originLng, destLat, destLng);
             resolve(linearDistance);
           }
@@ -1479,7 +1502,7 @@
   }
 
   // Função para desenhar rota REAL usando Directions API
-  // A rota parte da CTO até o cliente, conectada exatamente nos marcadores
+  // A rota parte da CTO até o cliente, seguindo exatamente as ruas
   async function drawRealRoute(cto, index) {
     return new Promise((resolve, reject) => {
       const directionsService = new google.maps.DirectionsService();
@@ -1491,24 +1514,17 @@
           destination: { lat: clientCoords.lat, lng: clientCoords.lng }, // Destino: Cliente
           travelMode: google.maps.TravelMode.WALKING, // Modo de caminhada para rota real
           unitSystem: google.maps.UnitSystem.METRIC,
-          optimizeWaypoints: false
+          region: 'BR', // Melhorar resultados para o Brasil
+          provideRouteAlternatives: false, // Não calcular rotas alternativas (otimização)
+          avoidHighways: true // Para modo de caminhada, evitar rodovias
         },
         (result, status) => {
           if (status === 'OK' && result.routes && result.routes.length > 0) {
-            // Extrair todos os pontos da rota usando overview_path (já vem decodificado)
             const route = result.routes[0];
             const path = [];
 
-            // Começar exatamente na CTO
-            path.push({ lat: cto.latitude, lng: cto.longitude });
-
-            // Adicionar todos os pontos do overview_path (rota seguindo as ruas)
-            if (route.overview_path && route.overview_path.length > 0) {
-              route.overview_path.forEach(point => {
-                path.push({ lat: point.lat(), lng: point.lng() });
-              });
-            } else {
-              // Fallback: usar pontos dos legs se overview_path não estiver disponível
+            // Usar steps.path para máxima precisão (todos os pontos seguindo as ruas)
+            if (route.legs && route.legs.length > 0) {
               route.legs.forEach(leg => {
                 if (leg.steps && leg.steps.length > 0) {
                   leg.steps.forEach(step => {
@@ -1522,10 +1538,28 @@
               });
             }
 
-            // Terminar exatamente no cliente
-            path.push({ lat: clientCoords.lat, lng: clientCoords.lng });
+            // Validar se o path tem pontos válidos antes de desenhar
+            if (path.length === 0) {
+              console.warn(`⚠️ Rota para ${cto.nome} não retornou pontos válidos. Usando fallback.`);
+              // Fallback: desenhar linha reta conectando os marcadores
+              const routePolyline = new google.maps.Polyline({
+                path: [
+                  { lat: cto.latitude, lng: cto.longitude },
+                  { lat: clientCoords.lat, lng: clientCoords.lng }
+                ],
+                geodesic: true,
+                strokeColor: '#6495ED',
+                strokeOpacity: 0.6,
+                strokeWeight: 3,
+                map: map,
+                zIndex: 500 + index
+              });
+              routes.push(routePolyline);
+              resolve();
+              return;
+            }
 
-            // Desenhar Polyline conectando exatamente nos marcadores
+            // Desenhar Polyline usando os pontos da API (já projetados nas ruas)
             const routePolyline = new google.maps.Polyline({
               path: path,
               geodesic: false, // Não usar geodésica, seguir os pontos da rota (centro das ruas)
@@ -1539,7 +1573,29 @@
             routes.push(routePolyline);
             resolve();
           } else {
-            console.warn(`⚠️ Não foi possível desenhar rota real para ${cto.nome}. Status: ${status}`);
+            // Melhorar tratamento de erros com diferentes status codes
+            let errorMessage = `Não foi possível desenhar rota real para ${cto.nome}.`;
+            switch (status) {
+              case 'ZERO_RESULTS':
+                errorMessage = `Nenhuma rota encontrada para ${cto.nome}.`;
+                break;
+              case 'NOT_FOUND':
+                errorMessage = `Origem ou destino não encontrados para ${cto.nome}.`;
+                break;
+              case 'OVER_QUERY_LIMIT':
+                errorMessage = `Limite de requisições excedido ao calcular rota para ${cto.nome}.`;
+                break;
+              case 'REQUEST_DENIED':
+                errorMessage = `Requisição negada ao calcular rota para ${cto.nome}.`;
+                break;
+              case 'INVALID_REQUEST':
+                errorMessage = `Requisição inválida ao calcular rota para ${cto.nome}.`;
+                break;
+              default:
+                errorMessage = `Erro ao calcular rota para ${cto.nome}. Status: ${status}`;
+            }
+            console.warn(`⚠️ ${errorMessage}`);
+            
             // Fallback: desenhar linha reta conectando exatamente os marcadores
             const routePolyline = new google.maps.Polyline({
               path: [
