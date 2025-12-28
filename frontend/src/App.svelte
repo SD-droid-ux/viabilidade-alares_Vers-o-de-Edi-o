@@ -1523,12 +1523,12 @@
             const route = result.routes[0];
             const path = [];
 
-            // Começar exatamente na CTO (conectado ao marcador)
-            path.push({ lat: cto.latitude, lng: cto.longitude });
-
             // Usar steps.path para máxima precisão (todos os pontos seguindo as ruas)
+            // A API já projeta os pontos de início e fim nas ruas mais próximas
             if (route.legs && route.legs.length > 0) {
-              route.legs.forEach(leg => {
+              route.legs.forEach((leg) => {
+                // Adicionar todos os pontos dos steps (seguindo as ruas)
+                // O step.path já inclui pontos de início e fim de cada step
                 if (leg.steps && leg.steps.length > 0) {
                   leg.steps.forEach(step => {
                     if (step.path && step.path.length > 0) {
@@ -1541,11 +1541,8 @@
               });
             }
 
-            // Terminar exatamente no cliente (conectado ao marcador)
-            path.push({ lat: clientCoords.lat, lng: clientCoords.lng });
-
             // Validar se o path tem pontos válidos antes de desenhar
-            if (path.length < 3) {
+            if (path.length === 0) {
               console.warn(`⚠️ Rota para ${cto.nome} não retornou pontos válidos. Usando fallback.`);
               // Fallback: desenhar linha reta conectando os marcadores
               const routePolyline = new google.maps.Polyline({
@@ -1565,7 +1562,9 @@
               return;
             }
 
-            // Desenhar Polyline conectada aos marcadores, mas seguindo as ruas no meio
+            // Desenhar Polyline usando apenas pontos da API (todos projetados nas ruas)
+            // Isso garante que a rota siga exatamente as ruas, sem cortar terrenos
+            // Nota: A rota pode não conectar exatamente aos marcadores, mas segue 100% pelas ruas
             const routePolyline = new google.maps.Polyline({
               path: path,
               geodesic: false, // Não usar geodésica, seguir os pontos da rota (centro das ruas)
