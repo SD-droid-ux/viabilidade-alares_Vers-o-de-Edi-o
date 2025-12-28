@@ -1523,6 +1523,9 @@
             const route = result.routes[0];
             const path = [];
 
+            // Começar exatamente na CTO (conectado ao marcador)
+            path.push({ lat: cto.latitude, lng: cto.longitude });
+
             // Usar steps.path para máxima precisão (todos os pontos seguindo as ruas)
             if (route.legs && route.legs.length > 0) {
               route.legs.forEach(leg => {
@@ -1538,8 +1541,11 @@
               });
             }
 
+            // Terminar exatamente no cliente (conectado ao marcador)
+            path.push({ lat: clientCoords.lat, lng: clientCoords.lng });
+
             // Validar se o path tem pontos válidos antes de desenhar
-            if (path.length === 0) {
+            if (path.length < 3) {
               console.warn(`⚠️ Rota para ${cto.nome} não retornou pontos válidos. Usando fallback.`);
               // Fallback: desenhar linha reta conectando os marcadores
               const routePolyline = new google.maps.Polyline({
@@ -1559,7 +1565,7 @@
               return;
             }
 
-            // Desenhar Polyline usando os pontos da API (já projetados nas ruas)
+            // Desenhar Polyline conectada aos marcadores, mas seguindo as ruas no meio
             const routePolyline = new google.maps.Polyline({
               path: path,
               geodesic: false, // Não usar geodésica, seguir os pontos da rota (centro das ruas)
