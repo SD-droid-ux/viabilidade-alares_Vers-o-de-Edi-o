@@ -1734,13 +1734,38 @@
       
       try {
         const currentPath = route.getPath();
-        if (!currentPath || currentPath.getLength() === 0) {
+        if (!currentPath) {
+          console.warn(`⏱️ getPath() retornou null/undefined para rota ${routeIndex} (CTO ${ctoIndex})`);
           return;
+        }
+        
+        if (currentPath.getLength && currentPath.getLength() === 0) {
+          console.warn(`⏱️ Path vazio para rota ${routeIndex} (CTO ${ctoIndex})`);
+          return;
+        }
+        
+        // Converter path para array - pode ser MVCArray ou array normal
+        let pathArray = [];
+        if (currentPath.forEach) {
+          // É um MVCArray do Google Maps
+          currentPath.forEach((p, idx) => {
+            pathArray.push(p);
+          });
+        } else if (Array.isArray(currentPath)) {
+          pathArray = currentPath;
+        } else {
+          // Tentar Array.from como fallback
+          try {
+            pathArray = Array.from(currentPath);
+          } catch (e) {
+            console.error(`⏱️ Erro ao converter path para array na rota ${routeIndex} (CTO ${ctoIndex}):`, e);
+            return;
+          }
         }
         
         // Filtrar pontos válidos e converter para string
         // Os pontos podem ser objetos google.maps.LatLng (com métodos lat()/lng()) ou objetos simples {lat, lng}
-        const validPoints = Array.from(currentPath).filter(p => {
+        const validPoints = pathArray.filter(p => {
           if (!p) return false;
           // Verificar se é objeto google.maps.LatLng (tem métodos)
           if (typeof p.lat === 'function' && typeof p.lng === 'function') return true;
@@ -1751,6 +1776,14 @@
         
         if (validPoints.length === 0) {
           console.warn(`⏱️ Nenhum ponto válido encontrado na rota ${routeIndex} (CTO ${ctoIndex})`);
+          console.warn(`  Path length: ${currentPath.getLength ? currentPath.getLength() : pathArray.length}`);
+          console.warn(`  Primeiro ponto:`, pathArray[0]);
+          console.warn(`  Tipo do primeiro ponto:`, typeof pathArray[0]);
+          if (pathArray[0]) {
+            console.warn(`  Propriedades do primeiro ponto:`, Object.keys(pathArray[0]));
+            console.warn(`  p.lat:`, pathArray[0].lat, `(tipo: ${typeof pathArray[0].lat})`);
+            console.warn(`  p.lng:`, pathArray[0].lng, `(tipo: ${typeof pathArray[0].lng})`);
+          }
           return;
         }
         
@@ -1803,13 +1836,37 @@
           // Salvar path inicial para comparação
           try {
             const initialPath = route.getPath();
-            if (!initialPath || initialPath.getLength() === 0) {
+            if (!initialPath) {
+              console.warn(`  ⚠️ getPath() retornou null/undefined para CTO ${ctoIndex}`);
+              return;
+            }
+            
+            if (initialPath.getLength && initialPath.getLength() === 0) {
               console.warn(`  ⚠️ Path inicial vazio para CTO ${ctoIndex}`);
               return;
             }
             
+            // Converter path para array - pode ser MVCArray ou array normal
+            let initialPathArray = [];
+            if (initialPath.forEach) {
+              // É um MVCArray do Google Maps
+              initialPath.forEach((p) => {
+                initialPathArray.push(p);
+              });
+            } else if (Array.isArray(initialPath)) {
+              initialPathArray = initialPath;
+            } else {
+              // Tentar Array.from como fallback
+              try {
+                initialPathArray = Array.from(initialPath);
+              } catch (e) {
+                console.warn(`  ⚠️ Erro ao converter path inicial para array para CTO ${ctoIndex}:`, e);
+                return;
+              }
+            }
+            
             // Filtrar pontos válidos (podem ser google.maps.LatLng ou objetos simples {lat, lng})
-            const validInitialPoints = Array.from(initialPath).filter(p => {
+            const validInitialPoints = initialPathArray.filter(p => {
               if (!p) return false;
               // Verificar se é objeto google.maps.LatLng (tem métodos)
               if (typeof p.lat === 'function' && typeof p.lng === 'function') return true;
@@ -1820,6 +1877,11 @@
             
             if (validInitialPoints.length === 0) {
               console.warn(`  ⚠️ Nenhum ponto válido no path inicial para CTO ${ctoIndex}`);
+              console.warn(`    Path length: ${initialPath.getLength ? initialPath.getLength() : initialPathArray.length}`);
+              console.warn(`    Primeiro ponto:`, initialPathArray[0]);
+              if (initialPathArray[0]) {
+                console.warn(`    Tipo: ${typeof initialPathArray[0]}, lat: ${initialPathArray[0].lat}, lng: ${initialPathArray[0].lng}`);
+              }
               return;
             }
             
