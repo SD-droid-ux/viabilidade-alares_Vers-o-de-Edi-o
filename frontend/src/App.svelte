@@ -87,6 +87,8 @@
   let routes = []; // Rotas desenhadas no mapa
   let routeData = []; // Dados das rotas (para edição) - armazena CTO associada e path original
   let editingRoutes = false; // Modo de edição de rotas
+  let routeEditInterval = null; // Intervalo para monitorar mudanças nas rotas editáveis
+  let lastRoutePaths = new Map(); // Armazena os últimos paths conhecidos de cada rota
   let loadingCTOs = false; // Loading específico para busca de CTOs
   // REMOVIDO: ctosData não é mais necessário - buscamos CTOs sob demanda via API
   let baseDataExists = true; // Indica se a base de dados foi carregada com sucesso
@@ -1404,6 +1406,16 @@
     routes = [];
     routeData = []; // Limpar dados de rotas também
     editingRoutes = false; // Desativar modo de edição ao limpar
+    if (routeEditInterval) {
+      clearInterval(routeEditInterval);
+      routeEditInterval = null;
+    }
+    lastRoutePaths.clear();
+    if (routeEditInterval) {
+      clearInterval(routeEditInterval);
+      routeEditInterval = null;
+    }
+    lastRoutePaths.clear();
 
     // Remover apenas marcadores de CTOs do mapa
     // NUNCA remover o marcador do cliente (clientMarker)
@@ -1694,14 +1706,40 @@
     });
   }
 
+  // Função para verificar mudanças nas rotas editáveis (usado como fallback)
+  function checkRouteChanges() {
+    if (!editingRoutes) return;
+    
+    routes.forEach((route, routeIndex) => {
+      if (!route || !route.getPath) return;
+      
+      const routeInfo = routeData.find(rd => rd.polyline === route);
+      if (!routeInfo) return;
+      
+      const ctoIndex = routeInfo.ctoIndex;
+      const currentPath = route.getPath();
+      const currentPathString = Array.from(currentPath).map(p => `${p.lat().toFixed(6)},${p.lng().toFixed(6)}`).join('|');
+      const lastPathString = lastRoutePaths.get(ctoIndex);
+      
+      // Se o path mudou, atualizar
+      if (currentPathString !== lastPathString) {
+        console.log(`🔄 Mudança detectada na rota da CTO ${ctoIndex} (verificação por intervalo)`);
+        lastRoutePaths.set(ctoIndex, currentPathString);
+        saveRouteEdit(ctoIndex);
+      }
+    });
+  }
+
   // Função para ativar/desativar modo de edição de rotas
   function toggleRouteEditing() {
     editingRoutes = !editingRoutes;
+    console.log(`🔄 Modo de edição ${editingRoutes ? 'ATIVADO' : 'DESATIVADO'}. Total de rotas: ${routes.length}`);
     
     // Tornar todas as rotas editáveis ou não editáveis
     routes.forEach((route, routeIndex) => {
       if (route && route.setEditable) {
         route.setEditable(editingRoutes);
+        console.log(`  ✓ Rota ${routeIndex} tornada ${editingRoutes ? 'editável' : 'não editável'}`);
         
         // Adicionar ou remover listeners quando entrar/sair do modo de edição
         if (editingRoutes) {
@@ -1709,38 +1747,50 @@
           const routeInfo = routeData.find(rd => rd.polyline === route);
           const ctoIndex = routeInfo ? routeInfo.ctoIndex : routeIndex;
           
+          console.log(`  📍 Rota ${routeIndex} mapeada para CTO índice ${ctoIndex}`);
+          
           // Remover listeners antigos se existirem (evitar duplicatas)
           google.maps.event.clearListeners(route, 'set_at');
           google.maps.event.clearListeners(route, 'insert_at');
           google.maps.event.clearListeners(route, 'remove_at');
+          google.maps.event.clearListeners(route, 'dragend');
           
-          // Adicionar listeners para salvar alterações
-          route.addListener('set_at', () => {
+          // Criar funções wrapper para capturar o ctoIndex correto
+          const handleSetAt = () => {
             console.log(`🎯 Evento 'set_at' disparado para rota ${routeIndex}, CTO ${ctoIndex}`);
             saveRouteEdit(ctoIndex);
-          });
-          route.addListener('insert_at', () => {
+          };
+          
+          const handleInsertAt = () => {
             console.log(`🎯 Evento 'insert_at' disparado para rota ${routeIndex}, CTO ${ctoIndex}`);
             saveRouteEdit(ctoIndex);
-          });
-          route.addListener('remove_at', () => {
+          };
+          
+          const handleRemoveAt = () => {
             console.log(`🎯 Evento 'remove_at' disparado para rota ${routeIndex}, CTO ${ctoIndex}`);
             saveRouteEdit(ctoIndex);
-          });
+          };
           
-          // Adicionar listener para quando a edição terminar (dragend)
-          route.addListener('dragend', () => {
-            console.log(`🎯 Evento 'dragend' disparado para rota ${routeIndex}, CTO ${ctoIndex}`);
-            saveRouteEdit(ctoIndex);
-          });
+          // Adicionar listeners para salvar alterações
+          route.addListener('set_at', handleSetAt);
+          route.addListener('insert_at', handleInsertAt);
+          route.addListener('remove_at', handleRemoveAt);
+          
+          console.log(`  ✅ Listeners adicionados para rota ${routeIndex}`);
         } else {
           // Remover listeners ao sair do modo de edição
           google.maps.event.clearListeners(route, 'set_at');
           google.maps.event.clearListeners(route, 'insert_at');
           google.maps.event.clearListeners(route, 'remove_at');
+          google.maps.event.clearListeners(route, 'dragend');
+          console.log(`  🗑️ Listeners removidos da rota ${routeIndex}`);
         }
+      } else {
+        console.warn(`  ⚠️ Rota ${routeIndex} não tem método setEditable`);
       }
     });
+    
+    console.log(`📊 RouteData:`, routeData.map(rd => ({ ctoIndex: rd.ctoIndex, ctoNome: rd.cto?.nome })));
   }
 
   // Função para calcular distância total de um path (array de pontos)
