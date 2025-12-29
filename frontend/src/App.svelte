@@ -4171,7 +4171,6 @@
                   on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
                   role="dialog"
                   tabindex="0"
-                  tabindex="0"
                   aria-modal="true"
                 >
                   <div class="info-modal-header">
@@ -4218,7 +4217,6 @@
                   on:click|stopPropagation
                   on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
                   role="dialog"
-                  tabindex="0"
                   tabindex="0"
                   aria-modal="true"
                 >
@@ -4373,7 +4371,6 @@
         on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
         role="dialog"
         tabindex="0"
-        tabindex="0"
         aria-modal="true"
       >
         <div class="popup-instructions">
@@ -4427,7 +4424,6 @@
       on:click|stopPropagation
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
-      tabindex="0"
       tabindex="0"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -4623,7 +4619,6 @@
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
       tabindex="0"
-      tabindex="0"
       aria-modal="true"
       aria-labelledby="change-password-title"
     >
@@ -4802,7 +4797,6 @@
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
       tabindex="0"
-      tabindex="0"
       aria-modal="true"
       aria-labelledby="add-projetista-title"
     >
@@ -4854,7 +4848,6 @@
       on:click|stopPropagation
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
-      tabindex="0"
       tabindex="0"
       aria-modal="true"
       aria-labelledby="add-tabulacao-title"
