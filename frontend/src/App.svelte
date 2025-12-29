@@ -2202,8 +2202,7 @@
       }, 500);
     }
     
-    // Fechar o popup
-    closeRoutePopup();
+    // NÃO fechar o popup - ele deve permanecer aberto durante a edição
   }
 
   // Função para finalizar edição de uma rota específica
