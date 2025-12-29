@@ -1720,6 +1720,24 @@
     });
   }
 
+  // Função para calcular distância total de um path (array de pontos)
+  function calculatePathDistance(path) {
+    if (!path || path.length < 2) return 0;
+    
+    let totalDistance = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+      const point1 = path[i];
+      const point2 = path[i + 1];
+      totalDistance += calculateGeodesicDistance(
+        point1.lat,
+        point1.lng,
+        point2.lat,
+        point2.lng
+      );
+    }
+    return totalDistance;
+  }
+
   // Função para salvar alterações quando uma rota for editada
   function saveRouteEdit(routeIndex) {
     const route = routes[routeIndex];
@@ -1733,11 +1751,28 @@
       updatedPath.push({ lat: point.lat(), lng: point.lng() });
     });
     
+    // Calcular nova distância total do path editado
+    const newDistance = calculatePathDistance(updatedPath);
+    const newDistanceKm = (newDistance / 1000).toFixed(3);
+    
     // Atualizar dados da rota
     const routeInfo = routeData.find(rd => rd.polyline === route);
     if (routeInfo) {
       routeInfo.editedPath = updatedPath;
-      console.log(`Rota ${routeIndex} editada. Novo path:`, updatedPath);
+      
+      // Atualizar distância no objeto CTO correspondente
+      const ctoIndex = routeInfo.ctoIndex;
+      if (ctos[ctoIndex]) {
+        // Arredondar valores para manter consistência com o formato original
+        ctos[ctoIndex].distancia_metros = Math.round(newDistance * 100) / 100;
+        ctos[ctoIndex].distancia_km = Math.round((newDistance / 1000) * 1000) / 1000;
+        ctos[ctoIndex].distancia_real = newDistance; // Atualizar também a distância real
+        
+        // Trigger reactivity do Svelte para atualizar a UI
+        ctos = ctos;
+      }
+      
+      console.log(`Rota ${routeIndex} editada. Nova distância: ${Math.round(newDistance)}m (${newDistanceKm}km)`);
     }
   }
 
