@@ -183,8 +183,12 @@
 
   // Função para aplicar offset lateral a uma rota para evitar sobreposição
   // Desloca a rota perpendicularmente à direção média, baseado no índice
+  // IMPORTANTE: O primeiro ponto (centro da CTO) NÃO é deslocado
   function applyRouteOffset(path, routeIndex) {
     if (path.length < 2) return path;
+    
+    // Guardar o primeiro ponto (centro exato da CTO) - não será deslocado
+    const ctoCenter = path[0];
     
     // Calcular direção média da rota (usando primeiro e último ponto)
     const startPoint = path[0];
@@ -215,11 +219,18 @@
     const offsetLat = offsetRadians * Math.cos(perpendicularBearing) * (180 / Math.PI);
     const offsetLng = offsetRadians * Math.sin(perpendicularBearing) * (180 / Math.PI) / Math.cos(lat1);
     
-    // Aplicar offset a todos os pontos
-    return path.map(point => ({
-      lat: point.lat + offsetLat,
-      lng: point.lng + offsetLng
-    }));
+    // Aplicar offset a todos os pontos EXCETO o primeiro (centro da CTO)
+    return path.map((point, index) => {
+      if (index === 0) {
+        // Manter o primeiro ponto exatamente no centro da CTO
+        return { lat: ctoCenter.lat, lng: ctoCenter.lng };
+      }
+      // Aplicar offset aos demais pontos
+      return {
+        lat: point.lat + offsetLat,
+        lng: point.lng + offsetLng
+      };
+    });
   }
 
   // Função para filtrar segmentos muito longos da rota (indicam ruas não mapeadas)
