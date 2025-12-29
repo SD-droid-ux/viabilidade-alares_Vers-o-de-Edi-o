@@ -1037,6 +1037,7 @@
   on:keydown={(e) => e.key === 'Escape' && closeSettings()}
   role="dialog"
   aria-modal="true"
+  tabindex="0"
   aria-labelledby="settings-title"
 >
   <div class="settings-screen-content">
@@ -1303,6 +1304,7 @@
       on:click|stopPropagation
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
+      tabindex="0"
       aria-modal="true"
       aria-labelledby="confirm-title"
     >
@@ -1343,6 +1345,7 @@
       on:click|stopPropagation
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
+      tabindex="0"
       aria-modal="true"
       aria-labelledby="confirm-tabulacao-title"
     >
@@ -1383,6 +1386,7 @@
       on:click|stopPropagation
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
+      tabindex="0"
       aria-modal="true"
       aria-labelledby="add-projetista-title"
     >
@@ -1482,6 +1486,7 @@
       on:click|stopPropagation
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
+      tabindex="0"
       aria-modal="true"
       aria-labelledby="confirm-delete-base-title"
     >
@@ -1525,6 +1530,7 @@
       on:click|stopPropagation
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
+      tabindex="0"
       aria-modal="true"
       aria-labelledby="add-tabulacao-title"
     >
@@ -2141,16 +2147,6 @@
     margin-bottom: 1rem;
   }
 
-  .success-message-modal {
-    background: #e8f5e9;
-    border: 1px solid #4caf50;
-    color: #2e7d32;
-    padding: 0.75rem;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    margin-bottom: 1rem;
-    font-weight: 500;
-  }
 
   .btn-add-confirm {
     background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
@@ -2272,11 +2268,6 @@
     color: #c62828;
   }
 
-  .upload-message.processing {
-    background: rgba(123, 104, 238, 0.1);
-    border: 1px solid #7B68EE;
-    color: #5a4fcf;
-  }
 
   .delete-base-container {
     display: flex;
