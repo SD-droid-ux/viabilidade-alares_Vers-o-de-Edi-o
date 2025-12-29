@@ -181,6 +181,47 @@
     return distance;
   }
 
+  // Função para aplicar offset lateral a uma rota para evitar sobreposição
+  // Desloca a rota perpendicularmente à direção média, baseado no índice
+  function applyRouteOffset(path, routeIndex) {
+    if (path.length < 2) return path;
+    
+    // Calcular direção média da rota (usando primeiro e último ponto)
+    const startPoint = path[0];
+    const endPoint = path[path.length - 1];
+    
+    // Calcular azimute (direção) em radianos usando fórmula de Haversine
+    const lat1 = startPoint.lat * Math.PI / 180;
+    const lat2 = endPoint.lat * Math.PI / 180;
+    const dLon = (endPoint.lng - startPoint.lng) * Math.PI / 180;
+    
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+    const bearing = Math.atan2(y, x);
+    
+    // Calcular direção perpendicular (90 graus à direita)
+    const perpendicularBearing = bearing + (Math.PI / 2);
+    
+    // Offset em metros: -4, -2, 0, 2, 4 (para rotas 0, 1, 2, 3, 4)
+    // Isso cria uma distribuição simétrica: 2 rotas de cada lado, 1 no centro
+    const offsetMeters = (routeIndex - 2) * 2;
+    
+    // Converter offset de metros para graus
+    // Raio da Terra em metros
+    const earthRadiusMeters = 6371000;
+    const offsetRadians = offsetMeters / earthRadiusMeters;
+    
+    // Calcular offset em latitude e longitude
+    const offsetLat = offsetRadians * Math.cos(perpendicularBearing) * (180 / Math.PI);
+    const offsetLng = offsetRadians * Math.sin(perpendicularBearing) * (180 / Math.PI) / Math.cos(lat1);
+    
+    // Aplicar offset a todos os pontos
+    return path.map(point => ({
+      lat: point.lat + offsetLat,
+      lng: point.lng + offsetLng
+    }));
+  }
+
   // Função para filtrar segmentos muito longos da rota (indicam ruas não mapeadas)
   // Quando detecta segmentos muito longos, mantém apenas os pontos principais
   // Isso evita que a rota siga pontos que cortam terrenos quando a rua não está mapeada
@@ -1611,11 +1652,16 @@
               const routeColor = getCTOColor(cto.pct_ocup || 0);
               
               // Fallback: desenhar linha reta conectando os marcadores
+              const fallbackPath = [
+                { lat: cto.latitude, lng: cto.longitude },
+                { lat: clientCoords.lat, lng: clientCoords.lng }
+              ];
+              
+              // Aplicar offset lateral para evitar sobreposição
+              const offsetFallbackPath = applyRouteOffset(fallbackPath, index);
+              
               const routePolyline = new google.maps.Polyline({
-                path: [
-                  { lat: cto.latitude, lng: cto.longitude },
-                  { lat: clientCoords.lat, lng: clientCoords.lng }
-                ],
+                path: offsetFallbackPath,
                 geodesic: true,
                 strokeColor: routeColor, // Cor da rota igual à cor da CTO
                 strokeOpacity: 0.6,
@@ -1633,13 +1679,16 @@
             // Remove pontos intermediários de segmentos que cortam terrenos
             const filteredPath = filterLongSegments(path, 100); // 100 metros é o limite para considerar segmento "longo"
 
+            // Aplicar offset lateral para evitar sobreposição de rotas
+            const offsetPath = applyRouteOffset(filteredPath, index);
+
             // Calcular cor da rota baseada na cor da CTO
             const routeColor = getCTOColor(cto.pct_ocup || 0);
             
-            // Desenhar Polyline usando pontos filtrados
+            // Desenhar Polyline usando pontos filtrados com offset
             // Quando há ruas não mapeadas, a rota será simplificada para evitar cortes visíveis por terrenos
             const routePolyline = new google.maps.Polyline({
-              path: filteredPath,
+              path: offsetPath,
               geodesic: false, // Não usar geodésica, seguir os pontos da rota (centro das ruas)
               strokeColor: routeColor, // Cor da rota igual à cor da CTO
               strokeOpacity: 0.7,
@@ -1705,15 +1754,20 @@
             const routeColor = getCTOColor(cto.pct_ocup || 0);
             
             // Fallback: desenhar linha reta conectando exatamente os marcadores
+            const fallbackPath = [
+              { lat: cto.latitude, lng: cto.longitude }, // Começa na CTO
+              { lat: clientCoords.lat, lng: clientCoords.lng } // Termina no cliente
+            ];
+            
+            // Aplicar offset lateral para evitar sobreposição
+            const offsetFallbackPath = applyRouteOffset(fallbackPath, index);
+            
             const routePolyline = new google.maps.Polyline({
-              path: [
-                { lat: cto.latitude, lng: cto.longitude }, // Começa na CTO
-                { lat: clientCoords.lat, lng: clientCoords.lng } // Termina no cliente
-              ],
+              path: offsetFallbackPath,
               geodesic: true,
               strokeColor: routeColor, // Cor da rota igual à cor da CTO
               strokeOpacity: 0.6,
-              strokeWeight: 3,
+              strokeWeight: 4,
               map: map,
               zIndex: 500 + index
             });
