@@ -92,6 +92,8 @@
   let lastRoutePaths = new Map(); // Armazena os últimos paths conhecidos de cada rota
   let selectedRouteIndex = null; // Índice da rota selecionada (para mostrar popup)
   let routePopupPosition = { x: 0, y: 0 }; // Posição do popup de rota
+  let isDraggingRoutePopup = false; // Controla se o popup está sendo arrastado
+  let dragOffset = { x: 0, y: 0 }; // Offset do mouse ao iniciar o arrasto
   let loadingCTOs = false; // Loading específico para busca de CTOs
   // REMOVIDO: ctosData não é mais necessário - buscamos CTOs sob demanda via API
   let baseDataExists = true; // Indica se a base de dados foi carregada com sucesso
@@ -2019,6 +2021,85 @@
   // Função para fechar o popup de rota
   function closeRoutePopup() {
     selectedRouteIndex = null;
+    isDraggingRoutePopup = false;
+  }
+
+  // Funções para arrastar o popup
+  function startDraggingRoutePopup(event) {
+    isDraggingRoutePopup = true;
+    const popup = event.currentTarget.closest('.route-popup');
+    if (popup) {
+      const rect = popup.getBoundingClientRect();
+      dragOffset.x = event.clientX - rect.left;
+      dragOffset.y = event.clientY - rect.top;
+    }
+  }
+
+  function dragRoutePopup(event) {
+    if (!isDraggingRoutePopup) return;
+    
+    const mapDiv = document.getElementById('map');
+    if (!mapDiv) return;
+    
+    const mapRect = mapDiv.getBoundingClientRect();
+    const newX = event.clientX - mapRect.left - dragOffset.x;
+    const newY = event.clientY - mapRect.top - dragOffset.y;
+    
+    // Limitar dentro dos bounds do mapa
+    const popup = event.currentTarget.closest('.route-popup');
+    if (popup) {
+      const popupRect = popup.getBoundingClientRect();
+      const maxX = mapRect.width - popupRect.width;
+      const maxY = mapRect.height - popupRect.height;
+      
+      routePopupPosition = {
+        x: Math.max(0, Math.min(newX, maxX)),
+        y: Math.max(0, Math.min(newY, maxY))
+      };
+    }
+  }
+
+  function stopDraggingRoutePopup() {
+    isDraggingRoutePopup = false;
+  }
+
+  // Funções para arrastar o popup
+  function startDraggingRoutePopup(event) {
+    isDraggingRoutePopup = true;
+    const popup = event.currentTarget.closest('.route-popup');
+    if (popup) {
+      const rect = popup.getBoundingClientRect();
+      dragOffset.x = event.clientX - rect.left;
+      dragOffset.y = event.clientY - rect.top;
+    }
+  }
+
+  function dragRoutePopup(event) {
+    if (!isDraggingRoutePopup) return;
+    
+    const mapDiv = document.getElementById('map');
+    if (!mapDiv) return;
+    
+    const mapRect = mapDiv.getBoundingClientRect();
+    const newX = event.clientX - mapRect.left - dragOffset.x;
+    const newY = event.clientY - mapRect.top - dragOffset.y;
+    
+    // Limitar dentro dos bounds do mapa
+    const popup = event.currentTarget.closest('.route-popup');
+    if (popup) {
+      const popupRect = popup.getBoundingClientRect();
+      const maxX = mapRect.width - popupRect.width;
+      const maxY = mapRect.height - popupRect.height;
+      
+      routePopupPosition = {
+        x: Math.max(0, Math.min(newX, maxX)),
+        y: Math.max(0, Math.min(newY, maxY))
+      };
+    }
+  }
+
+  function stopDraggingRoutePopup() {
+    isDraggingRoutePopup = false;
   }
 
   // Função para editar uma rota específica
@@ -4051,15 +4132,6 @@
           </button>
         {/if}
 
-        {#if editingRouteIndex !== null}
-          <button 
-            class="search-button"
-            on:click={() => finishEditingRoute(editingRouteIndex)}
-            style="background: linear-gradient(135deg, #F44336 0%, #E53935 100%);"
-          >
-            ✓ Finalizar Edição da Rota
-          </button>
-        {/if}
 
         {#if error}
           <div class="error-message">
@@ -4241,9 +4313,16 @@
         <div 
           class="route-popup"
           style="left: {routePopupPosition.x}px; top: {routePopupPosition.y}px;"
+          on:mousemove={dragRoutePopup}
+          on:mouseup={stopDraggingRoutePopup}
+          on:mouseleave={stopDraggingRoutePopup}
         >
           <div class="route-popup-content">
-            <div class="route-popup-header">
+            <div 
+              class="route-popup-header"
+              on:mousedown={startDraggingRoutePopup}
+              style="cursor: move;"
+            >
               <h3>Rota {ctoIndex + 1}</h3>
               <button class="route-popup-close" on:click={closeRoutePopup}>×</button>
             </div>
@@ -5017,8 +5096,7 @@
     padding: 1rem;
     min-width: 250px;
     pointer-events: all;
-    transform: translate(-50%, -100%);
-    margin-top: -10px;
+    user-select: none;
   }
 
   .route-popup-header {
@@ -5028,6 +5106,11 @@
     margin-bottom: 0.75rem;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid #e0e0e0;
+    user-select: none;
+  }
+  
+  .route-popup-header:active {
+    cursor: grabbing;
   }
 
   .route-popup-header h3 {
