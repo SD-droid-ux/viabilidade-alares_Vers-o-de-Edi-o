@@ -1699,22 +1699,36 @@
     editingRoutes = !editingRoutes;
     
     // Tornar todas as rotas editáveis ou não editáveis
-    routes.forEach((route, index) => {
+    routes.forEach((route, routeIndex) => {
       if (route && route.setEditable) {
         route.setEditable(editingRoutes);
         
         // Adicionar ou remover listeners quando entrar/sair do modo de edição
         if (editingRoutes) {
+          // Encontrar o índice correto da CTO usando routeData
+          const routeInfo = routeData.find(rd => rd.polyline === route);
+          const ctoIndex = routeInfo ? routeInfo.ctoIndex : routeIndex;
+          
+          // Remover listeners antigos se existirem (evitar duplicatas)
+          google.maps.event.clearListeners(route, 'set_at');
+          google.maps.event.clearListeners(route, 'insert_at');
+          google.maps.event.clearListeners(route, 'remove_at');
+          
           // Adicionar listeners para salvar alterações
           route.addListener('set_at', () => {
-            saveRouteEdit(index);
+            saveRouteEdit(ctoIndex);
           });
           route.addListener('insert_at', () => {
-            saveRouteEdit(index);
+            saveRouteEdit(ctoIndex);
           });
           route.addListener('remove_at', () => {
-            saveRouteEdit(index);
+            saveRouteEdit(ctoIndex);
           });
+        } else {
+          // Remover listeners ao sair do modo de edição
+          google.maps.event.clearListeners(route, 'set_at');
+          google.maps.event.clearListeners(route, 'insert_at');
+          google.maps.event.clearListeners(route, 'remove_at');
         }
       }
     });
@@ -1739,9 +1753,15 @@
   }
 
   // Função para salvar alterações quando uma rota for editada
-  function saveRouteEdit(routeIndex) {
-    const route = routes[routeIndex];
-    if (!route) return;
+  function saveRouteEdit(ctoIndex) {
+    // Encontrar a rota correspondente a esta CTO
+    const routeInfo = routeData.find(rd => rd.ctoIndex === ctoIndex);
+    if (!routeInfo || !routeInfo.polyline) {
+      console.warn(`Rota não encontrada para CTO índice ${ctoIndex}`);
+      return;
+    }
+    
+    const route = routeInfo.polyline;
     
     // Obter o path atualizado da rota editada
     const path = route.getPath();
@@ -1755,25 +1775,27 @@
     const newDistance = calculatePathDistance(updatedPath);
     
     // Atualizar dados da rota
-    const routeInfo = routeData.find(rd => rd.polyline === route);
-    if (routeInfo) {
-      routeInfo.editedPath = updatedPath;
+    routeInfo.editedPath = updatedPath;
+    
+    // Atualizar distância no objeto CTO correspondente
+    if (ctos[ctoIndex]) {
+      // Arredondar valores para manter consistência com o formato original
+      // Formato: 129.15m (0.129km) - 2 casas decimais para metros, 3 para km
+      const distanciaMetros = Math.round(newDistance * 100) / 100;
+      const distanciaKm = Math.round((newDistance / 1000) * 1000) / 1000;
       
-      // Atualizar distância no objeto CTO correspondente
-      const ctoIndex = routeInfo.ctoIndex;
-      if (ctos[ctoIndex]) {
-        // Arredondar valores para manter consistência com o formato original
-        // Formato: 129.15m (0.129km) - 2 casas decimais para metros, 3 para km
-        ctos[ctoIndex].distancia_metros = Math.round(newDistance * 100) / 100;
-        ctos[ctoIndex].distancia_km = Math.round((newDistance / 1000) * 1000) / 1000;
-        ctos[ctoIndex].distancia_real = newDistance; // Atualizar também a distância real
-        
-        // Trigger reactivity do Svelte para atualizar a UI automaticamente
-        // Isso força o Svelte a re-renderizar os componentes que dependem de ctos
-        ctos = [...ctos];
-      }
+      // Atualizar os valores diretamente no objeto
+      ctos[ctoIndex].distancia_metros = distanciaMetros;
+      ctos[ctoIndex].distancia_km = distanciaKm;
+      ctos[ctoIndex].distancia_real = newDistance;
       
-      console.log(`Rota ${routeIndex} editada. Nova distância: ${ctos[ctoIndex]?.distancia_metros}m (${ctos[ctoIndex]?.distancia_km}km)`);
+      // Trigger reactivity do Svelte para atualizar a UI automaticamente
+      // Criar um novo array para forçar a reatividade
+      ctos = [...ctos];
+      
+      console.log(`✅ Rota da CTO ${ctoIndex} (${ctos[ctoIndex].nome}) editada. Nova distância: ${distanciaMetros}m (${distanciaKm}km)`);
+    } else {
+      console.warn(`CTO não encontrada no índice ${ctoIndex}`);
     }
   }
 
