@@ -644,14 +644,16 @@ app.get('/api/ctos/nearby', async (req, res) => {
         const lngMin = lng - radiusDegrees;
         const lngMax = lng + radiusDegrees;
         
-        // Buscar CTOs dentro da bounding box primeiro (muito eficiente com índice)
+        // Buscar apenas CTOs ATIVAS dentro da bounding box (muito eficiente com índice)
+        // Filtrar por status_cto = 'ATIVA' (case-insensitive)
         const { data, error } = await supabase
           .from('ctos')
           .select('*')
           .gte('latitude', latMin)
           .lte('latitude', latMax)
           .gte('longitude', lngMin)
-          .lte('longitude', lngMax);
+          .lte('longitude', lngMax)
+          .ilike('status_cto', 'ATIVA'); // Filtrar apenas CTOs ativas (case-insensitive, corresponde exatamente a "ATIVA")
         
         if (error) {
           console.error('❌ [API] Erro ao buscar CTOs:', error);
