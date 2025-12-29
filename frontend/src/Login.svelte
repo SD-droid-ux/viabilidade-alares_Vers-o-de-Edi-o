@@ -284,26 +284,6 @@
     letter-spacing: 0.3px;
   }
 
-  .logo-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-    margin-top: 1.5rem;
-  }
-
-  .logo-text {
-    color: white;
-    font-size: 1.75rem;
-    font-weight: 600;
-    letter-spacing: -0.3px;
-    opacity: 0.95;
-  }
-
-  .logo-icon {
-    flex-shrink: 0;
-    opacity: 0.9;
-  }
 
   .login-form {
     display: flex;
@@ -481,10 +461,6 @@
 
     .login-title {
       font-size: 1.5rem;
-    }
-
-    .logo-text {
-      font-size: 1.75rem;
     }
   }
 </style>
