@@ -1753,7 +1753,6 @@
     
     // Calcular nova distância total do path editado
     const newDistance = calculatePathDistance(updatedPath);
-    const newDistanceKm = (newDistance / 1000).toFixed(3);
     
     // Atualizar dados da rota
     const routeInfo = routeData.find(rd => rd.polyline === route);
@@ -1764,15 +1763,17 @@
       const ctoIndex = routeInfo.ctoIndex;
       if (ctos[ctoIndex]) {
         // Arredondar valores para manter consistência com o formato original
+        // Formato: 129.15m (0.129km) - 2 casas decimais para metros, 3 para km
         ctos[ctoIndex].distancia_metros = Math.round(newDistance * 100) / 100;
         ctos[ctoIndex].distancia_km = Math.round((newDistance / 1000) * 1000) / 1000;
         ctos[ctoIndex].distancia_real = newDistance; // Atualizar também a distância real
         
-        // Trigger reactivity do Svelte para atualizar a UI
-        ctos = ctos;
+        // Trigger reactivity do Svelte para atualizar a UI automaticamente
+        // Isso força o Svelte a re-renderizar os componentes que dependem de ctos
+        ctos = [...ctos];
       }
       
-      console.log(`Rota ${routeIndex} editada. Nova distância: ${Math.round(newDistance)}m (${newDistanceKm}km)`);
+      console.log(`Rota ${routeIndex} editada. Nova distância: ${ctos[ctoIndex]?.distancia_metros}m (${ctos[ctoIndex]?.distancia_km}km)`);
     }
   }
 
