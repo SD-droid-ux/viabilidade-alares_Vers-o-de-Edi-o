@@ -1738,7 +1738,14 @@
           return;
         }
         
-        const currentPathString = Array.from(currentPath).map(p => `${p.lat().toFixed(6)},${p.lng().toFixed(6)}`).join('|');
+        // Filtrar pontos válidos e converter para string
+        const validPoints = Array.from(currentPath).filter(p => p && typeof p.lat === 'function' && typeof p.lng === 'function');
+        if (validPoints.length === 0) {
+          console.warn(`⏱️ Nenhum ponto válido encontrado na rota ${routeIndex} (CTO ${ctoIndex})`);
+          return;
+        }
+        
+        const currentPathString = validPoints.map(p => `${p.lat().toFixed(6)},${p.lng().toFixed(6)}`).join('|');
         const lastPathString = lastRoutePaths.get(ctoIndex);
         
         // Se o path mudou, atualizar (só atualizar se já tiver um path anterior salvo)
@@ -1781,9 +1788,21 @@
           // Salvar path inicial para comparação
           try {
             const initialPath = route.getPath();
-            const initialPathString = Array.from(initialPath).map(p => `${p.lat().toFixed(6)},${p.lng().toFixed(6)}`).join('|');
+            if (!initialPath || initialPath.getLength() === 0) {
+              console.warn(`  ⚠️ Path inicial vazio para CTO ${ctoIndex}`);
+              return;
+            }
+            
+            // Filtrar pontos válidos (que não são undefined/null e têm métodos lat/lng)
+            const validInitialPoints = Array.from(initialPath).filter(p => p && typeof p.lat === 'function' && typeof p.lng === 'function');
+            if (validInitialPoints.length === 0) {
+              console.warn(`  ⚠️ Nenhum ponto válido no path inicial para CTO ${ctoIndex}`);
+              return;
+            }
+            
+            const initialPathString = validInitialPoints.map(p => `${p.lat().toFixed(6)},${p.lng().toFixed(6)}`).join('|');
             lastRoutePaths.set(ctoIndex, initialPathString);
-            console.log(`  💾 Path inicial salvo para CTO ${ctoIndex} (${initialPath.getLength()} pontos)`);
+            console.log(`  💾 Path inicial salvo para CTO ${ctoIndex} (${validInitialPoints.length} pontos válidos de ${initialPath.getLength()} total)`);
           } catch (err) {
             console.warn(`  ⚠️ Erro ao salvar path inicial para CTO ${ctoIndex}:`, err);
           }
