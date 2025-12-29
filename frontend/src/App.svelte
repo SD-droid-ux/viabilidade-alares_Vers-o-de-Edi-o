@@ -1708,24 +1708,53 @@
 
   // Função para verificar mudanças nas rotas editáveis (usado como fallback)
   function checkRouteChanges() {
-    if (!editingRoutes) return;
+    if (!editingRoutes) {
+      return;
+    }
+    
+    if (routes.length === 0) {
+      return;
+    }
     
     routes.forEach((route, routeIndex) => {
-      if (!route || !route.getPath) return;
+      if (!route) {
+        return;
+      }
+      
+      if (!route.getPath) {
+        return;
+      }
       
       const routeInfo = routeData.find(rd => rd.polyline === route);
-      if (!routeInfo) return;
+      if (!routeInfo) {
+        return;
+      }
       
       const ctoIndex = routeInfo.ctoIndex;
-      const currentPath = route.getPath();
-      const currentPathString = Array.from(currentPath).map(p => `${p.lat().toFixed(6)},${p.lng().toFixed(6)}`).join('|');
-      const lastPathString = lastRoutePaths.get(ctoIndex);
       
-      // Se o path mudou, atualizar
-      if (currentPathString !== lastPathString) {
-        console.log(`🔄 Mudança detectada na rota da CTO ${ctoIndex} (verificação por intervalo)`);
-        lastRoutePaths.set(ctoIndex, currentPathString);
-        saveRouteEdit(ctoIndex);
+      try {
+        const currentPath = route.getPath();
+        if (!currentPath || currentPath.getLength() === 0) {
+          return;
+        }
+        
+        const currentPathString = Array.from(currentPath).map(p => `${p.lat().toFixed(6)},${p.lng().toFixed(6)}`).join('|');
+        const lastPathString = lastRoutePaths.get(ctoIndex);
+        
+        // Se o path mudou, atualizar (só atualizar se já tiver um path anterior salvo)
+        if (lastPathString === undefined) {
+          // Primeira vez verificando esta rota, salvar o path inicial
+          lastRoutePaths.set(ctoIndex, currentPathString);
+          console.log(`  💾 Path inicial salvo para CTO ${ctoIndex} (${currentPathString.split('|').length} pontos)`);
+        } else if (currentPathString !== lastPathString) {
+          console.log(`🔄 Mudança detectada na rota da CTO ${ctoIndex} (verificação por intervalo)`);
+          console.log(`  Path anterior: ${lastPathString.split('|').length} pontos`);
+          console.log(`  Path atual: ${currentPathString.split('|').length} pontos`);
+          lastRoutePaths.set(ctoIndex, currentPathString);
+          saveRouteEdit(ctoIndex);
+        }
+      } catch (err) {
+        console.error(`⏱️ Erro ao verificar mudanças na rota ${routeIndex} (CTO ${ctoIndex}):`, err);
       }
     });
   }
@@ -1749,11 +1778,20 @@
           
           console.log(`  📍 Rota ${routeIndex} mapeada para CTO índice ${ctoIndex}`);
           
+          // Salvar path inicial para comparação
+          try {
+            const initialPath = route.getPath();
+            const initialPathString = Array.from(initialPath).map(p => `${p.lat().toFixed(6)},${p.lng().toFixed(6)}`).join('|');
+            lastRoutePaths.set(ctoIndex, initialPathString);
+            console.log(`  💾 Path inicial salvo para CTO ${ctoIndex} (${initialPath.getLength()} pontos)`);
+          } catch (err) {
+            console.warn(`  ⚠️ Erro ao salvar path inicial para CTO ${ctoIndex}:`, err);
+          }
+          
           // Remover listeners antigos se existirem (evitar duplicatas)
           google.maps.event.clearListeners(route, 'set_at');
           google.maps.event.clearListeners(route, 'insert_at');
           google.maps.event.clearListeners(route, 'remove_at');
-          google.maps.event.clearListeners(route, 'dragend');
           
           // Criar funções wrapper para capturar o ctoIndex correto
           const handleSetAt = () => {
@@ -1782,13 +1820,36 @@
           google.maps.event.clearListeners(route, 'set_at');
           google.maps.event.clearListeners(route, 'insert_at');
           google.maps.event.clearListeners(route, 'remove_at');
-          google.maps.event.clearListeners(route, 'dragend');
           console.log(`  🗑️ Listeners removidos da rota ${routeIndex}`);
         }
       } else {
         console.warn(`  ⚠️ Rota ${routeIndex} não tem método setEditable`);
       }
     });
+    
+    // Iniciar verificação por intervalo como fallback (verifica a cada 500ms)
+    if (editingRoutes && routes.length > 0) {
+      if (routeEditInterval) {
+        clearInterval(routeEditInterval);
+      }
+      let checkCount = 0;
+      routeEditInterval = setInterval(() => {
+        if (!editingRoutes) {
+          // Se o modo foi desativado, o intervalo será limpo na função toggleRouteEditing
+          return;
+        }
+        checkCount++;
+        if (checkCount % 10 === 0) {
+          console.log(`⏱️ Intervalo rodando... (verificação #${checkCount})`);
+        }
+        checkRouteChanges();
+      }, 500);
+      console.log(`  ⏱️ Intervalo de verificação iniciado (500ms) - verificando ${routes.length} rotas`);
+    } else if (!editingRoutes && routeEditInterval) {
+      clearInterval(routeEditInterval);
+      routeEditInterval = null;
+      console.log(`  🛑 Intervalo de verificação parado`);
+    }
     
     console.log(`📊 RouteData:`, routeData.map(rd => ({ ctoIndex: rd.ctoIndex, ctoNome: rd.cto?.nome })));
   }
