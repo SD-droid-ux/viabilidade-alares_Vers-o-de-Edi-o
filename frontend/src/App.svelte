@@ -1607,6 +1607,9 @@
             // Validar se o path tem pontos válidos antes de desenhar
             if (path.length === 0) {
               console.warn(`⚠️ Rota para ${cto.nome} não retornou pontos válidos. Usando fallback.`);
+              // Calcular cor da rota baseada na cor da CTO
+              const routeColor = getCTOColor(cto.pct_ocup || 0);
+              
               // Fallback: desenhar linha reta conectando os marcadores
               const routePolyline = new google.maps.Polyline({
                 path: [
@@ -1614,7 +1617,7 @@
                   { lat: clientCoords.lat, lng: clientCoords.lng }
                 ],
                 geodesic: true,
-                strokeColor: '#6495ED',
+                strokeColor: routeColor, // Cor da rota igual à cor da CTO
                 strokeOpacity: 0.6,
                 strokeWeight: 3,
                 map: map,
@@ -1630,12 +1633,15 @@
             // Remove pontos intermediários de segmentos que cortam terrenos
             const filteredPath = filterLongSegments(path, 100); // 100 metros é o limite para considerar segmento "longo"
 
+            // Calcular cor da rota baseada na cor da CTO
+            const routeColor = getCTOColor(cto.pct_ocup || 0);
+            
             // Desenhar Polyline usando pontos filtrados
             // Quando há ruas não mapeadas, a rota será simplificada para evitar cortes visíveis por terrenos
             const routePolyline = new google.maps.Polyline({
               path: filteredPath,
               geodesic: false, // Não usar geodésica, seguir os pontos da rota (centro das ruas)
-              strokeColor: '#6495ED', // Azul médio - cor fixa para todos os percursos
+              strokeColor: routeColor, // Cor da rota igual à cor da CTO
               strokeOpacity: 0.7,
               strokeWeight: 4, // Ligeiramente mais grossa para melhor visibilidade
               map: map,
@@ -1695,6 +1701,9 @@
             }
             console.warn(`⚠️ ${errorMessage}`);
             
+            // Calcular cor da rota baseada na cor da CTO
+            const routeColor = getCTOColor(cto.pct_ocup || 0);
+            
             // Fallback: desenhar linha reta conectando exatamente os marcadores
             const routePolyline = new google.maps.Polyline({
               path: [
@@ -1702,7 +1711,7 @@
                 { lat: clientCoords.lat, lng: clientCoords.lng } // Termina no cliente
               ],
               geodesic: true,
-              strokeColor: '#6495ED',
+              strokeColor: routeColor, // Cor da rota igual à cor da CTO
               strokeOpacity: 0.6,
               strokeWeight: 3,
               map: map,
@@ -4333,7 +4342,7 @@
                   class="route-popup-button edit"
                   on:click={() => editSingleRoute(selectedRouteIndex)}
                 >
-                  ✏️ Editar Rota
+                 Editar Rota
                 </button>
               {/if}
             </div>
