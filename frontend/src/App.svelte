@@ -2059,48 +2059,6 @@
     }
   }
 
-  function stopDraggingRoutePopup() {
-    isDraggingRoutePopup = false;
-  }
-
-  // Funções para arrastar o popup
-  function startDraggingRoutePopup(event) {
-    isDraggingRoutePopup = true;
-    const popup = event.currentTarget.closest('.route-popup');
-    if (popup) {
-      const rect = popup.getBoundingClientRect();
-      dragOffset.x = event.clientX - rect.left;
-      dragOffset.y = event.clientY - rect.top;
-    }
-  }
-
-  function dragRoutePopup(event) {
-    if (!isDraggingRoutePopup) return;
-    
-    const mapDiv = document.getElementById('map');
-    if (!mapDiv) return;
-    
-    const mapRect = mapDiv.getBoundingClientRect();
-    const newX = event.clientX - mapRect.left - dragOffset.x;
-    const newY = event.clientY - mapRect.top - dragOffset.y;
-    
-    // Limitar dentro dos bounds do mapa
-    const popup = event.currentTarget.closest('.route-popup');
-    if (popup) {
-      const popupRect = popup.getBoundingClientRect();
-      const maxX = mapRect.width - popupRect.width;
-      const maxY = mapRect.height - popupRect.height;
-      
-      routePopupPosition = {
-        x: Math.max(0, Math.min(newX, maxX)),
-        y: Math.max(0, Math.min(newY, maxY))
-      };
-    }
-  }
-
-  function stopDraggingRoutePopup() {
-    isDraggingRoutePopup = false;
-  }
 
   // Função para editar uma rota específica
   function editSingleRoute(routeIndex) {
