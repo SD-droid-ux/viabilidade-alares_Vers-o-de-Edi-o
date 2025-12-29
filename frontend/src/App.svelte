@@ -1990,29 +1990,34 @@
     
     selectedRouteIndex = routeIndex;
     
-    // Converter coordenadas do evento para posição na tela
-    if (event && event.latLng) {
-      const projection = map.getProjection();
-      const scale = Math.pow(2, map.getZoom());
-      const worldCoordinate = projection.fromLatLngToPoint(event.latLng);
-      const pixelCoordinate = new google.maps.Point(
-        worldCoordinate.x * scale,
-        worldCoordinate.y * scale
-      );
-      
+    // Posicionar popup próximo ao ponto de clique na tela
+    if (event && event.domEvent) {
+      const clickEvent = event.domEvent;
+      // Usar coordenadas da viewport (tela) diretamente
+      routePopupPosition = {
+        x: clickEvent.clientX - 125, // Offset para centralizar o popup no cursor
+        y: clickEvent.clientY - 50
+      };
+    } else if (event && event.latLng) {
+      // Fallback: usar coordenadas do mapa se domEvent não estiver disponível
       const mapDiv = document.getElementById('map');
       if (mapDiv) {
+        const mapRect = mapDiv.getBoundingClientRect();
+        const projection = map.getProjection();
+        const scale = Math.pow(2, map.getZoom());
+        const worldCoordinate = projection.fromLatLngToPoint(event.latLng);
         const bounds = map.getBounds();
         const ne = bounds.getNorthEast();
         const sw = bounds.getSouthWest();
         const topRight = projection.fromLatLngToPoint(ne);
         const bottomLeft = projection.fromLatLngToPoint(sw);
-        const scaleX = mapDiv.offsetWidth / (topRight.x - bottomLeft.x);
-        const scaleY = mapDiv.offsetHeight / (topRight.y - bottomLeft.y);
+        const scaleX = mapRect.width / (topRight.x - bottomLeft.x);
+        const scaleY = mapRect.height / (topRight.y - bottomLeft.y);
         
+        // Converter para coordenadas da viewport
         routePopupPosition = {
-          x: (worldCoordinate.x - bottomLeft.x) * scaleX,
-          y: (worldCoordinate.y - bottomLeft.y) * scaleY
+          x: mapRect.left + (worldCoordinate.x - bottomLeft.x) * scaleX - 125,
+          y: mapRect.top + (worldCoordinate.y - bottomLeft.y) * scaleY - 50
         };
       }
     }
@@ -2022,43 +2027,62 @@
   function closeRoutePopup() {
     selectedRouteIndex = null;
     isDraggingRoutePopup = false;
+    // Remover listeners globais se estiverem ativos
+    document.removeEventListener('mousemove', handleGlobalDrag);
+    document.removeEventListener('mouseup', handleGlobalStopDrag);
   }
 
-  // Funções para arrastar o popup
+  // Funções para arrastar o popup livremente pela tela
   function startDraggingRoutePopup(event) {
+    event.preventDefault();
     isDraggingRoutePopup = true;
     const popup = event.currentTarget.closest('.route-popup');
     if (popup) {
       const rect = popup.getBoundingClientRect();
+      // Usar coordenadas da viewport (tela)
       dragOffset.x = event.clientX - rect.left;
       dragOffset.y = event.clientY - rect.top;
+      
+      // Adicionar listeners globais para funcionar mesmo quando o mouse sair do popup
+      document.addEventListener('mousemove', handleGlobalDrag);
+      document.addEventListener('mouseup', handleGlobalStopDrag);
+    }
+  }
+
+  // Função global para arrastar (chamada quando o mouse se move em qualquer lugar da tela)
+  function handleGlobalDrag(event) {
+    if (!isDraggingRoutePopup) return;
+    event.preventDefault();
+    
+    // Calcular nova posição usando coordenadas da viewport (tela)
+    const newX = event.clientX - dragOffset.x;
+    const newY = event.clientY - dragOffset.y;
+    
+    // Permitir movimento livre pela tela toda
+    routePopupPosition = {
+      x: newX,
+      y: newY
+    };
+  }
+
+  // Função global para parar o arrasto
+  function handleGlobalStopDrag() {
+    if (isDraggingRoutePopup) {
+      isDraggingRoutePopup = false;
+      // Remover listeners globais
+      document.removeEventListener('mousemove', handleGlobalDrag);
+      document.removeEventListener('mouseup', handleGlobalStopDrag);
     }
   }
 
   function dragRoutePopup(event) {
-    if (!isDraggingRoutePopup) return;
-    
-    const mapDiv = document.getElementById('map');
-    if (!mapDiv) return;
-    
-    const mapRect = mapDiv.getBoundingClientRect();
-    const newX = event.clientX - mapRect.left - dragOffset.x;
-    const newY = event.clientY - mapRect.top - dragOffset.y;
-    
-    // Limitar dentro dos bounds do mapa
-    const popup = event.currentTarget.closest('.route-popup');
-    if (popup) {
-      const popupRect = popup.getBoundingClientRect();
-      const maxX = mapRect.width - popupRect.width;
-      const maxY = mapRect.height - popupRect.height;
-      
-      routePopupPosition = {
-        x: Math.max(0, Math.min(newX, maxX)),
-        y: Math.max(0, Math.min(newY, maxY))
-      };
-    }
+    // Esta função ainda é chamada pelo evento local, mas o handleGlobalDrag faz o trabalho real
+    handleGlobalDrag(event);
   }
 
+  function stopDraggingRoutePopup() {
+    handleGlobalStopDrag();
+  }
 
   // Função para editar uma rota específica
   function editSingleRoute(routeIndex) {
@@ -5048,7 +5072,7 @@
 
   /* Popup de informações da rota */
   .route-popup {
-    position: absolute;
+    position: fixed;
     z-index: 1000;
     pointer-events: none;
   }
