@@ -85,6 +85,8 @@
   let clientCoords = null; // Coordenadas do cliente
   let ctos = []; // CTOs encontradas
   let routes = []; // Rotas desenhadas no mapa
+  let routeData = []; // Dados das rotas (para edição) - armazena CTO associada e path original
+  let editingRoutes = false; // Modo de edição de rotas
   let loadingCTOs = false; // Loading específico para busca de CTOs
   // REMOVIDO: ctosData não é mais necessário - buscamos CTOs sob demanda via API
   let baseDataExists = true; // Indica se a base de dados foi carregada com sucesso
@@ -1400,6 +1402,8 @@
       }
     });
     routes = [];
+    routeData = []; // Limpar dados de rotas também
+    editingRoutes = false; // Desativar modo de edição ao limpar
 
     // Remover apenas marcadores de CTOs do mapa
     // NUNCA remover o marcador do cliente (clientMarker)
@@ -1618,8 +1622,30 @@
               strokeOpacity: 0.7,
               strokeWeight: 4, // Ligeiramente mais grossa para melhor visibilidade
               map: map,
-              zIndex: 500 + index
+              zIndex: 500 + index,
+              editable: editingRoutes // Tornar editável se estiver no modo de edição
             });
+
+            // Armazenar dados da rota para edição
+            routeData.push({
+              polyline: routePolyline,
+              ctoIndex: index,
+              cto: cto,
+              originalPath: [...filteredPath] // Cópia do path original
+            });
+
+            // Adicionar listeners para salvar alterações quando a rota for editada
+            if (editingRoutes) {
+              routePolyline.addListener('set_at', () => {
+                saveRouteEdit(index);
+              });
+              routePolyline.addListener('insert_at', () => {
+                saveRouteEdit(index);
+              });
+              routePolyline.addListener('remove_at', () => {
+                saveRouteEdit(index);
+              });
+            }
 
             routes.push(routePolyline);
             resolve();
@@ -1666,6 +1692,65 @@
         }
       );
     });
+  }
+
+  // Função para ativar/desativar modo de edição de rotas
+  function toggleRouteEditing() {
+    editingRoutes = !editingRoutes;
+    
+    // Tornar todas as rotas editáveis ou não editáveis
+    routes.forEach((route, index) => {
+      if (route && route.setEditable) {
+        route.setEditable(editingRoutes);
+        
+        // Adicionar ou remover listeners quando entrar/sair do modo de edição
+        if (editingRoutes) {
+          // Adicionar listeners para salvar alterações
+          route.addListener('set_at', () => {
+            saveRouteEdit(index);
+          });
+          route.addListener('insert_at', () => {
+            saveRouteEdit(index);
+          });
+          route.addListener('remove_at', () => {
+            saveRouteEdit(index);
+          });
+        }
+      }
+    });
+  }
+
+  // Função para salvar alterações quando uma rota for editada
+  function saveRouteEdit(routeIndex) {
+    const route = routes[routeIndex];
+    if (!route) return;
+    
+    // Obter o path atualizado da rota editada
+    const path = route.getPath();
+    const updatedPath = [];
+    
+    path.forEach(point => {
+      updatedPath.push({ lat: point.lat(), lng: point.lng() });
+    });
+    
+    // Atualizar dados da rota
+    const routeInfo = routeData.find(rd => rd.polyline === route);
+    if (routeInfo) {
+      routeInfo.editedPath = updatedPath;
+      console.log(`Rota ${routeIndex} editada. Novo path:`, updatedPath);
+    }
+  }
+
+  // Função para restaurar rota original (desfazer edições)
+  function restoreRoute(routeIndex) {
+    const route = routes[routeIndex];
+    const routeInfo = routeData.find(rd => rd.polyline === route);
+    
+    if (route && routeInfo && routeInfo.originalPath) {
+      route.setPath(routeInfo.originalPath.map(p => new google.maps.LatLng(p.lat, p.lng)));
+      routeInfo.editedPath = null;
+      console.log(`Rota ${routeIndex} restaurada para o path original`);
+    }
   }
 
   // Função para calcular offset para CTOs com coordenadas duplicadas
@@ -3469,6 +3554,16 @@
             on:click={openReportModal}
           >
             Gerar Relatório
+          </button>
+        {/if}
+
+        {#if clientCoords && routes.length > 0}
+          <button 
+            class="search-button"
+            on:click={toggleRouteEditing}
+            style="background: {editingRoutes ? 'linear-gradient(135deg, #F44336 0%, #E53935 100%)' : 'linear-gradient(135deg, #7B68EE 0%, #6495ED 100%)'};"
+          >
+            {editingRoutes ? '✓ Finalizar Edição de Rotas' : '✏️ Editar Rotas'}
           </button>
         {/if}
 
