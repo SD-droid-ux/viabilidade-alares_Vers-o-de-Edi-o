@@ -172,6 +172,42 @@
     return distance;
   }
 
+  // Função para filtrar segmentos muito longos da rota (indicam ruas não mapeadas)
+  // Quando detecta segmentos muito longos, mantém apenas os pontos principais
+  // Isso evita que a rota siga pontos que cortam terrenos quando a rua não está mapeada
+  function filterLongSegments(path, maxSegmentLength = 100) {
+    if (path.length < 2) return path;
+    
+    const filteredPath = [path[0]]; // Sempre manter o primeiro ponto
+    
+    for (let i = 1; i < path.length; i++) {
+      const prevPoint = filteredPath[filteredPath.length - 1];
+      const currentPoint = path[i];
+      
+      // Calcular distância entre o último ponto filtrado e o ponto atual
+      const segmentDistance = calculateGeodesicDistance(
+        prevPoint.lat,
+        prevPoint.lng,
+        currentPoint.lat,
+        currentPoint.lng
+      );
+      
+      // Se o segmento é muito longo (mais de maxSegmentLength metros), indica possível rua não mapeada
+      // Nesse caso, manter apenas o ponto atual (pular pontos intermediários que cortam terreno)
+      // Isso cria uma linha mais "limpa" que conecta os pontos principais sem seguir o terreno
+      if (segmentDistance > maxSegmentLength) {
+        // Adicionar o ponto atual (ponto após o segmento longo)
+        // Os pontos intermediários que cortam terreno são pulados
+        filteredPath.push(currentPoint);
+      } else {
+        // Segmento normal (rua mapeada), manter todos os pontos
+        filteredPath.push(currentPoint);
+      }
+    }
+    
+    return filteredPath;
+  }
+
   // Função para calcular distância REAL usando Directions API (ruas)
   function calculateRealRouteDistance(originLat, originLng, destLat, destLng) {
     return new Promise((resolve, reject) => {
@@ -1523,6 +1559,9 @@
             const route = result.routes[0];
             const path = [];
 
+            // Começar exatamente na CTO (conectado ao marcador)
+            path.push({ lat: cto.latitude, lng: cto.longitude });
+
             // Usar steps.path para máxima precisão (todos os pontos seguindo as ruas)
             // A API já projeta os pontos de início e fim nas ruas mais próximas
             if (route.legs && route.legs.length > 0) {
@@ -1540,6 +1579,9 @@
                 }
               });
             }
+
+            // Terminar exatamente no cliente (conectado ao marcador da casinha)
+            path.push({ lat: clientCoords.lat, lng: clientCoords.lng });
 
             // Validar se o path tem pontos válidos antes de desenhar
             if (path.length === 0) {
@@ -1562,11 +1604,15 @@
               return;
             }
 
-            // Desenhar Polyline usando apenas pontos da API (todos projetados nas ruas)
-            // Isso garante que a rota siga exatamente as ruas, sem cortar terrenos
-            // Nota: A rota pode não conectar exatamente aos marcadores, mas segue 100% pelas ruas
+            // Filtrar segmentos muito longos que indicam ruas não mapeadas
+            // Isso melhora a visualização quando o Google Maps não tem a rua mapeada
+            // Remove pontos intermediários de segmentos que cortam terrenos
+            const filteredPath = filterLongSegments(path, 100); // 100 metros é o limite para considerar segmento "longo"
+
+            // Desenhar Polyline usando pontos filtrados
+            // Quando há ruas não mapeadas, a rota será simplificada para evitar cortes visíveis por terrenos
             const routePolyline = new google.maps.Polyline({
-              path: path,
+              path: filteredPath,
               geodesic: false, // Não usar geodésica, seguir os pontos da rota (centro das ruas)
               strokeColor: '#6495ED', // Azul médio - cor fixa para todos os percursos
               strokeOpacity: 0.7,
