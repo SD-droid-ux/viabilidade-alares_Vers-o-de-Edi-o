@@ -653,7 +653,7 @@ app.get('/api/ctos/nearby', async (req, res) => {
           .lte('latitude', latMax)
           .gte('longitude', lngMin)
           .lte('longitude', lngMax)
-          .ilike('status_cto', 'ATIVA'); // Filtrar apenas CTOs ativas (case-insensitive, corresponde exatamente a "ATIVA")
+          .ilike('status_cto', 'ATIVADO'); // Filtrar apenas CTOs ativas (case-insensitive, corresponde exatamente a "ATIVA")
         
         if (error) {
           console.error('❌ [API] Erro ao buscar CTOs:', error);
