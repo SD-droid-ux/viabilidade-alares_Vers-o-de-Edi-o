@@ -459,8 +459,5 @@
       border-radius: 16px;
     }
 
-    .login-title {
-      font-size: 1.5rem;
-    }
   }
 </style>
