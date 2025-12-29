@@ -1716,12 +1716,21 @@
           
           // Adicionar listeners para salvar alterações
           route.addListener('set_at', () => {
+            console.log(`🎯 Evento 'set_at' disparado para rota ${routeIndex}, CTO ${ctoIndex}`);
             saveRouteEdit(ctoIndex);
           });
           route.addListener('insert_at', () => {
+            console.log(`🎯 Evento 'insert_at' disparado para rota ${routeIndex}, CTO ${ctoIndex}`);
             saveRouteEdit(ctoIndex);
           });
           route.addListener('remove_at', () => {
+            console.log(`🎯 Evento 'remove_at' disparado para rota ${routeIndex}, CTO ${ctoIndex}`);
+            saveRouteEdit(ctoIndex);
+          });
+          
+          // Adicionar listener para quando a edição terminar (dragend)
+          route.addListener('dragend', () => {
+            console.log(`🎯 Evento 'dragend' disparado para rota ${routeIndex}, CTO ${ctoIndex}`);
             saveRouteEdit(ctoIndex);
           });
         } else {
@@ -1754,10 +1763,12 @@
 
   // Função para salvar alterações quando uma rota for editada
   function saveRouteEdit(ctoIndex) {
+    console.log(`🔵 saveRouteEdit chamada para CTO índice: ${ctoIndex}`);
+    
     // Encontrar a rota correspondente a esta CTO
     const routeInfo = routeData.find(rd => rd.ctoIndex === ctoIndex);
     if (!routeInfo || !routeInfo.polyline) {
-      console.warn(`Rota não encontrada para CTO índice ${ctoIndex}`);
+      console.warn(`❌ Rota não encontrada para CTO índice ${ctoIndex}. RouteData:`, routeData);
       return;
     }
     
@@ -1771,31 +1782,48 @@
       updatedPath.push({ lat: point.lat(), lng: point.lng() });
     });
     
+    console.log(`📏 Path atualizado tem ${updatedPath.length} pontos`);
+    
     // Calcular nova distância total do path editado
     const newDistance = calculatePathDistance(updatedPath);
+    console.log(`📐 Nova distância calculada: ${newDistance}m`);
     
     // Atualizar dados da rota
     routeInfo.editedPath = updatedPath;
     
     // Atualizar distância no objeto CTO correspondente
-    if (ctos[ctoIndex]) {
+    if (ctos && ctos[ctoIndex]) {
       // Arredondar valores para manter consistência com o formato original
       // Formato: 129.15m (0.129km) - 2 casas decimais para metros, 3 para km
       const distanciaMetros = Math.round(newDistance * 100) / 100;
       const distanciaKm = Math.round((newDistance / 1000) * 1000) / 1000;
       
-      // Atualizar os valores diretamente no objeto
-      ctos[ctoIndex].distancia_metros = distanciaMetros;
-      ctos[ctoIndex].distancia_km = distanciaKm;
-      ctos[ctoIndex].distancia_real = newDistance;
+      console.log(`📊 Valores calculados: ${distanciaMetros}m (${distanciaKm}km)`);
+      console.log(`📋 CTO antes da atualização:`, {
+        nome: ctos[ctoIndex].nome,
+        distancia_metros: ctos[ctoIndex].distancia_metros,
+        distancia_km: ctos[ctoIndex].distancia_km
+      });
       
-      // Trigger reactivity do Svelte para atualizar a UI automaticamente
-      // Criar um novo array para forçar a reatividade
-      ctos = [...ctos];
+      // Criar um novo objeto CTO com os valores atualizados para garantir reatividade
+      const updatedCTO = {
+        ...ctos[ctoIndex],
+        distancia_metros: distanciaMetros,
+        distancia_km: distanciaKm,
+        distancia_real: newDistance
+      };
       
-      console.log(`✅ Rota da CTO ${ctoIndex} (${ctos[ctoIndex].nome}) editada. Nova distância: ${distanciaMetros}m (${distanciaKm}km)`);
+      // Criar um novo array com o objeto atualizado para forçar reatividade do Svelte
+      ctos = ctos.map((cto, idx) => idx === ctoIndex ? updatedCTO : cto);
+      
+      console.log(`✅ Rota da CTO ${ctoIndex} (${updatedCTO.nome}) editada. Nova distância: ${distanciaMetros}m (${distanciaKm}km)`);
+      console.log(`📋 CTO após atualização:`, {
+        nome: ctos[ctoIndex].nome,
+        distancia_metros: ctos[ctoIndex].distancia_metros,
+        distancia_km: ctos[ctoIndex].distancia_km
+      });
     } else {
-      console.warn(`CTO não encontrada no índice ${ctoIndex}`);
+      console.warn(`❌ CTO não encontrada no índice ${ctoIndex}. Array ctos:`, ctos);
     }
   }
 
