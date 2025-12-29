@@ -86,9 +86,12 @@
   let ctos = []; // CTOs encontradas
   let routes = []; // Rotas desenhadas no mapa
   let routeData = []; // Dados das rotas (para edição) - armazena CTO associada e path original
-  let editingRoutes = false; // Modo de edição de rotas
+  let editingRoutes = false; // Modo de edição de rotas (DEPRECADO - usar editingRouteIndex)
+  let editingRouteIndex = null; // Índice da rota que está sendo editada (null = nenhuma)
   let routeEditInterval = null; // Intervalo para monitorar mudanças nas rotas editáveis
   let lastRoutePaths = new Map(); // Armazena os últimos paths conhecidos de cada rota
+  let selectedRouteIndex = null; // Índice da rota selecionada (para mostrar popup)
+  let routePopupPosition = { x: 0, y: 0 }; // Posição do popup de rota
   let loadingCTOs = false; // Loading específico para busca de CTOs
   // REMOVIDO: ctosData não é mais necessário - buscamos CTOs sob demanda via API
   let baseDataExists = true; // Indica se a base de dados foi carregada com sucesso
@@ -1646,8 +1649,13 @@
               originalPath: [...filteredPath] // Cópia do path original
             });
 
+            // Adicionar listener de clique na rota para mostrar popup
+            routePolyline.addListener('click', (event) => {
+              handleRouteClick(index, event);
+            });
+
             // Adicionar listeners para salvar alterações quando a rota for editada
-            if (editingRoutes) {
+            if (editingRouteIndex === index) {
               routePolyline.addListener('set_at', () => {
                 saveRouteEdit(index);
               });
@@ -1708,7 +1716,7 @@
 
   // Função para verificar mudanças nas rotas editáveis (usado como fallback)
   function checkRouteChanges() {
-    if (!editingRoutes) {
+    if (editingRouteIndex === null) {
       return;
     }
     
@@ -1716,21 +1724,24 @@
       return;
     }
     
-    routes.forEach((route, routeIndex) => {
-      if (!route) {
-        return;
-      }
-      
-      if (!route.getPath) {
-        return;
-      }
-      
-      const routeInfo = routeData.find(rd => rd.polyline === route);
-      if (!routeInfo) {
-        return;
-      }
-      
-      const ctoIndex = routeInfo.ctoIndex;
+    // Verificar apenas a rota que está sendo editada
+    const routeIndex = editingRouteIndex;
+    const route = routes[routeIndex];
+    
+    if (!route) {
+      return;
+    }
+    
+    if (!route.getPath) {
+      return;
+    }
+    
+    const routeInfo = routeData.find(rd => rd.polyline === route);
+    if (!routeInfo) {
+      return;
+    }
+    
+    const ctoIndex = routeInfo.ctoIndex;
       
       try {
         const currentPath = route.getPath();
@@ -1811,7 +1822,6 @@
       } catch (err) {
         console.error(`⏱️ Erro ao verificar mudanças na rota ${routeIndex} (CTO ${ctoIndex}):`, err);
       }
-    });
   }
 
   // Função para ativar/desativar modo de edição de rotas
@@ -1962,6 +1972,183 @@
     }
     
     console.log(`📊 RouteData:`, routeData.map(rd => ({ ctoIndex: rd.ctoIndex, ctoNome: rd.cto?.nome })));
+  }
+
+  // Função para lidar com clique em uma rota
+  function handleRouteClick(routeIndex, event) {
+    const routeInfo = routeData.find(rd => {
+      const route = routes[routeIndex];
+      return rd.polyline === route;
+    });
+    
+    if (!routeInfo) {
+      console.warn(`Rota ${routeIndex} não encontrada em routeData`);
+      return;
+    }
+    
+    selectedRouteIndex = routeIndex;
+    
+    // Converter coordenadas do evento para posição na tela
+    if (event && event.latLng) {
+      const projection = map.getProjection();
+      const scale = Math.pow(2, map.getZoom());
+      const worldCoordinate = projection.fromLatLngToPoint(event.latLng);
+      const pixelCoordinate = new google.maps.Point(
+        worldCoordinate.x * scale,
+        worldCoordinate.y * scale
+      );
+      
+      const mapDiv = document.getElementById('map');
+      if (mapDiv) {
+        const bounds = map.getBounds();
+        const ne = bounds.getNorthEast();
+        const sw = bounds.getSouthWest();
+        const topRight = projection.fromLatLngToPoint(ne);
+        const bottomLeft = projection.fromLatLngToPoint(sw);
+        const scaleX = mapDiv.offsetWidth / (topRight.x - bottomLeft.x);
+        const scaleY = mapDiv.offsetHeight / (topRight.y - bottomLeft.y);
+        
+        routePopupPosition = {
+          x: (worldCoordinate.x - bottomLeft.x) * scaleX,
+          y: (worldCoordinate.y - bottomLeft.y) * scaleY
+        };
+      }
+    }
+  }
+
+  // Função para fechar o popup de rota
+  function closeRoutePopup() {
+    selectedRouteIndex = null;
+  }
+
+  // Função para editar uma rota específica
+  function editSingleRoute(routeIndex) {
+    // Se já estiver editando outra rota, finalizar primeiro
+    if (editingRouteIndex !== null && editingRouteIndex !== routeIndex) {
+      finishEditingRoute(editingRouteIndex);
+    }
+    
+    editingRouteIndex = routeIndex;
+    const route = routes[routeIndex];
+    const routeInfo = routeData.find(rd => rd.polyline === route);
+    const ctoIndex = routeInfo ? routeInfo.ctoIndex : routeIndex;
+    
+    if (route && route.setEditable) {
+      route.setEditable(true);
+      console.log(`✏️ Rota ${routeIndex} (CTO ${ctoIndex}) agora está editável`);
+      
+      // Salvar path inicial para comparação
+      try {
+        const initialPath = route.getPath();
+        if (!initialPath) {
+          console.warn(`⚠️ getPath() retornou null/undefined para CTO ${ctoIndex}`);
+          return;
+        }
+        
+        if (initialPath.getLength && initialPath.getLength() === 0) {
+          console.warn(`⚠️ Path inicial vazio para CTO ${ctoIndex}`);
+          return;
+        }
+        
+        // Converter path para array
+        let initialPathArray = [];
+        if (initialPath.forEach) {
+          initialPath.forEach((p) => {
+            initialPathArray.push(p);
+          });
+        } else if (Array.isArray(initialPath)) {
+          initialPathArray = initialPath;
+        } else {
+          try {
+            initialPathArray = Array.from(initialPath);
+          } catch (e) {
+            console.warn(`⚠️ Erro ao converter path inicial para array para CTO ${ctoIndex}:`, e);
+            return;
+          }
+        }
+        
+        // Filtrar pontos válidos
+        const validInitialPoints = initialPathArray.filter(p => {
+          if (!p) return false;
+          if (typeof p.lat === 'function' && typeof p.lng === 'function') return true;
+          if (typeof p.lat === 'number' && typeof p.lng === 'number') return true;
+          return false;
+        });
+        
+        if (validInitialPoints.length === 0) {
+          console.warn(`⚠️ Nenhum ponto válido no path inicial para CTO ${ctoIndex}`);
+          return;
+        }
+        
+        const initialPathString = validInitialPoints.map(p => {
+          const lat = typeof p.lat === 'function' ? p.lat() : p.lat;
+          const lng = typeof p.lng === 'function' ? p.lng() : p.lng;
+          return `${lat.toFixed(6)},${lng.toFixed(6)}`;
+        }).join('|');
+        lastRoutePaths.set(ctoIndex, initialPathString);
+        console.log(`💾 Path inicial salvo para CTO ${ctoIndex}`);
+      } catch (err) {
+        console.warn(`⚠️ Erro ao salvar path inicial para CTO ${ctoIndex}:`, err);
+      }
+      
+      // Remover listeners antigos
+      google.maps.event.clearListeners(route, 'set_at');
+      google.maps.event.clearListeners(route, 'insert_at');
+      google.maps.event.clearListeners(route, 'remove_at');
+      
+      // Adicionar listeners para salvar alterações
+      route.addListener('set_at', () => {
+        saveRouteEdit(ctoIndex);
+      });
+      route.addListener('insert_at', () => {
+        saveRouteEdit(ctoIndex);
+      });
+      route.addListener('remove_at', () => {
+        saveRouteEdit(ctoIndex);
+      });
+      
+      // Iniciar intervalo de verificação para esta rota
+      if (routeEditInterval) {
+        clearInterval(routeEditInterval);
+      }
+      let checkCount = 0;
+      routeEditInterval = setInterval(() => {
+        if (editingRouteIndex !== routeIndex) {
+          return;
+        }
+        checkCount++;
+        checkRouteChanges();
+      }, 500);
+    }
+    
+    // Fechar o popup
+    closeRoutePopup();
+  }
+
+  // Função para finalizar edição de uma rota específica
+  function finishEditingRoute(routeIndex) {
+    if (editingRouteIndex !== routeIndex) {
+      return;
+    }
+    
+    const route = routes[routeIndex];
+    if (route && route.setEditable) {
+      route.setEditable(false);
+      console.log(`✓ Edição da rota ${routeIndex} finalizada`);
+      
+      // Remover listeners
+      google.maps.event.clearListeners(route, 'set_at');
+      google.maps.event.clearListeners(route, 'insert_at');
+      google.maps.event.clearListeners(route, 'remove_at');
+    }
+    
+    editingRouteIndex = null;
+    
+    // Parar intervalo
+    if (routeEditInterval) {
+      clearInterval(routeEditInterval);
+      routeEditInterval = null;
+    }
   }
 
   // Função para calcular distância total de um path (array de pontos)
@@ -3864,13 +4051,13 @@
           </button>
         {/if}
 
-        {#if clientCoords && routes.length > 0}
+        {#if editingRouteIndex !== null}
           <button 
             class="search-button"
-            on:click={toggleRouteEditing}
-            style="background: {editingRoutes ? 'linear-gradient(135deg, #F44336 0%, #E53935 100%)' : 'linear-gradient(135deg, #7B68EE 0%, #6495ED 100%)'};"
+            on:click={() => finishEditingRoute(editingRouteIndex)}
+            style="background: linear-gradient(135deg, #F44336 0%, #E53935 100%);"
           >
-            {editingRoutes ? '✓ Finalizar Edição de Rotas' : '✏️ Editar Rotas'}
+            ✓ Finalizar Edição da Rota
           </button>
         {/if}
 
@@ -4041,6 +4228,49 @@
 
     <main class="map-container">
       <div id="map"></div>
+      
+      <!-- Popup de informações da rota -->
+      {#if selectedRouteIndex !== null}
+        {@const routeInfo = routeData.find(rd => {
+          const route = routes[selectedRouteIndex];
+          return rd.polyline === route;
+        })}
+        {@const cto = routeInfo ? routeInfo.cto : null}
+        {@const ctoIndex = routeInfo ? routeInfo.ctoIndex : selectedRouteIndex}
+        {@const distancia = cto ? `${cto.distancia_metros}m (${cto.distancia_km}km)` : 'N/A'}
+        <div 
+          class="route-popup"
+          style="left: {routePopupPosition.x}px; top: {routePopupPosition.y}px;"
+        >
+          <div class="route-popup-content">
+            <div class="route-popup-header">
+              <h3>Rota {ctoIndex + 1}</h3>
+              <button class="route-popup-close" on:click={closeRoutePopup}>×</button>
+            </div>
+            <div class="route-popup-info">
+              <p><strong>CTO:</strong> {cto ? cto.nome : 'N/A'}</p>
+              <p><strong>Metragem:</strong> {distancia}</p>
+            </div>
+            <div class="route-popup-actions">
+              {#if editingRouteIndex === selectedRouteIndex}
+                <button 
+                  class="route-popup-button finish"
+                  on:click={() => finishEditingRoute(selectedRouteIndex)}
+                >
+                  ✓ Finalizar Edição
+                </button>
+              {:else}
+                <button 
+                  class="route-popup-button edit"
+                  on:click={() => editSingleRoute(selectedRouteIndex)}
+                >
+                  ✏️ Editar Rota
+                </button>
+              {/if}
+            </div>
+          </div>
+        </div>
+      {/if}
     </main>
   </div>
 </div>
@@ -4771,6 +5001,109 @@
   .search-button:disabled {
     background: #ccc;
     cursor: not-allowed;
+  }
+
+  /* Popup de informações da rota */
+  .route-popup {
+    position: absolute;
+    z-index: 1000;
+    pointer-events: none;
+  }
+
+  .route-popup-content {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 1rem;
+    min-width: 250px;
+    pointer-events: all;
+    transform: translate(-50%, -100%);
+    margin-top: -10px;
+  }
+
+  .route-popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .route-popup-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: #333;
+  }
+
+  .route-popup-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #999;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .route-popup-close:hover {
+    color: #333;
+  }
+
+  .route-popup-info {
+    margin-bottom: 0.75rem;
+  }
+
+  .route-popup-info p {
+    margin: 0.5rem 0;
+    font-size: 0.9rem;
+    color: #666;
+  }
+
+  .route-popup-info strong {
+    color: #333;
+  }
+
+  .route-popup-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .route-popup-button {
+    flex: 1;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .route-popup-button.edit {
+    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
+    color: white;
+  }
+
+  .route-popup-button.edit:hover {
+    background: linear-gradient(135deg, #9370DB 0%, #7B9EE8 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(123, 104, 238, 0.3);
+  }
+
+  .route-popup-button.finish {
+    background: linear-gradient(135deg, #F44336 0%, #E53935 100%);
+    color: white;
+  }
+
+  .route-popup-button.finish:hover {
+    background: linear-gradient(135deg, #EF5350 0%, #E53935 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(244, 67, 54, 0.3);
   }
 
   .error-message {
