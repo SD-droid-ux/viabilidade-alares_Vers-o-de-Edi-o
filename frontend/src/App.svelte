@@ -1739,13 +1739,28 @@
         }
         
         // Filtrar pontos válidos e converter para string
-        const validPoints = Array.from(currentPath).filter(p => p && typeof p.lat === 'function' && typeof p.lng === 'function');
+        // Os pontos podem ser objetos google.maps.LatLng (com métodos lat()/lng()) ou objetos simples {lat, lng}
+        const validPoints = Array.from(currentPath).filter(p => {
+          if (!p) return false;
+          // Verificar se é objeto google.maps.LatLng (tem métodos)
+          if (typeof p.lat === 'function' && typeof p.lng === 'function') return true;
+          // Verificar se é objeto simples {lat, lng}
+          if (typeof p.lat === 'number' && typeof p.lng === 'number') return true;
+          return false;
+        });
+        
         if (validPoints.length === 0) {
           console.warn(`⏱️ Nenhum ponto válido encontrado na rota ${routeIndex} (CTO ${ctoIndex})`);
           return;
         }
         
-        const currentPathString = validPoints.map(p => `${p.lat().toFixed(6)},${p.lng().toFixed(6)}`).join('|');
+        // Converter pontos para string, lidando com ambos os formatos
+        const currentPathString = validPoints.map(p => {
+          // Se tem métodos, chamar os métodos; senão, usar propriedades diretamente
+          const lat = typeof p.lat === 'function' ? p.lat() : p.lat;
+          const lng = typeof p.lng === 'function' ? p.lng() : p.lng;
+          return `${lat.toFixed(6)},${lng.toFixed(6)}`;
+        }).join('|');
         const lastPathString = lastRoutePaths.get(ctoIndex);
         
         // Se o path mudou, atualizar (só atualizar se já tiver um path anterior salvo)
@@ -1793,14 +1808,28 @@
               return;
             }
             
-            // Filtrar pontos válidos (que não são undefined/null e têm métodos lat/lng)
-            const validInitialPoints = Array.from(initialPath).filter(p => p && typeof p.lat === 'function' && typeof p.lng === 'function');
+            // Filtrar pontos válidos (podem ser google.maps.LatLng ou objetos simples {lat, lng})
+            const validInitialPoints = Array.from(initialPath).filter(p => {
+              if (!p) return false;
+              // Verificar se é objeto google.maps.LatLng (tem métodos)
+              if (typeof p.lat === 'function' && typeof p.lng === 'function') return true;
+              // Verificar se é objeto simples {lat, lng}
+              if (typeof p.lat === 'number' && typeof p.lng === 'number') return true;
+              return false;
+            });
+            
             if (validInitialPoints.length === 0) {
               console.warn(`  ⚠️ Nenhum ponto válido no path inicial para CTO ${ctoIndex}`);
               return;
             }
             
-            const initialPathString = validInitialPoints.map(p => `${p.lat().toFixed(6)},${p.lng().toFixed(6)}`).join('|');
+            // Converter pontos para string, lidando com ambos os formatos
+            const initialPathString = validInitialPoints.map(p => {
+              // Se tem métodos, chamar os métodos; senão, usar propriedades diretamente
+              const lat = typeof p.lat === 'function' ? p.lat() : p.lat;
+              const lng = typeof p.lng === 'function' ? p.lng() : p.lng;
+              return `${lat.toFixed(6)},${lng.toFixed(6)}`;
+            }).join('|');
             lastRoutePaths.set(ctoIndex, initialPathString);
             console.log(`  💾 Path inicial salvo para CTO ${ctoIndex} (${validInitialPoints.length} pontos válidos de ${initialPath.getLength()} total)`);
           } catch (err) {
