@@ -1619,7 +1619,7 @@
                 geodesic: true,
                 strokeColor: routeColor, // Cor da rota igual à cor da CTO
                 strokeOpacity: 0.6,
-                strokeWeight: 3,
+                strokeWeight: 4,
                 map: map,
                 zIndex: 500 + index
               });
@@ -1643,7 +1643,7 @@
               geodesic: false, // Não usar geodésica, seguir os pontos da rota (centro das ruas)
               strokeColor: routeColor, // Cor da rota igual à cor da CTO
               strokeOpacity: 0.7,
-              strokeWeight: 4, // Ligeiramente mais grossa para melhor visibilidade
+              strokeWeight: 5, // Espessura aumentada para melhor visibilidade
               map: map,
               zIndex: 500 + index,
               editable: editingRoutes // Tornar editável se estiver no modo de edição
