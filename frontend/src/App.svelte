@@ -2286,6 +2286,13 @@
       // Criar um novo array com o objeto atualizado para forçar reatividade do Svelte
       ctos = ctos.map((cto, idx) => idx === ctoIndex ? updatedCTO : cto);
       
+      // Atualizar também o objeto CTO no routeData para que o popup reflita as mudanças
+      if (routeInfo) {
+        routeInfo.cto = updatedCTO;
+        // Forçar reatividade do routeData também
+        routeData = [...routeData];
+      }
+      
       console.log(`✅ Rota da CTO ${ctoIndex} (${updatedCTO.nome}) editada. Nova distância: ${distanciaMetros}m (${distanciaKm}km)`);
       console.log(`📋 CTO após atualização:`, {
         nome: ctos[ctoIndex].nome,
