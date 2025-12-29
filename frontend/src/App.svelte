@@ -4170,6 +4170,7 @@
                   on:click|stopPropagation
                   on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
                   role="dialog"
+                  tabindex="0"
                   aria-modal="true"
                 >
                   <div class="info-modal-header">
@@ -4216,6 +4217,7 @@
                   on:click|stopPropagation
                   on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
                   role="dialog"
+                  tabindex="0"
                   aria-modal="true"
                 >
                   <div class="info-modal-header">
@@ -4368,6 +4370,7 @@
         on:click|stopPropagation
         on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
         role="dialog"
+        tabindex="0"
         aria-modal="true"
       >
         <div class="popup-instructions">
@@ -4421,6 +4424,7 @@
       on:click|stopPropagation
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
+      tabindex="0"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
@@ -4614,6 +4618,7 @@
       on:click|stopPropagation
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
+      tabindex="0"
       aria-modal="true"
       aria-labelledby="change-password-title"
     >
@@ -4791,6 +4796,7 @@
       on:click|stopPropagation
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
+      tabindex="0"
       aria-modal="true"
       aria-labelledby="add-projetista-title"
     >
@@ -4842,6 +4848,7 @@
       on:click|stopPropagation
       on:keydown={(e) => e.stopPropagation()}
       role="dialog"
+      tabindex="0"
       aria-modal="true"
       aria-labelledby="add-tabulacao-title"
     >
@@ -5586,42 +5593,6 @@
     box-shadow: 0 2px 4px rgba(123, 104, 238, 0.3);
   }
 
-  .export-buttons {
-    display: flex;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .export-btn {
-    width: 100%;
-    padding: 0.75rem;
-    border: none;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s;
-    box-shadow: 0 4px 6px rgba(123, 104, 238, 0.3);
-    margin-bottom: 0.75rem;
-    font-family: 'Inter', sans-serif;
-  }
-
-  .pdf-btn {
-    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
-    color: white;
-  }
-
-  .pdf-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, #9370DB 0%, #7B9EE8 100%);
-    transform: translateY(-2px);
-    box-shadow: 0 6px 12px rgba(123, 104, 238, 0.4);
-  }
-
-  .pdf-btn:disabled {
-    background: #ccc;
-    cursor: not-allowed;
-  }
 
   .ctos-list {
     max-height: 400px;
@@ -5715,13 +5686,6 @@
       grid-template-columns: 1fr;
     }
 
-    .export-buttons {
-      flex-direction: column;
-    }
-
-    .export-btn {
-      width: 100%;
-    }
   }
 
   .map-container {
