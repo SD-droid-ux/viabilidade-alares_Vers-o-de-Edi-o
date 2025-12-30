@@ -757,7 +757,8 @@ app.get('/api/ctos/nearby', async (req, res) => {
             id: row.id_cto || row.id?.toString() || '',
             distancia_metros: Math.round(distance * 100) / 100,
             is_condominio: is_condominio,
-            condominio_data: condominio_data
+            condominio_data: condominio_data,
+            status_cto_condominio: condominio_data ? condominio_data.status_cto : null // Incluir status_cto do condomínio
           });
         }
         
