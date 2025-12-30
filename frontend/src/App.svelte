@@ -2659,9 +2659,16 @@
     // Contador para numeração sequencial (não baseado no índice do loop)
     let markerNumber = 1;
 
+    // OTIMIZAÇÃO DE PERFORMANCE: Separar rotas de marcadores
+    // 1. Primeiro: Criar todos os marcadores (rápido)
+    // 2. Depois: Calcular todas as rotas em paralelo (Promise.all)
+    
+    // Preparar lista de CTOs que precisam de rotas
+    const ctosParaRotas = [];
+    const ctosParaMarcadores = [];
+
     for (let i = 0; i < ctos.length; i++) {
       const cto = ctos[i];
-
 
       // Validar coordenadas antes de processar
       if (isNaN(cto.latitude) || isNaN(cto.longitude) || 
@@ -2688,37 +2695,39 @@
       }
       
       // Posição original (SEMPRE usar esta para marcadores e rotas de CTOs de rua)
-      // Usar coordenadas parseadas para garantir precisão
       const originalPosition = { lat: ctoLat, lng: ctoLng };
       
       // Verificar se é prédio
       const isPredio = cto.is_condominio === true;
       
-      // Para CTOs de rua: SEMPRE usar posição original (sem offset)
-      // Isso garante que marcador e rota estejam perfeitamente alinhados
-      // IMPORTANTE: Usar exatamente as mesmas coordenadas parseadas para marcador e rota
-      const markerPosition = originalPosition;
-      
-      // Usar posição original para bounds (para garantir que o zoom inclua a posição real)
+      // Usar posição original para bounds
       bounds.extend(originalPosition);
 
-      // Desenhar rota REAL usando Directions API (seguindo ruas)
-      // NÃO criar rota para CTOs de prédio/condomínio (OTIMIZAÇÃO: pula completamente)
-      // NÃO criar rota para prédios (já são prédios, não CTOs de rua)
-      // Não criar rota se a distância for 0m (CTO está no mesmo local do cliente)
-      if (cto.is_condominio || isPredio) {
-        // Prédios não criam rotas nem distâncias - pular completamente para melhor performance
-        // console.log(`🏢 [Frontend] CTO ${cto.nome} é de prédio - rota não será criada`);
-      } else if (cto.distancia_metros && cto.distancia_metros > 0 && cto.distancia_real) {
-        // Apenas CTOs normais (não prédios) calculam rotas (pode demorar)
-        // Só calcular se tiver distância real calculada (dentro de 250m)
-        try {
-          await drawRealRoute(cto, i);
-        } catch (routeErr) {
-          console.warn(`⚠️ Erro ao desenhar rota para CTO ${i + 1} (${cto.nome}):`, routeErr);
-          // Continuar mesmo se a rota falhar
-        }
+      // Separar CTOs que precisam de rotas das que não precisam
+      if (!cto.is_condominio && !isPredio && cto.distancia_metros && cto.distancia_metros > 0 && cto.distancia_real) {
+        // CTOs normais que precisam de rotas
+        ctosParaRotas.push({ cto, index: i, originalPosition, ctoLat, ctoLng, isPredio });
       }
+      
+      // Todas as CTOs precisam de marcadores
+      ctosParaMarcadores.push({ cto, index: i, originalPosition, ctoLat, ctoLng, isPredio });
+    }
+
+    // ETAPA 1: Calcular TODAS as rotas em PARALELO (melhoria de performance crítica)
+    console.log(`🚀 [Performance] Calculando ${ctosParaRotas.length} rotas em paralelo...`);
+    const routePromises = ctosParaRotas.map(({ cto, index }) => 
+      drawRealRoute(cto, index).catch(err => {
+        console.warn(`⚠️ Erro ao desenhar rota para CTO ${index + 1} (${cto.nome}):`, err);
+        return null; // Retornar null em caso de erro para não quebrar Promise.all
+      })
+    );
+    
+    // Aguardar todas as rotas em paralelo
+    await Promise.all(routePromises);
+    console.log(`✅ [Performance] Todas as rotas calculadas!`);
+
+    // ETAPA 2: Criar todos os marcadores (já que rotas estão prontas)
+    for (const { cto, index, originalPosition, ctoLat, ctoLng, isPredio } of ctosParaMarcadores) {
 
       // Adicionar marcador da CTO
       let ctoMarker = null;
@@ -2850,7 +2859,7 @@
         }
 
       } catch (markerErr) {
-        console.error(`❌ Erro ao criar marcador para CTO ${i + 1} (${cto.nome}):`, markerErr);
+        console.error(`❌ Erro ao criar marcador para CTO ${index + 1} (${cto.nome}):`, markerErr);
         // Se o marcador foi parcialmente criado, tentar removê-lo
         if (ctoMarker && ctoMarker.setMap) {
           try {
@@ -2864,7 +2873,7 @@
       // Se o marcador não foi criado, não incrementar o contador
       // Mas apenas avisar se não for prédio (prédios não têm numeração mesmo)
       if (!markerCreated && !isPredio) {
-        console.warn(`⚠️ CTO ${i + 1} (${cto.nome}) não foi marcada no mapa. Numeração não incrementada.`);
+        console.warn(`⚠️ CTO ${index + 1} (${cto.nome}) não foi marcada no mapa. Numeração não incrementada.`);
       }
     }
 
@@ -4076,6 +4085,10 @@
       const viAlaDisplay = currentVIALA ? ` - ${currentVIALA}` : '';
       const numeroALADisplay = reportForm.numeroALA || '';
       
+      // Filtrar apenas CTOs de rua para o relatório (ANTES de usar no HTML)
+      // IMPORTANTE: Calcular ANTES de usar na template string para evitar erro "Cannot access before initialization"
+      const ctosRuaReport = ctos.filter(cto => !cto.is_condominio || cto.is_condominio === false);
+      
       let htmlContent = `
         <html>
           <head>
@@ -4131,7 +4144,6 @@
                   </div>
                 </div>
                 <div class="summary-stats">
-                  {@const ctosRuaReport = ctos.filter(cto => !cto.is_condominio || cto.is_condominio === false)}
                   <p><strong>Total:</strong> <span style="font-weight: bold; color: #000000;">${ctosRuaReport.length}</span> <strong style="font-weight: bold; color: #000000;">${ctosRuaReport.length === 1 ? 'Equipamento encontrado' : 'Equipamentos encontrados'} dentro de 250m</strong></p>
                   <p><strong>Total de Portas Disponíveis:</strong> <span style="font-weight: bold; color: #000000;">${ctosRuaReport.reduce((sum, cto) => sum + (cto.vagas_total - cto.clientes_conectados), 0)}</span> <strong style="font-weight: bold; color: #000000;">portas</strong></p>
                 </div>
@@ -4167,8 +4179,7 @@
               <tbody>
       `;
 
-      // Filtrar apenas CTOs de rua para o relatório
-      const ctosRuaReport = ctos.filter(cto => !cto.is_condominio || cto.is_condominio === false);
+      // ctosRuaReport já foi definido acima (antes do htmlContent)
       ctosRuaReport.forEach((cto, index) => {
         const portasDisponiveis = cto.vagas_total - cto.clientes_conectados;
         const semPortas = portasDisponiveis === 0;
