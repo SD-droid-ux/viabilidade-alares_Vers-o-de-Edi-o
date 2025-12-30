@@ -673,9 +673,11 @@ app.get('/api/ctos/nearby', async (req, res) => {
           return R * c;
         };
         
-        // OTIMIZAÇÃO: Verificar se tabela condominios existe UMA VEZ (não para cada CTO)
+        // SOLUÇÃO 5: Filtrar CTOs por ID (evitar duplicatas)
+        // 1. Buscar TODOS os prédios dentro de um raio maior (500m) para pegar todos os IDs
         let condominiosTableExists = false;
-        let allCondominios = [];
+        let prédiosIds = new Set(); // Set para verificação rápida O(1)
+        let prédiosMap = new Map(); // Map para armazenar dados dos prédios por ID
         
         try {
           const { error: tableError } = await supabase
@@ -686,19 +688,46 @@ app.get('/api/ctos/nearby', async (req, res) => {
           if (!tableError || (tableError.code !== 'PGRST116' && !tableError.message.includes('does not exist'))) {
             condominiosTableExists = true;
             
-            // OTIMIZAÇÃO: Buscar TODOS os condomínios dentro da bounding box de uma vez
-            // Isso é muito mais eficiente que buscar um por um
+            // Buscar TODOS os prédios dentro de um raio maior (500m) para pegar todos os IDs
+            // Isso garante que pegamos todos os IDs, mesmo que o prédio esteja um pouco mais longe
+            const radiusDegreesPrédios = 500 / 111000; // 500 metros em graus
+            const latMinPrédios = lat - radiusDegreesPrédios;
+            const latMaxPrédios = lat + radiusDegreesPrédios;
+            const lngMinPrédios = lng - radiusDegreesPrédios;
+            const lngMaxPrédios = lng + radiusDegreesPrédios;
+            
             const { data: condominiosData, error: condominiosError } = await supabase
               .from('condominios')
               .select('*')
-              .gte('latitude', latMin)
-              .lte('latitude', latMax)
-              .gte('longitude', lngMin)
-              .lte('longitude', lngMax);
+              .gte('latitude', latMinPrédios)
+              .lte('latitude', latMaxPrédios)
+              .gte('longitude', lngMinPrédios)
+              .lte('longitude', lngMaxPrédios);
             
             if (!condominiosError && condominiosData) {
-              allCondominios = condominiosData;
-              console.log(`🏢 [API] ${allCondominios.length} condomínios encontrados na área`);
+              // Criar Set com IDs dos prédios (para verificação rápida)
+              // Adicionar como número, string e número convertido para garantir matching
+              condominiosData.forEach(prédio => {
+                if (prédio.id_equipamento) {
+                  const id = prédio.id_equipamento;
+                  const idNum = typeof id === 'number' ? id : parseInt(id);
+                  const idStr = String(id);
+                  
+                  if (!isNaN(idNum)) {
+                    // Adicionar em múltiplos formatos para garantir matching
+                    prédiosIds.add(idNum);
+                    prédiosIds.add(idStr);
+                    prédiosIds.add(Number(idStr));
+                    
+                    // Armazenar dados do prédio no Map (para usar depois)
+                    if (!prédiosMap.has(idNum)) {
+                      prédiosMap.set(idNum, prédio);
+                    }
+                  }
+                }
+              });
+              
+              console.log(`🏢 [API] ${condominiosData.length} prédios encontrados, ${prédiosIds.size} IDs únicos para filtrar CTOs`);
             }
           }
         } catch (checkError) {
@@ -706,54 +735,53 @@ app.get('/api/ctos/nearby', async (req, res) => {
         }
         
         // Filtrar por distância exata e calcular distâncias
+        // SOLUÇÃO 5: Filtrar CTOs que têm ID igual aos prédios (evitar duplicatas)
         const nearbyCTOs = [];
+        const ctosInternasPorPrédio = new Map(); // Agrupar CTOs internas por prédio
         
         for (const row of (data || [])) {
           const distance = calculateDistance(lat, lng, parseFloat(row.latitude), parseFloat(row.longitude));
           
           if (distance > radiusMeters) continue;
           
-          // OTIMIZAÇÃO: Verificar se esta CTO está na lista de condomínios (busca em memória)
+          const ctoId = row.id_cto;
+          const ctoIdNum = ctoId ? (typeof ctoId === 'number' ? ctoId : parseInt(ctoId)) : null;
+          const ctoIdStr = ctoId ? String(ctoId) : null;
+          
+          // SOLUÇÃO 5: Verificar se esta CTO está na base de prédios (matching por ID)
           let is_condominio = false;
           let condominio_data = null;
           
-          if (condominiosTableExists && allCondominios.length > 0) {
-            const ctoLat = parseFloat(row.latitude);
-            const ctoLng = parseFloat(row.longitude);
-            
-            // Buscar por ID do equipamento primeiro (mais rápido)
-            if (row.id_cto) {
-              const idNum = parseInt(row.id_cto);
-              if (!isNaN(idNum)) {
-                condominio_data = allCondominios.find(c => 
-                  c.id_equipamento && (c.id_equipamento === idNum || String(c.id_equipamento) === String(idNum))
-                );
-              }
-            }
-            
-            // Se não encontrou por ID, buscar por coordenadas próximas (raio de 10m)
-            if (!condominio_data && !isNaN(ctoLat) && !isNaN(ctoLng)) {
-              const radiusDegrees = 10 / 111000; // 10 metros em graus
-              
-              condominio_data = allCondominios.find(c => {
-                const cLat = parseFloat(c.latitude);
-                const cLng = parseFloat(c.longitude);
-                if (isNaN(cLat) || isNaN(cLng)) return false;
-                
-                return (
-                  cLat >= ctoLat - radiusDegrees &&
-                  cLat <= ctoLat + radiusDegrees &&
-                  cLng >= ctoLng - radiusDegrees &&
-                  cLng <= ctoLng + radiusDegrees
-                );
-              });
-            }
-            
-            if (condominio_data) {
+          if (condominiosTableExists && prédiosIds.size > 0 && ctoIdNum && !isNaN(ctoIdNum)) {
+            // Verificar se o ID da CTO está no Set de IDs dos prédios
+            if (prédiosIds.has(ctoIdNum) || prédiosIds.has(ctoIdStr) || prédiosIds.has(Number(ctoIdStr))) {
               is_condominio = true;
+              // Buscar dados do prédio do Map
+              condominio_data = prédiosMap.get(ctoIdNum) || prédiosMap.get(Number(ctoIdStr));
+              
+              // Agrupar CTO interna por prédio (para adicionar depois aos prédios)
+              if (!ctosInternasPorPrédio.has(ctoIdNum)) {
+                ctosInternasPorPrédio.set(ctoIdNum, []);
+              }
+              
+              ctosInternasPorPrédio.get(ctoIdNum).push({
+                nome: row.cto || row.id_cto || '',
+                id: row.id_cto || row.id?.toString() || '',
+                vagas_total: row.portas || 0,
+                clientes_conectados: row.ocupado || 0,
+                portas_disponiveis: (row.portas || 0) - (row.ocupado || 0),
+                status_cto: row.status_cto || '',
+                cidade: row.cid_rede || '',
+                pop: row.pop || ''
+              });
+              
+              // NÃO adicionar esta CTO à lista de CTOs normais (é prédio, será filtrada)
+              console.log(`🏢 [API] CTO ${ctoId} está na base de prédios (ID: ${ctoIdNum}), filtrando...`);
+              continue; // PULAR esta CTO (não adicionar à lista)
             }
           }
           
+          // Se chegou aqui, é CTO de rua (não está na base de prédios)
           nearbyCTOs.push({
             nome: row.cto || row.id_cto || '',
             latitude: parseFloat(row.latitude),
@@ -765,9 +793,9 @@ app.get('/api/ctos/nearby', async (req, res) => {
             pop: row.pop || '',
             id: row.id_cto || row.id?.toString() || '',
             distancia_metros: Math.round(distance * 100) / 100,
-            is_condominio: is_condominio,
-            condominio_data: condominio_data,
-            status_cto_condominio: condominio_data ? condominio_data.status_cto : null
+            is_condominio: false, // Garantir que não é prédio
+            condominio_data: null,
+            status_cto_condominio: null
           });
         }
         
@@ -886,16 +914,100 @@ app.get('/api/condominios/nearby', async (req, res) => {
       };
       
       // Filtrar por distância exata e calcular distâncias
-      const nearbyCondominios = (condominiosData || [])
+      let nearbyCondominios = (condominiosData || [])
         .map(cond => {
           const distance = calculateDistance(lat, lng, parseFloat(cond.latitude), parseFloat(cond.longitude));
           return {
             ...cond,
-            distancia_metros: Math.round(distance * 100) / 100
+            distancia_metros: Math.round(distance * 100) / 100,
+            ctos_internas: [] // Inicializar array de CTOs internas
           };
         })
         .filter(cond => cond.distancia_metros <= radiusMeters)
         .sort((a, b) => a.distancia_metros - b.distancia_metros);
+      
+      // Buscar CTOs internas para cada prédio (matching por ID)
+      // Criar Set com IDs dos prédios para busca rápida
+      const prédiosIdsSet = new Set();
+      nearbyCondominios.forEach(prédio => {
+        if (prédio.id_equipamento) {
+          const id = prédio.id_equipamento;
+          const idNum = typeof id === 'number' ? id : parseInt(id);
+          if (!isNaN(idNum)) {
+            prédiosIdsSet.add(idNum);
+            prédiosIdsSet.add(String(idNum));
+            prédiosIdsSet.add(Number(String(idNum)));
+          }
+        }
+      });
+      
+      // Buscar CTOs da base `cto` que têm IDs iguais aos prédios
+      if (prédiosIdsSet.size > 0) {
+        // Calcular bounding box maior para buscar CTOs
+        const radiusDegreesCTOs = 500 / 111000; // 500 metros
+        const latMinCTOs = lat - radiusDegreesCTOs;
+        const latMaxCTOs = lat + radiusDegreesCTOs;
+        const lngMinCTOs = lng - radiusDegreesCTOs;
+        const lngMaxCTOs = lng + radiusDegreesCTOs;
+        
+        const { data: ctosData, error: ctosError } = await supabase
+          .from('ctos')
+          .select('*')
+          .gte('latitude', latMinCTOs)
+          .lte('latitude', latMaxCTOs)
+          .gte('longitude', lngMinCTOs)
+          .lte('longitude', lngMaxCTOs)
+          .ilike('status_cto', 'ATIVADO');
+        
+        if (!ctosError && ctosData) {
+          // Agrupar CTOs internas por prédio
+          const ctosPorPrédio = new Map();
+          
+          ctosData.forEach(cto => {
+            const ctoId = cto.id_cto;
+            const ctoIdNum = ctoId ? (typeof ctoId === 'number' ? ctoId : parseInt(ctoId)) : null;
+            
+            if (ctoIdNum && !isNaN(ctoIdNum)) {
+              // Verificar se esta CTO está na lista de prédios
+              if (prédiosIdsSet.has(ctoIdNum) || prédiosIdsSet.has(String(ctoIdNum)) || prédiosIdsSet.has(Number(String(ctoIdNum)))) {
+                if (!ctosPorPrédio.has(ctoIdNum)) {
+                  ctosPorPrédio.set(ctoIdNum, []);
+                }
+                
+                ctosPorPrédio.get(ctoIdNum).push({
+                  nome: cto.cto || cto.id_cto || '',
+                  id: cto.id_cto || cto.id?.toString() || '',
+                  vagas_total: cto.portas || 0,
+                  clientes_conectados: cto.ocupado || 0,
+                  portas_disponiveis: (cto.portas || 0) - (cto.ocupado || 0),
+                  status_cto: cto.status_cto || '',
+                  cidade: cto.cid_rede || '',
+                  pop: cto.pop || ''
+                });
+              }
+            }
+          });
+          
+          // Adicionar CTOs internas aos prédios
+          nearbyCondominios = nearbyCondominios.map(prédio => {
+            const id = prédio.id_equipamento;
+            const idNum = id ? (typeof id === 'number' ? id : parseInt(id)) : null;
+            
+            if (idNum && !isNaN(idNum)) {
+              const ctosInternas = ctosPorPrédio.get(idNum) || ctosPorPrédio.get(Number(String(idNum))) || [];
+              return {
+                ...prédio,
+                ctos_internas: ctosInternas
+              };
+            }
+            
+            return prédio;
+          });
+          
+          const totalCTOsInternas = nearbyCondominios.reduce((sum, prédio) => sum + (prédio.ctos_internas?.length || 0), 0);
+          console.log(`🏢 [API] ${totalCTOsInternas} CTOs internas encontradas em ${nearbyCondominios.length} prédios`);
+        }
+      }
       
       console.log(`✅ [API] ${nearbyCondominios.length} prédios encontrados dentro de ${radiusMeters}m`);
       
