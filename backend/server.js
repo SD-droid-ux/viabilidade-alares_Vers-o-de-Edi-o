@@ -674,32 +674,107 @@ app.get('/api/ctos/nearby', async (req, res) => {
         };
         
         // Filtrar por distância exata e calcular distâncias
-        const nearbyCTOs = (data || [])
-          .map(row => {
-            const distance = calculateDistance(lat, lng, parseFloat(row.latitude), parseFloat(row.longitude));
-            return {
-              nome: row.cto || row.id_cto || '',
-              latitude: parseFloat(row.latitude),
-              longitude: parseFloat(row.longitude),
-              vagas_total: row.portas || 0,
-              clientes_conectados: row.ocupado || 0,
-              pct_ocup: row.pct_ocup || 0,
-              cidade: row.cid_rede || '',
-              pop: row.pop || '',
-              id: row.id_cto || row.id?.toString() || '',
-              distancia_metros: Math.round(distance * 100) / 100
-            };
-          })
-          .filter(cto => cto.distancia_metros <= radiusMeters)
-          .sort((a, b) => a.distancia_metros - b.distancia_metros)
-          .slice(0, 5); // Limitar a 5 CTOs mais próximas (mesmo número usado no frontend)
+        const nearbyCTOs = [];
         
-        console.log(`✅ [API] ${nearbyCTOs.length} CTOs encontradas próximas (de ${data?.length || 0} na bounding box)`);
+        for (const row of (data || [])) {
+          const distance = calculateDistance(lat, lng, parseFloat(row.latitude), parseFloat(row.longitude));
+          
+          if (distance > radiusMeters) continue;
+          
+          // Verificar se esta CTO está na base de condomínios
+          let is_condominio = false;
+          let condominio_data = null;
+          
+          try {
+            // Verificar se a tabela condominios existe
+            const { error: tableError } = await supabase
+              .from('condominios')
+              .select('id')
+              .limit(1);
+            
+            if (!tableError || (tableError.code !== 'PGRST116' && !tableError.message.includes('does not exist'))) {
+              // Tabela existe, verificar se esta CTO é de condomínio
+              // Buscar por múltiplos critérios
+              let foundCondominio = null;
+              
+              // Buscar por ID do equipamento (se disponível)
+              if (row.id_cto) {
+                const idNum = parseInt(row.id_cto);
+                if (!isNaN(idNum)) {
+                  const { data: dataId } = await supabase
+                    .from('condominios')
+                    .select('*')
+                    .eq('id_equipamento', idNum)
+                    .limit(1);
+                  
+                  if (dataId && dataId.length > 0) {
+                    foundCondominio = dataId[0];
+                  }
+                }
+              }
+              
+              // Se não encontrou, buscar por coordenadas próximas (raio de 10m)
+              if (!foundCondominio) {
+                const ctoLat = parseFloat(row.latitude);
+                const ctoLng = parseFloat(row.longitude);
+                if (!isNaN(ctoLat) && !isNaN(ctoLng)) {
+                  const radiusDegrees = 10 / 111000; // 10 metros em graus
+                  
+                  const { data: dataCoords } = await supabase
+                    .from('condominios')
+                    .select('*')
+                    .gte('latitude', ctoLat - radiusDegrees)
+                    .lte('latitude', ctoLat + radiusDegrees)
+                    .gte('longitude', ctoLng - radiusDegrees)
+                    .lte('longitude', ctoLng + radiusDegrees)
+                    .limit(1);
+                  
+                  if (dataCoords && dataCoords.length > 0) {
+                    foundCondominio = dataCoords[0];
+                  }
+                }
+              }
+              
+              if (foundCondominio) {
+                is_condominio = true;
+                condominio_data = foundCondominio;
+              }
+            }
+          } catch (checkError) {
+            console.warn('⚠️ [API] Erro ao verificar condomínio para CTO:', checkError.message);
+            // Continuar mesmo com erro na verificação
+          }
+          
+          nearbyCTOs.push({
+            nome: row.cto || row.id_cto || '',
+            latitude: parseFloat(row.latitude),
+            longitude: parseFloat(row.longitude),
+            vagas_total: row.portas || 0,
+            clientes_conectados: row.ocupado || 0,
+            pct_ocup: row.pct_ocup || 0,
+            cidade: row.cid_rede || '',
+            pop: row.pop || '',
+            id: row.id_cto || row.id?.toString() || '',
+            distancia_metros: Math.round(distance * 100) / 100,
+            is_condominio: is_condominio,
+            condominio_data: condominio_data
+          });
+        }
+        
+        // Ordenar por distância e limitar a 5
+        nearbyCTOs.sort((a, b) => a.distancia_metros - b.distancia_metros);
+        const finalCTOs = nearbyCTOs.slice(0, 5);
+        
+        const condominiosCount = finalCTOs.filter(cto => cto.is_condominio).length;
+        console.log(`✅ [API] ${finalCTOs.length} CTOs encontradas próximas (de ${data?.length || 0} na bounding box)`);
+        if (condominiosCount > 0) {
+          console.log(`🏢 [API] ${condominiosCount} CTOs são de condomínios/prédios`);
+        }
         
         return res.json({
           success: true,
-          ctos: nearbyCTOs,
-          count: nearbyCTOs.length
+          ctos: finalCTOs,
+          count: finalCTOs.length
         });
       } catch (supabaseErr) {
         console.error('❌ [API] Erro ao buscar CTOs do Supabase:', supabaseErr);
@@ -711,6 +786,153 @@ app.get('/api/ctos/nearby', async (req, res) => {
   } catch (err) {
     console.error('❌ [API] Erro na rota /api/ctos/nearby:', err);
     return res.status(500).json({ error: 'Erro interno', details: err.message });
+  }
+});
+
+// Rota para verificar se uma CTO está na base de condomínios
+app.get('/api/condominios/check-cto', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    const { nome_cto, id_equipamento, nome_ozmap, nome_imanager, latitude, longitude } = req.query;
+    
+    if (!supabase || !isSupabaseAvailable()) {
+      return res.json({
+        success: true,
+        is_condominio: false,
+        message: 'Supabase não disponível, assumindo que não é condomínio'
+      });
+    }
+    
+    try {
+      // Verificar se a tabela condominios existe
+      const { error: tableError } = await supabase
+        .from('condominios')
+        .select('id')
+        .limit(1);
+      
+      if (tableError && (tableError.code === 'PGRST116' || tableError.message.includes('does not exist'))) {
+        console.log('⚠️ [API] Tabela condominios não existe ainda');
+        return res.json({
+          success: true,
+          is_condominio: false,
+          message: 'Tabela condominios não existe ainda'
+        });
+      }
+      
+      // Buscar por múltiplos critérios (nome do equipamento, ID, ou coordenadas próximas)
+      // Fazer múltiplas queries e verificar se alguma retorna resultado
+      let foundData = null;
+      
+      // Buscar por nome do equipamento OZMAP
+      if (nome_ozmap && nome_ozmap !== '#N/D' && nome_ozmap.trim() !== '') {
+        const { data: dataOzmap, error: errorOzmap } = await supabase
+          .from('condominios')
+          .select('*')
+          .ilike('nome_equipamento_ozmap', `%${nome_ozmap}%`)
+          .limit(1);
+        
+        if (!errorOzmap && dataOzmap && dataOzmap.length > 0) {
+          foundData = dataOzmap[0];
+        }
+      }
+      
+      // Se não encontrou, buscar por nome do equipamento I-MANAGER
+      if (!foundData && nome_imanager && nome_imanager !== '#N/D' && nome_imanager.trim() !== '') {
+        const { data: dataImanager, error: errorImanager } = await supabase
+          .from('condominios')
+          .select('*')
+          .ilike('nome_equipamento_imanager', `%${nome_imanager}%`)
+          .limit(1);
+        
+        if (!errorImanager && dataImanager && dataImanager.length > 0) {
+          foundData = dataImanager[0];
+        }
+      }
+      
+      // Se não encontrou, buscar por ID do equipamento
+      if (!foundData && id_equipamento && id_equipamento !== '#N/D') {
+        const idNum = parseInt(id_equipamento);
+        if (!isNaN(idNum)) {
+          const { data: dataId, error: errorId } = await supabase
+            .from('condominios')
+            .select('*')
+            .eq('id_equipamento', idNum)
+            .limit(1);
+          
+          if (!errorId && dataId && dataId.length > 0) {
+            foundData = dataId[0];
+          }
+        }
+      }
+      
+      // Se não encontrou, buscar por coordenadas próximas (raio de 10m para considerar mesma localização)
+      if (!foundData && latitude && longitude && !isNaN(parseFloat(latitude)) && !isNaN(parseFloat(longitude))) {
+        const lat = parseFloat(latitude);
+        const lng = parseFloat(longitude);
+        const radiusDegrees = 10 / 111000; // 10 metros em graus
+        
+        const { data: dataCoords, error: errorCoords } = await supabase
+          .from('condominios')
+          .select('*')
+          .gte('latitude', lat - radiusDegrees)
+          .lte('latitude', lat + radiusDegrees)
+          .gte('longitude', lng - radiusDegrees)
+          .lte('longitude', lng + radiusDegrees)
+          .limit(1);
+        
+        if (!errorCoords && dataCoords && dataCoords.length > 0) {
+          foundData = dataCoords[0];
+        }
+      }
+      
+      const data = foundData ? [foundData] : [];
+      const error = null;
+      
+      if (error) {
+        console.error('❌ [API] Erro ao verificar condomínio:', error);
+        return res.status(500).json({ 
+          success: false,
+          error: 'Erro ao verificar condomínio',
+          details: error.message 
+        });
+      }
+      
+      const is_condominio = data && data.length > 0;
+      
+      console.log(`🔍 [API] CTO verificado: ${is_condominio ? 'É condomínio' : 'Não é condomínio'}`);
+      if (is_condominio) {
+        console.log(`📋 [API] Dados do condomínio:`, foundData);
+      }
+      
+      return res.json({
+        success: true,
+        is_condominio: is_condominio,
+        condominio_data: is_condominio ? foundData : null
+      });
+      
+    } catch (supabaseErr) {
+      console.error('❌ [API] Erro ao verificar condomínio no Supabase:', supabaseErr);
+      return res.status(500).json({ 
+        success: false,
+        error: 'Erro ao verificar condomínio',
+        details: supabaseErr.message 
+      });
+    }
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/condominios/check-cto:', err);
+    return res.status(500).json({ 
+      success: false,
+      error: 'Erro interno', 
+      details: err.message 
+    });
   }
 });
 
