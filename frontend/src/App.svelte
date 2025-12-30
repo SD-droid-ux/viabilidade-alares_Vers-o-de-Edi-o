@@ -186,12 +186,18 @@
 
   // Função para aplicar offset lateral a uma rota para evitar sobreposição
   // Desloca a rota perpendicularmente à direção média, baseado no índice
-  // IMPORTANTE: O primeiro ponto (centro da CTO) NÃO é deslocado
+  // IMPORTANTE: O primeiro ponto (centro da CTO) e o último ponto (cliente) NÃO são deslocados
   function applyRouteOffset(path, routeIndex) {
     if (path.length < 2) return path;
     
-    // Guardar o primeiro ponto (centro exato da CTO) - não será deslocado
+    // Guardar o primeiro ponto (centro exato da CTO) e o último ponto (cliente) - não serão deslocados
     const ctoCenter = path[0];
+    const clientCenter = path[path.length - 1];
+    
+    // Se houver apenas 2 pontos (CTO e cliente), não aplicar offset
+    if (path.length === 2) {
+      return path;
+    }
     
     // Calcular direção média da rota (usando primeiro e último ponto)
     const startPoint = path[0];
@@ -222,13 +228,17 @@
     const offsetLat = offsetRadians * Math.cos(perpendicularBearing) * (180 / Math.PI);
     const offsetLng = offsetRadians * Math.sin(perpendicularBearing) * (180 / Math.PI) / Math.cos(lat1);
     
-    // Aplicar offset a todos os pontos EXCETO o primeiro (centro da CTO)
+    // Aplicar offset APENAS aos pontos intermediários (não ao primeiro nem ao último)
     return path.map((point, index) => {
       if (index === 0) {
         // Manter o primeiro ponto exatamente no centro da CTO
         return { lat: ctoCenter.lat, lng: ctoCenter.lng };
       }
-      // Aplicar offset aos demais pontos
+      if (index === path.length - 1) {
+        // Manter o último ponto exatamente no cliente
+        return { lat: clientCenter.lat, lng: clientCenter.lng };
+      }
+      // Aplicar offset apenas aos pontos intermediários
       return {
         lat: point.lat + offsetLat,
         lng: point.lng + offsetLng
