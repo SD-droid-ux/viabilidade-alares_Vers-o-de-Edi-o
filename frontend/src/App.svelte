@@ -1594,22 +1594,26 @@
         }
       }
 
-      // Adicionar CTOs de prédio sem calcular distância real (não criam rota)
+      // Adicionar CTOs de prédio IMEDIATAMENTE sem calcular distância real (não criam rota)
+      // Isso acelera o processo pois não precisa esperar cálculo de rotas
       const ctosPredioFormatadas = ctosPredio.map(cto => ({
         ...cto,
         distancia_km: Math.round((cto.distancia_metros / 1000) * 1000) / 1000,
         distancia_real: cto.distancia_metros // Usar distância linear para prédios
       }));
 
-      // Combinar CTOs normais (com rota) e CTOs de prédio (sem rota)
-      const todasCTOs = [...ctosWithRealDistance, ...ctosPredioFormatadas];
-      
-      if (todasCTOs.length === 0) {
-        error = 'Nenhuma CTO encontrada dentro de 250m de distância real (via ruas)';
+      // Se houver CTOs normais, calcular distâncias reais (pode demorar)
+      // Se não houver CTOs normais, usar apenas prédios
+      if (ctosWithRealDistance.length === 0 && ctosPredioFormatadas.length === 0) {
+        error = 'Nenhuma CTO encontrada dentro de 250m de distância';
         loadingCTOs = false;
         return;
       }
 
+      // Combinar CTOs normais (com rota) e CTOs de prédio (sem rota)
+      // Prédios já estão prontos, então adicionar primeiro para aparecerem rápido
+      const todasCTOs = [...ctosPredioFormatadas, ...ctosWithRealDistance];
+      
       // Ordenar por distância (real para normais, linear para prédios)
       todasCTOs.sort((a, b) => {
         const distA = a.distancia_real || a.distancia_metros || 0;
@@ -1619,6 +1623,10 @@
 
       // Limitar a no máximo 5 CTOs no total
       ctos = todasCTOs.slice(0, 5);
+      
+      // Desenhar prédios IMEDIATAMENTE (sem esperar rotas)
+      // Isso faz os prédios aparecerem na tela enquanto as rotas das CTOs normais são calculadas
+      await drawRoutesAndMarkers();
 
       // Desenhar rotas e marcadores com percursos reais
       await drawRoutesAndMarkers();
@@ -2503,17 +2511,19 @@
       bounds.extend(ctoPosition);
 
       // Desenhar rota REAL usando Directions API (seguindo ruas)
-      // NÃO criar rota para CTOs de prédio/condomínio
+      // NÃO criar rota para CTOs de prédio/condomínio (OTIMIZAÇÃO: pula completamente)
       // Não criar rota se a distância for 0m (CTO está no mesmo local do cliente)
-      if (!cto.is_condominio && cto.distancia_metros && cto.distancia_metros > 0) {
+      if (cto.is_condominio) {
+        // Prédios não criam rotas - pular completamente para melhor performance
+        // console.log(`🏢 [Frontend] CTO ${cto.nome} é de prédio - rota não será criada`);
+      } else if (cto.distancia_metros && cto.distancia_metros > 0) {
+        // Apenas CTOs normais calculam rotas (pode demorar)
         try {
           await drawRealRoute(cto, i);
         } catch (routeErr) {
           console.warn(`⚠️ Erro ao desenhar rota para CTO ${i + 1} (${cto.nome}):`, routeErr);
           // Continuar mesmo se a rota falhar
         }
-      } else if (cto.is_condominio) {
-        console.log(`🏢 [Frontend] CTO ${cto.nome} é de prédio - rota não será criada`);
       }
 
       // Adicionar marcador da CTO
@@ -2582,8 +2592,8 @@
             strokeWeight: strokeWeight,
             anchor: new google.maps.Point(12, 22) // Mesmo anchor da casinha
           },
-          label: {
-            text: isPredio ? '' : `${currentMarkerNumber}`, // Sem label para prédios
+          label: isPredio ? undefined : { // Sem label para prédios (undefined remove o label completamente)
+            text: `${currentMarkerNumber}`,
             color: '#FFFFFF',
             fontSize: '14px',
             fontWeight: 'bold'
@@ -2601,23 +2611,26 @@
         markerNumber++;
 
         // InfoWindow para a CTO (ordem solicitada pelo usuário)
-        const isPredio = cto.is_condominio === true;
-        const predioInfo = isPredio && cto.condominio_data 
-          ? `<br><strong style="color: #6C757D;">🏢 PRÉDIO/CONDOMÍNIO:</strong> ${cto.condominio_data.nome_predio || 'N/A'}<br><strong style="color: #DC3545;">⚠️ Esta CTO não cria rota até o cliente</strong>`
+        // Garantir que não há objetos sendo convertidos para string incorretamente
+        const nomePredio = isPredio && cto.condominio_data && cto.condominio_data.nome_predio 
+          ? String(cto.condominio_data.nome_predio) 
+          : 'N/A';
+        const predioInfo = isPredio 
+          ? `<br><strong style="color: #6C757D;">🏢 PRÉDIO/CONDOMÍNIO:</strong> ${nomePredio}<br><strong style="color: #DC3545;">⚠️ Esta CTO não cria rota até o cliente</strong>`
           : '';
         
         const ctoInfoWindow = new google.maps.InfoWindow({
           content: `
             <div style="padding: 8px; font-family: 'Inter', sans-serif; line-height: 1.6;">
                 ${isPredio ? '<div style="background-color: #FFE5E5; padding: 4px; margin-bottom: 8px; border-left: 3px solid #DC3545;"><strong style="color: #DC3545;">🏢 CTO DE PRÉDIO/CONDOMÍNIO</strong></div>' : ''}
-                <strong>Cidade:</strong> ${cto.cidade || 'N/A'}<br>
-                <strong>POP:</strong> ${cto.pop || 'N/A'}<br>
-                <strong>Nome:</strong> ${cto.nome || 'N/A'}<br>
-                <strong>ID:</strong> ${cto.id || 'N/A'}<br>
-                <strong>Total de Portas:</strong> ${cto.vagas_total || 0}<br>
-                <strong>Portas Conectadas:</strong> ${cto.clientes_conectados || 0}<br>
-                <strong>Portas Disponíveis:</strong> ${(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}<br>
-                <strong>Distância:</strong> ${cto.distancia_metros || 0}m (${cto.distancia_km || 0}km)
+                <strong>Cidade:</strong> ${String(cto.cidade || 'N/A')}<br>
+                <strong>POP:</strong> ${String(cto.pop || 'N/A')}<br>
+                <strong>Nome:</strong> ${String(cto.nome || 'N/A')}<br>
+                <strong>ID:</strong> ${String(cto.id || 'N/A')}<br>
+                <strong>Total de Portas:</strong> ${Number(cto.vagas_total || 0)}<br>
+                <strong>Portas Conectadas:</strong> ${Number(cto.clientes_conectados || 0)}<br>
+                <strong>Portas Disponíveis:</strong> ${Number((cto.vagas_total || 0) - (cto.clientes_conectados || 0))}<br>
+                <strong>Distância:</strong> ${Number(cto.distancia_metros || 0)}m (${Number(cto.distancia_km || 0)}km)
                 ${predioInfo}
             </div>
           `
