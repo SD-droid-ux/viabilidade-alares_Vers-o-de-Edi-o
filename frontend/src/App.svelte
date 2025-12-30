@@ -1766,35 +1766,64 @@
             const route = result.routes[0];
             const path = [];
 
-            // Usar overview_path da rota que já contém todos os pontos otimizados
-            // Isso garante que a rota siga exatamente o caminho calculado pela API
-            if (route.overview_path && route.overview_path.length > 0) {
-              // overview_path já contém todos os pontos da rota, incluindo início e fim
-              route.overview_path.forEach(point => {
-                path.push({ lat: point.lat(), lng: point.lng() });
+            // Começar exatamente na CTO (conectado ao marcador)
+            // IMPORTANTE: Usar as mesmas coordenadas parseadas usadas no marcador
+            path.push({ lat: ctoLat, lng: ctoLng });
+
+            // Usar steps.path para MÁXIMA PRECISÃO e DETALHAMENTO
+            // Cada step.path contém TODOS os pontos que seguem exatamente as ruas
+            // Isso garante que a rota seja o mais detalhada possível
+            if (route.legs && route.legs.length > 0) {
+              route.legs.forEach((leg) => {
+                if (leg.steps && leg.steps.length > 0) {
+                  leg.steps.forEach((step, stepIndex) => {
+                    // step.path contém TODOS os pontos detalhados deste trecho da rota
+                    // Inclui pontos de início, meio e fim do step, seguindo exatamente a rua
+                    if (step.path && step.path.length > 0) {
+                      step.path.forEach((point, pointIndex) => {
+                        const lat = point.lat();
+                        const lng = point.lng();
+                        
+                        // Adicionar todos os pontos, exceto o primeiro de cada step (para evitar duplicatas)
+                        // O primeiro step já começa na CTO, então pulamos o primeiro ponto do primeiro step
+                        if (stepIndex === 0 && pointIndex === 0) {
+                          // Pular o primeiro ponto do primeiro step (já adicionamos a CTO)
+                          return;
+                        }
+                        
+                        path.push({ lat, lng });
+                      });
+                    }
+                  });
+                }
               });
-            } else {
-              // Fallback: usar steps.path se overview_path não estiver disponível
-              // Começar exatamente na CTO (conectado ao marcador)
-              path.push({ lat: ctoLat, lng: ctoLng });
+            }
 
-              // Adicionar todos os pontos dos steps (seguindo as ruas)
-              if (route.legs && route.legs.length > 0) {
-                route.legs.forEach((leg) => {
-                  if (leg.steps && leg.steps.length > 0) {
-                    leg.steps.forEach(step => {
-                      if (step.path && step.path.length > 0) {
-                        step.path.forEach(point => {
-                          path.push({ lat: point.lat(), lng: point.lng() });
-                        });
-                      }
-                    });
-                  }
-                });
+            // Terminar exatamente no cliente (conectado ao marcador da casinha)
+            // IMPORTANTE: Garantir que o último ponto seja exatamente o cliente
+            const lastPoint = { lat: clientCoords.lat, lng: clientCoords.lng };
+            
+            // Remover o último ponto se for muito próximo do cliente (para evitar duplicata)
+            // e adicionar o ponto exato do cliente
+            if (path.length > 0) {
+              const secondLastPoint = path[path.length - 1];
+              const distanceToClient = calculateGeodesicDistance(
+                secondLastPoint.lat,
+                secondLastPoint.lng,
+                lastPoint.lat,
+                lastPoint.lng
+              );
+              
+              // Se o último ponto está muito próximo do cliente (menos de 1 metro), substituir
+              // Caso contrário, adicionar o ponto do cliente
+              if (distanceToClient < 1) {
+                path[path.length - 1] = lastPoint;
+              } else {
+                path.push(lastPoint);
               }
-
-              // Terminar exatamente no cliente (conectado ao marcador da casinha)
-              path.push({ lat: clientCoords.lat, lng: clientCoords.lng });
+            } else {
+              // Se não houver pontos, adicionar pelo menos CTO e cliente
+              path.push(lastPoint);
             }
 
             // GARANTIR que o primeiro ponto seja exatamente a CTO e o último seja o cliente
@@ -1834,10 +1863,10 @@
               return;
             }
 
-            // Filtrar segmentos muito longos que indicam ruas não mapeadas
-            // Isso melhora a visualização quando o Google Maps não tem a rua mapeada
-            // Remove pontos intermediários de segmentos que cortam terrenos
-            const filteredPath = filterLongSegments(path, 100); // 100 metros é o limite para considerar segmento "longo"
+            // NÃO filtrar segmentos longos - manter TODOS os pontos para máxima precisão
+            // A rota deve seguir exatamente as ruas com todos os detalhes
+            // Se houver segmentos longos, eles são parte da rota real e devem ser mantidos
+            const filteredPath = path; // Manter todos os pontos sem filtragem
 
             // Aplicar offset lateral para evitar sobreposição de rotas
             const offsetPath = applyRouteOffset(filteredPath, index);
@@ -1845,11 +1874,12 @@
             // Calcular cor da rota baseada na cor da CTO
             const routeColor = getCTOColor(cto.pct_ocup || 0);
             
-            // Desenhar Polyline usando pontos filtrados com offset
-            // Quando há ruas não mapeadas, a rota será simplificada para evitar cortes visíveis por terrenos
+            // Desenhar Polyline usando TODOS os pontos detalhados com offset
+            // IMPORTANTE: geodesic: false garante que a rota siga EXATAMENTE os pontos fornecidos
+            // Isso faz com que a rota siga cada curva e mudança de direção das ruas
             const routePolyline = new google.maps.Polyline({
               path: offsetPath,
-              geodesic: false, // Não usar geodésica, seguir os pontos da rota (centro das ruas)
+              geodesic: false, // CRÍTICO: false = seguir exatamente os pontos (não fazer linha reta entre eles)
               strokeColor: routeColor, // Cor da rota igual à cor da CTO
               strokeOpacity: 0.7,
               strokeWeight: 5, // Espessura aumentada para melhor visibilidade
