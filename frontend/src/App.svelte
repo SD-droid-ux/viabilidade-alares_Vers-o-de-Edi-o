@@ -2548,11 +2548,12 @@
         let iconScale;
         
         if (isPredio) {
-          // Path SVG para prédio com visual mais realista (como na imagem 2)
-          // Criar um prédio retangular vertical mais largo, sugerindo múltiplos andares
-          // Path único: retângulo vertical simples mas com proporções de prédio
-          iconPath = 'M -12,8 L -12,-16 L 12,-16 L 12,8 L -12,8 Z';
-          iconScale = 1; // Escala 1 para path customizado
+          // Path SVG para prédio: similar à casinha mas representando um prédio
+          // Baseado no path da casinha: M12 2L2 7v13h6v-6h8v6h6V7L12 2z
+          // Adaptado para prédio: mais alto, mais estreito, telhado menor
+          // Estrutura: telhado triangular + base retangular alta (prédio)
+          iconPath = 'M 12,2 L 2,6 L 2,22 L 8,22 L 8,16 L 16,16 L 16,22 L 22,22 L 22,6 L 12,2 Z';
+          iconScale = 1.8; // Mesma escala da casinha
         } else {
           iconPath = google.maps.SymbolPath.CIRCLE;
           iconScale = 18;
@@ -2564,7 +2565,7 @@
         const strokeColor = isPredio 
           ? (isAtivado ? '#1E7E34' : '#7F8C8D') // Borda verde escuro para ativado, cinza para não ativado
           : '#000000';
-        const strokeWeight = isPredio ? 2 : 3; // Borda para prédios
+        const strokeWeight = isPredio ? 2.5 : 3; // Borda similar à casinha
 
         ctoMarker = new google.maps.Marker({
           position: ctoPosition,
@@ -2579,10 +2580,10 @@
             fillOpacity: 1,
             strokeColor: strokeColor,
             strokeWeight: strokeWeight,
-            anchor: new google.maps.Point(0, 8) // Ancorar no centro da base do prédio
+            anchor: new google.maps.Point(12, 22) // Mesmo anchor da casinha
           },
           label: {
-            text: isPredio ? '' : `${currentMarkerNumber}`, // Sem label para prédios (o ícone já é identificável)
+            text: isPredio ? '' : `${currentMarkerNumber}`, // Sem label para prédios
             color: '#FFFFFF',
             fontSize: '14px',
             fontWeight: 'bold'
