@@ -701,25 +701,12 @@ app.get('/api/ctos/nearby', async (req, res) => {
               if (row.id_cto) {
                 const idNum = parseInt(row.id_cto);
                 if (!isNaN(idNum)) {
-                  // Tentar buscar como BIGINT primeiro
-                  let { data: dataId } = await supabase
+                  // Buscar por ID do equipamento (funciona com BIGINT ou TEXT)
+                  const { data: dataId } = await supabase
                     .from('condominios')
                     .select('*')
                     .eq('id_equipamento', idNum)
                     .limit(1);
-                  
-                  // Se não encontrou e id_equipamento é TEXT, tentar como string
-                  if ((!dataId || dataId.length === 0)) {
-                    const { data: dataIdText } = await supabase
-                      .from('condominios')
-                      .select('*')
-                      .eq('id_equipamento', String(idNum))
-                      .limit(1);
-                    
-                    if (dataIdText && dataIdText.length > 0) {
-                      dataId = dataIdText;
-                    }
-                  }
                   
                   if (dataId && dataId.length > 0) {
                     foundCondominio = dataId[0];
@@ -873,7 +860,7 @@ app.get('/api/condominios/check-cto', async (req, res) => {
       }
       
       // Se não encontrou, buscar por ID do equipamento
-      if (!foundData && id_equipamento && id_equipamento !== '#N/D') {
+      if (!foundData && id_equipamento && id_equipamento !== '#N/D' && id_equipamento !== '#N/A') {
         const idNum = parseInt(id_equipamento);
         if (!isNaN(idNum)) {
           const { data: dataId, error: errorId } = await supabase
