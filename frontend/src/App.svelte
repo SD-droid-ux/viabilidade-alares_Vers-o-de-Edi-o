@@ -84,6 +84,9 @@
   let clientInfoWindow = null; // InfoWindow do cliente
   let clientCoords = null; // Coordenadas do cliente
   let ctos = []; // CTOs encontradas
+  
+  // Filtrar apenas CTOs de rua (não prédios) para exibição nos boxes e lista
+  $: ctosRua = ctos.filter(cto => !cto.is_condominio || cto.is_condominio === false);
   let routes = []; // Rotas desenhadas no mapa
   let routeData = []; // Dados das rotas (para edição) - armazena CTO associada e path original
   let editingRoutes = false; // Modo de edição de rotas (DEPRECADO - usar editingRouteIndex)
@@ -1623,8 +1626,9 @@
       // ============================================
       // ETAPA 4: Calcular rotas APENAS para CTOs normais
       // ============================================
-      // Limitar a no máximo 5 CTOs normais para calcular distância real
-      const ctosToCheck = ctosNormais.slice(0, 5);
+      // Buscar mais CTOs inicialmente (ex: 10-15) para garantir que temos 5 válidas após filtrar por distância real
+      // Isso garante que mesmo que algumas fiquem fora de 250m real, ainda teremos 5 válidas
+      const ctosToCheck = ctosNormais.slice(0, 15); // Buscar até 15 para garantir 5 válidas
 
       // OTIMIZAÇÃO: Calcular distâncias em paralelo (Promise.all)
       const distancePromises = ctosToCheck.map(async (cto) => {
@@ -1663,8 +1667,13 @@
       // ============================================
       // ETAPA 5: Combinar prédios + CTOs normais
       // ============================================
+      // IMPORTANTE: Limitar a no máximo 5 CTOs de RUA (não contar prédios no limite)
+      // Prédios são mostrados separadamente e não contam no limite de 5
+      const ctosNormaisLimitadas = ctosWithRealDistance.slice(0, 5);
+      
       // Combinar prédios (já plotados) + CTOs normais (com rotas)
-      const todasCTOs = [...predios, ...ctosWithRealDistance];
+      // Prédios não contam no limite de 5 CTOs
+      const todasCTOs = [...predios, ...ctosNormaisLimitadas];
       
       if (todasCTOs.length === 0) {
         error = 'Nenhuma CTO ou prédio encontrado dentro de 250m de distância';
@@ -1673,14 +1682,21 @@
       }
 
       // Ordenar por distância (real para normais, linear para prédios)
+      // Prédios sempre aparecem primeiro (sem distância real)
       todasCTOs.sort((a, b) => {
+        // Se ambos são prédios, manter ordem original
+        if (a.is_condominio && b.is_condominio) return 0;
+        // Prédios sempre vêm primeiro
+        if (a.is_condominio) return -1;
+        if (b.is_condominio) return 1;
+        // Para CTOs normais, ordenar por distância real
         const distA = a.distancia_real || a.distancia_metros || 0;
         const distB = b.distancia_real || b.distancia_metros || 0;
         return distA - distB;
       });
 
-      // Limitar a no máximo 5 no total (prédios + CTOs)
-      ctos = todasCTOs.slice(0, 5);
+      // Atribuir ao array final (prédios + até 5 CTOs de rua)
+      ctos = todasCTOs;
       
       // Desenhar rotas e marcadores
       // Prédios já foram plotados, agora plotar CTOs normais com rotas
@@ -2546,24 +2562,32 @@
         continue;
       }
 
-      // Calcular offset se houver CTOs duplicadas nesta coordenada
+      // Posição original (SEMPRE usar esta para marcadores e rotas)
+      // Offset só deve ser aplicado em casos muito específicos de duplicatas exatas
+      const originalPosition = { lat: parseFloat(cto.latitude), lng: parseFloat(cto.longitude) };
+      
+      // Calcular offset APENAS se houver múltiplas CTOs na MESMA coordenada EXATA
+      // E apenas se não for prédio (prédios não precisam de offset)
       const latRounded = Math.round(cto.latitude * 1000000) / 1000000;
       const lngRounded = Math.round(cto.longitude * 1000000) / 1000000;
       const coordKey = `${latRounded},${lngRounded}`;
       const group = coordinateGroups[coordKey];
       const indexInGroup = group.findIndex(item => item.index === i);
-      // Aplicar offset APENAS se houver múltiplas CTOs na mesma coordenada
-      // Se houver apenas uma CTO, usar posição original (sem offset)
-      const offset = group.length > 1 
+      
+      // Aplicar offset APENAS se:
+      // 1. Houver múltiplas CTOs na mesma coordenada (group.length > 1)
+      // 2. NÃO for prédio (prédios não precisam de offset)
+      // 3. A CTO atual não for prédio
+      const isPredio = cto.is_condominio === true;
+      const shouldApplyOffset = !isPredio && group && group.length > 1;
+      
+      const offset = shouldApplyOffset
         ? calculateMarkerOffset(coordKey, indexInGroup, group.length)
         : { latOffset: 0, lngOffset: 0 };
       
-      // Posição original (para rotas e marcadores quando não há duplicatas)
-      const originalPosition = { lat: parseFloat(cto.latitude), lng: parseFloat(cto.longitude) };
-      
-      // Posição com offset (para marcador visual - apenas quando há duplicatas)
-      // Se não há offset, usar posição original
-      const ctoPosition = offset.latOffset === 0 && offset.lngOffset === 0
+      // Posição do marcador: usar offset APENAS se realmente necessário
+      // Para garantir que marcador e rota estejam alinhados, usar originalPosition na maioria dos casos
+      const ctoPosition = (offset.latOffset === 0 && offset.lngOffset === 0)
         ? originalPosition
         : { 
             lat: parseFloat(cto.latitude) + offset.latOffset, 
@@ -2575,12 +2599,14 @@
 
       // Desenhar rota REAL usando Directions API (seguindo ruas)
       // NÃO criar rota para CTOs de prédio/condomínio (OTIMIZAÇÃO: pula completamente)
+      // NÃO criar rota para prédios (já são prédios, não CTOs de rua)
       // Não criar rota se a distância for 0m (CTO está no mesmo local do cliente)
-      if (cto.is_condominio) {
-        // Prédios não criam rotas - pular completamente para melhor performance
+      if (cto.is_condominio || isPredio) {
+        // Prédios não criam rotas nem distâncias - pular completamente para melhor performance
         // console.log(`🏢 [Frontend] CTO ${cto.nome} é de prédio - rota não será criada`);
-      } else if (cto.distancia_metros && cto.distancia_metros > 0) {
-        // Apenas CTOs normais calculam rotas (pode demorar)
+      } else if (cto.distancia_metros && cto.distancia_metros > 0 && cto.distancia_real) {
+        // Apenas CTOs normais (não prédios) calculam rotas (pode demorar)
+        // Só calcular se tiver distância real calculada (dentro de 250m)
         try {
           await drawRealRoute(cto, i);
         } catch (routeErr) {
@@ -2593,8 +2619,7 @@
       let ctoMarker = null;
       let markerCreated = false;
       
-      // Verificar se é CTO de prédio para aplicar visual diferente (definir antes do try)
-      const isPredio = cto.is_condominio === true;
+      // isPredio já foi definido acima (linha 2578)
       
       try {
         
@@ -2642,8 +2667,14 @@
           : '#000000';
         const strokeWeight = isPredio ? 2.5 : 3; // Borda similar à casinha
 
+        // Usar originalPosition para o marcador (garantir alinhamento com rota)
+        // Offset só é aplicado em casos muito específicos de duplicatas exatas
+        const markerPosition = (offset.latOffset === 0 && offset.lngOffset === 0)
+          ? originalPosition
+          : ctoPosition;
+        
         ctoMarker = new google.maps.Marker({
-          position: ctoPosition,
+          position: markerPosition,
           map: map,
           title: isPredio 
             ? `🏢 ${cto.nome} (PRÉDIO) - ${cto.distancia_metros}m - Não cria rota`
@@ -3994,8 +4025,9 @@
                   </div>
                 </div>
                 <div class="summary-stats">
-                  <p><strong>Total:</strong> <span style="font-weight: bold; color: #000000;">${ctos.length}</span> <strong style="font-weight: bold; color: #000000;">${ctos.length === 1 ? 'Equipamento encontrado' : 'Equipamentos encontrados'} dentro de 250m</strong></p>
-                  <p><strong>Total de Portas Disponíveis:</strong> <span style="font-weight: bold; color: #000000;">${ctos.reduce((sum, cto) => sum + (cto.vagas_total - cto.clientes_conectados), 0)}</span> <strong style="font-weight: bold; color: #000000;">portas</strong></p>
+                  {@const ctosRuaReport = ctos.filter(cto => !cto.is_condominio || cto.is_condominio === false)}
+                  <p><strong>Total:</strong> <span style="font-weight: bold; color: #000000;">${ctosRuaReport.length}</span> <strong style="font-weight: bold; color: #000000;">${ctosRuaReport.length === 1 ? 'Equipamento encontrado' : 'Equipamentos encontrados'} dentro de 250m</strong></p>
+                  <p><strong>Total de Portas Disponíveis:</strong> <span style="font-weight: bold; color: #000000;">${ctosRuaReport.reduce((sum, cto) => sum + (cto.vagas_total - cto.clientes_conectados), 0)}</span> <strong style="font-weight: bold; color: #000000;">portas</strong></p>
                 </div>
               </div>
               ${mapImageData ? `
@@ -4029,7 +4061,9 @@
               <tbody>
       `;
 
-      ctos.forEach((cto, index) => {
+      // Filtrar apenas CTOs de rua para o relatório
+      const ctosRuaReport = ctos.filter(cto => !cto.is_condominio || cto.is_condominio === false);
+      ctosRuaReport.forEach((cto, index) => {
         const portasDisponiveis = cto.vagas_total - cto.clientes_conectados;
         const semPortas = portasDisponiveis === 0;
         const styleColor = semPortas ? ' style="color: #F44336;"' : '';
@@ -4359,8 +4393,8 @@
         {#if ctos.length > 0}
           <div class="results-info">
             <p>
-              <strong>{ctos.length}</strong> 
-              {ctos.length === 1 ? 'Equipamento encontrado' : 'Equipamentos encontrados'}
+              <strong>{ctosRua.length}</strong> 
+              {ctosRua.length === 1 ? 'Equipamento encontrado' : 'Equipamentos encontrados'}
               <button 
                 class="info-icon" 
                 on:click={() => showInfoEquipamentos = !showInfoEquipamentos}
@@ -4403,7 +4437,7 @@
             {/if}
           </div>
 
-          {@const totalPortasDisponiveis = ctos.reduce((sum, cto) => sum + ((cto.vagas_total || 0) - (cto.clientes_conectados || 0)), 0)}
+          {@const totalPortasDisponiveis = ctosRua.reduce((sum, cto) => sum + ((cto.vagas_total || 0) - (cto.clientes_conectados || 0)), 0)}
           <div class="results-info">
             <p>
               <strong>{totalPortasDisponiveis}</strong> 
@@ -4452,7 +4486,7 @@
 
           <div class="ctos-list-container">
             <div class="ctos-list">
-              {#each ctos as cto, index}
+              {#each ctosRua as cto, index}
                 {@const ctoColor = getCTOColor(cto.pct_ocup || 0)}
                 <div class="cto-item">
                   <div class="cto-header">
