@@ -1562,6 +1562,7 @@
               is_condominio: true,
               condominio_data: p,
               status_cto_condominio: p.status_cto || null,
+              ctos_internas: p.ctos_internas || [], // CTOs internas do prédio
               distancia_metros: p.distancia_metros,
               distancia_km: Math.round((p.distancia_metros / 1000) * 1000) / 1000,
               distancia_real: p.distancia_metros,
@@ -2824,30 +2825,87 @@
             markerNumber++;
           }
 
-          // InfoWindow para a CTO (ordem solicitada pelo usuário)
-          // Garantir que não há objetos sendo convertidos para string incorretamente
-          const nomePredio = isPredio && cto.condominio_data && cto.condominio_data.nome_predio 
-            ? String(cto.condominio_data.nome_predio) 
-            : 'N/A';
-          const predioInfo = isPredio 
-            ? `<br><strong style="color: #6C757D;">🏢 PRÉDIO/CONDOMÍNIO:</strong> ${nomePredio}<br><strong style="color: #DC3545;">⚠️ Esta CTO não cria rota até o cliente</strong>`
-            : '';
+          // InfoWindow para a CTO ou Prédio
+          let infoWindowContent = '';
+          
+          if (isPredio) {
+            // InfoWindow para PRÉDIO com CTOs internas
+            const nomePredio = cto.nome || 'Prédio';
+            const statusCto = cto.status_cto_condominio || 'N/A';
+            const ctosInternas = cto.ctos_internas || [];
+            
+            let ctosListHTML = '';
+            if (ctosInternas.length > 0) {
+              ctosListHTML = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;">';
+              ctosListHTML += `<strong style="color: #6C757D; font-size: 13px;">CTOs Internas (${ctosInternas.length}):</strong><br>`;
+              
+              ctosInternas.forEach((ctoInterna, idx) => {
+                ctosListHTML += `
+                  <div style="margin-top: 8px; padding: 8px; background-color: #f8f9fa; border-left: 3px solid #28A745; border-radius: 4px;">
+                    <strong style="color: #333; font-size: 12px;">CTO ${idx + 1}:</strong><br>
+                    <strong>Nome:</strong> ${String(ctoInterna.nome || 'N/A')}<br>
+                    <strong>ID:</strong> ${String(ctoInterna.id || 'N/A')}<br>
+                    <strong>Portas Disponíveis:</strong> ${Number(ctoInterna.portas_disponiveis || 0)}<br>
+                    <strong>Portas Totais:</strong> ${Number(ctoInterna.vagas_total || 0)}<br>
+                    <strong>Portas Conectadas:</strong> ${Number(ctoInterna.clientes_conectados || 0)}<br>
+                    <strong>Status:</strong> ${String(ctoInterna.status_cto || 'N/A')}<br>
+                  </div>
+                `;
+              });
+              
+              // Resumo total
+              const totalPortasDisponiveis = ctosInternas.reduce((sum, c) => sum + (c.portas_disponiveis || 0), 0);
+              const totalPortasTotais = ctosInternas.reduce((sum, c) => sum + (c.vagas_total || 0), 0);
+              const totalPortasConectadas = ctosInternas.reduce((sum, c) => sum + (c.clientes_conectados || 0), 0);
+              
+              ctosListHTML += `
+                <div style="margin-top: 8px; padding: 8px; background-color: #e8f5e9; border-left: 3px solid #28A745; border-radius: 4px;">
+                  <strong style="color: #1B5E20;">Resumo Total:</strong><br>
+                  <strong>Total de Portas Disponíveis:</strong> ${totalPortasDisponiveis}<br>
+                  <strong>Total de Portas:</strong> ${totalPortasTotais}<br>
+                  <strong>Total de Portas Conectadas:</strong> ${totalPortasConectadas}<br>
+                </div>
+              `;
+              
+              ctosListHTML += '</div>';
+            } else {
+              ctosListHTML = `
+                <div style="margin-top: 12px; padding: 8px; background-color: #fff3cd; border-left: 3px solid #ffc107; border-radius: 4px;">
+                  <strong style="color: #856404;">(Sem CTOs implantadas)</strong>
+                </div>
+              `;
+            }
+            
+            infoWindowContent = `
+              <div style="padding: 12px; font-family: 'Inter', sans-serif; line-height: 1.6; max-width: 350px;">
+                <div style="background-color: #FFE5E5; padding: 8px; margin-bottom: 12px; border-left: 4px solid #DC3545; border-radius: 4px;">
+                  <strong style="color: #DC3545; font-size: 14px;">🏢 PRÉDIO/CONDOMÍNIO</strong>
+                </div>
+                <strong>Nome:</strong> ${String(nomePredio)}<br>
+                <strong>Status:</strong> ${String(statusCto)}<br>
+                <strong>Distância:</strong> ${Number(cto.distancia_metros || 0)}m (${Number(cto.distancia_km || 0)}km)<br>
+                <strong style="color: #DC3545;">⚠️ Não cria rota até o cliente</strong>
+                ${ctosListHTML}
+              </div>
+            `;
+          } else {
+            // InfoWindow para CTO NORMAL (rua)
+            infoWindowContent = `
+              <div style="padding: 8px; font-family: 'Inter', sans-serif; line-height: 1.6;">
+                <strong>Cidade:</strong> ${String(cto.cidade || 'N/A')}<br>
+                <strong>POP:</strong> ${String(cto.pop || 'N/A')}<br>
+                <strong>Nome:</strong> ${String(cto.nome || 'N/A')}<br>
+                <strong>ID:</strong> ${String(cto.id || 'N/A')}<br>
+                <strong>Total de Portas:</strong> ${Number(cto.vagas_total || 0)}<br>
+                <strong>Portas Conectadas:</strong> ${Number(cto.clientes_conectados || 0)}<br>
+                <strong>Portas Disponíveis:</strong> ${Number((cto.vagas_total || 0) - (cto.clientes_conectados || 0))}<br>
+                <strong>Distância:</strong> ${Number(cto.distancia_metros || 0)}m (${Number(cto.distancia_km || 0)}km)
+              </div>
+            `;
+          }
           
           const ctoInfoWindow = new google.maps.InfoWindow({
-            content: `
-              <div style="padding: 8px; font-family: 'Inter', sans-serif; line-height: 1.6;">
-                  ${isPredio ? '<div style="background-color: #FFE5E5; padding: 4px; margin-bottom: 8px; border-left: 3px solid #DC3545;"><strong style="color: #DC3545;">🏢 CTO DE PRÉDIO/CONDOMÍNIO</strong></div>' : ''}
-                  <strong>Cidade:</strong> ${String(cto.cidade || 'N/A')}<br>
-                  <strong>POP:</strong> ${String(cto.pop || 'N/A')}<br>
-                  <strong>Nome:</strong> ${String(cto.nome || 'N/A')}<br>
-                  <strong>ID:</strong> ${String(cto.id || 'N/A')}<br>
-                  <strong>Total de Portas:</strong> ${Number(cto.vagas_total || 0)}<br>
-                  <strong>Portas Conectadas:</strong> ${Number(cto.clientes_conectados || 0)}<br>
-                  <strong>Portas Disponíveis:</strong> ${Number((cto.vagas_total || 0) - (cto.clientes_conectados || 0))}<br>
-                  <strong>Distância:</strong> ${Number(cto.distancia_metros || 0)}m (${Number(cto.distancia_km || 0)}km)
-                  ${predioInfo}
-              </div>
-            `
+            content: infoWindowContent
           });
 
           // Adicionar listener de clique
