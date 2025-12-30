@@ -1716,10 +1716,22 @@
     return new Promise((resolve, reject) => {
       const directionsService = new google.maps.DirectionsService();
 
+      // Parsear coordenadas da CTO com precisão (garantir que são números válidos)
+      const ctoLat = parseFloat(cto.latitude);
+      const ctoLng = parseFloat(cto.longitude);
+      
+      // Validar coordenadas
+      if (isNaN(ctoLat) || isNaN(ctoLng)) {
+        console.warn(`⚠️ CTO ${cto.nome} tem coordenadas inválidas para calcular rota`);
+        reject(new Error('Coordenadas inválidas'));
+        return;
+      }
+
       // Calcular rota da CTO até o cliente (partindo da CTO)
+      // IMPORTANTE: Usar coordenadas parseadas para garantir que sejam exatamente as mesmas do marcador
       directionsService.route(
         {
-          origin: { lat: cto.latitude, lng: cto.longitude }, // Origem: CTO
+          origin: { lat: ctoLat, lng: ctoLng }, // Origem: CTO (coordenadas parseadas)
           destination: { lat: clientCoords.lat, lng: clientCoords.lng }, // Destino: Cliente
           travelMode: google.maps.TravelMode.WALKING, // Modo de caminhada para rota real
           unitSystem: google.maps.UnitSystem.METRIC,
@@ -1733,7 +1745,8 @@
             const path = [];
 
             // Começar exatamente na CTO (conectado ao marcador)
-            path.push({ lat: cto.latitude, lng: cto.longitude });
+            // IMPORTANTE: Usar as mesmas coordenadas parseadas usadas no marcador
+            path.push({ lat: ctoLat, lng: ctoLng });
 
             // Usar steps.path para máxima precisão (todos os pontos seguindo as ruas)
             // A API já projeta os pontos de início e fim nas ruas mais próximas
@@ -1763,8 +1776,9 @@
               const routeColor = getCTOColor(cto.pct_ocup || 0);
               
               // Fallback: desenhar linha reta conectando os marcadores
+              // Usar coordenadas parseadas para garantir alinhamento
               const fallbackPath = [
-                { lat: cto.latitude, lng: cto.longitude },
+                { lat: ctoLat, lng: ctoLng },
                 { lat: clientCoords.lat, lng: clientCoords.lng }
               ];
               
@@ -2562,16 +2576,26 @@
         continue;
       }
 
+      // Parsear coordenadas com precisão (garantir que são números válidos)
+      const ctoLat = parseFloat(cto.latitude);
+      const ctoLng = parseFloat(cto.longitude);
+      
+      // Validar se as coordenadas são números válidos
+      if (isNaN(ctoLat) || isNaN(ctoLng)) {
+        console.warn(`⚠️ CTO ${i + 1} (${cto.nome}) tem coordenadas inválidas, pulando...`);
+        continue;
+      }
+      
       // Posição original (SEMPRE usar esta para marcadores e rotas de CTOs de rua)
-      const originalPosition = { lat: parseFloat(cto.latitude), lng: parseFloat(cto.longitude) };
+      // Usar coordenadas parseadas para garantir precisão
+      const originalPosition = { lat: ctoLat, lng: ctoLng };
       
       // Verificar se é prédio
       const isPredio = cto.is_condominio === true;
       
       // Para CTOs de rua: SEMPRE usar posição original (sem offset)
       // Isso garante que marcador e rota estejam perfeitamente alinhados
-      // Offset só seria necessário em casos muito raros de múltiplas CTOs na mesma coordenada exata
-      // Mas para garantir precisão, vamos sempre usar originalPosition para CTOs de rua
+      // IMPORTANTE: Usar exatamente as mesmas coordenadas parseadas para marcador e rota
       const markerPosition = originalPosition;
       
       // Usar posição original para bounds (para garantir que o zoom inclua a posição real)
@@ -2626,6 +2650,7 @@
         // Formato: prédio com base, andares e telhado (visual mais realista)
         let iconPath;
         let iconScale;
+        let iconAnchor;
         
         if (isPredio) {
           // Path SVG para prédio: similar à casinha mas representando um prédio
@@ -2634,9 +2659,12 @@
           // Estrutura: telhado triangular + base retangular alta (prédio)
           iconPath = 'M 12,2 L 2,6 L 2,22 L 8,22 L 8,16 L 16,16 L 16,22 L 22,22 L 22,6 L 12,2 Z';
           iconScale = 1.8; // Mesma escala da casinha
+          iconAnchor = new google.maps.Point(12, 22); // Anchor na base do prédio (mesmo da casinha)
         } else {
+          // Para CTOs de rua: usar círculo com anchor no centro (0,0)
           iconPath = google.maps.SymbolPath.CIRCLE;
           iconScale = 18;
+          iconAnchor = new google.maps.Point(0, 0); // Centro do círculo - CRÍTICO para alinhamento correto
         }
         
         // Borda mais escura para prédios ativados, mais clara para não ativados
@@ -2649,6 +2677,7 @@
 
         // Para CTOs de rua, sempre usar originalPosition (já definido acima)
         // Isso garante alinhamento perfeito entre marcador e rota
+        // IMPORTANTE: As coordenadas devem ser exatamente as mesmas usadas na rota
         ctoMarker = new google.maps.Marker({
           position: markerPosition,
           map: map,
@@ -2662,7 +2691,7 @@
             fillOpacity: 1,
             strokeColor: strokeColor,
             strokeWeight: strokeWeight,
-            anchor: new google.maps.Point(12, 22) // Mesmo anchor da casinha
+            anchor: iconAnchor // Anchor correto: centro para círculos, base para prédios
           },
           label: isPredio ? undefined : (currentMarkerNumber ? { // Sem label para prédios, label numérico para CTOs normais
             text: `${currentMarkerNumber}`,
