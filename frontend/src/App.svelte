@@ -2562,37 +2562,17 @@
         continue;
       }
 
-      // Posição original (SEMPRE usar esta para marcadores e rotas)
-      // Offset só deve ser aplicado em casos muito específicos de duplicatas exatas
+      // Posição original (SEMPRE usar esta para marcadores e rotas de CTOs de rua)
       const originalPosition = { lat: parseFloat(cto.latitude), lng: parseFloat(cto.longitude) };
       
-      // Calcular offset APENAS se houver múltiplas CTOs na MESMA coordenada EXATA
-      // E apenas se não for prédio (prédios não precisam de offset)
-      const latRounded = Math.round(cto.latitude * 1000000) / 1000000;
-      const lngRounded = Math.round(cto.longitude * 1000000) / 1000000;
-      const coordKey = `${latRounded},${lngRounded}`;
-      const group = coordinateGroups[coordKey];
-      const indexInGroup = group.findIndex(item => item.index === i);
-      
-      // Aplicar offset APENAS se:
-      // 1. Houver múltiplas CTOs na mesma coordenada (group.length > 1)
-      // 2. NÃO for prédio (prédios não precisam de offset)
-      // 3. A CTO atual não for prédio
+      // Verificar se é prédio
       const isPredio = cto.is_condominio === true;
-      const shouldApplyOffset = !isPredio && group && group.length > 1;
       
-      const offset = shouldApplyOffset
-        ? calculateMarkerOffset(coordKey, indexInGroup, group.length)
-        : { latOffset: 0, lngOffset: 0 };
-      
-      // Posição do marcador: usar offset APENAS se realmente necessário
-      // Para garantir que marcador e rota estejam alinhados, usar originalPosition na maioria dos casos
-      const ctoPosition = (offset.latOffset === 0 && offset.lngOffset === 0)
-        ? originalPosition
-        : { 
-            lat: parseFloat(cto.latitude) + offset.latOffset, 
-            lng: parseFloat(cto.longitude) + offset.lngOffset 
-          };
+      // Para CTOs de rua: SEMPRE usar posição original (sem offset)
+      // Isso garante que marcador e rota estejam perfeitamente alinhados
+      // Offset só seria necessário em casos muito raros de múltiplas CTOs na mesma coordenada exata
+      // Mas para garantir precisão, vamos sempre usar originalPosition para CTOs de rua
+      const markerPosition = originalPosition;
       
       // Usar posição original para bounds (para garantir que o zoom inclua a posição real)
       bounds.extend(originalPosition);
@@ -2667,12 +2647,8 @@
           : '#000000';
         const strokeWeight = isPredio ? 2.5 : 3; // Borda similar à casinha
 
-        // Usar originalPosition para o marcador (garantir alinhamento com rota)
-        // Offset só é aplicado em casos muito específicos de duplicatas exatas
-        const markerPosition = (offset.latOffset === 0 && offset.lngOffset === 0)
-          ? originalPosition
-          : ctoPosition;
-        
+        // Para CTOs de rua, sempre usar originalPosition (já definido acima)
+        // Isso garante alinhamento perfeito entre marcador e rota
         ctoMarker = new google.maps.Marker({
           position: markerPosition,
           map: map,
