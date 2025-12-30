@@ -2541,16 +2541,17 @@
         // Usar markerNumber para numeração sequencial (1, 2, 3, 4, 5)
         const currentMarkerNumber = markerNumber;
 
-        // Visual diferente para prédios: usar ícone de prédio (retângulo)
+        // Visual diferente para prédios: usar ícone de prédio com múltiplos andares
         // Criar path customizado para prédio usando SVG path
-        // Formato: retângulo vertical representando prédio
+        // Formato: prédio com base, andares e telhado (visual mais realista)
         let iconPath;
         let iconScale;
         
         if (isPredio) {
-          // Path SVG para retângulo (prédio)
-          // M = move to, L = line to, Z = close path
-          iconPath = 'M -10,-12 L 10,-12 L 10,12 L -10,12 Z';
+          // Path SVG para prédio com visual mais realista (como na imagem 2)
+          // Criar um prédio retangular vertical mais largo, sugerindo múltiplos andares
+          // Path único: retângulo vertical simples mas com proporções de prédio
+          iconPath = 'M -12,8 L -12,-16 L 12,-16 L 12,8 L -12,8 Z';
           iconScale = 1; // Escala 1 para path customizado
         } else {
           iconPath = google.maps.SymbolPath.CIRCLE;
@@ -2563,7 +2564,7 @@
         const strokeColor = isPredio 
           ? (isAtivado ? '#1E7E34' : '#7F8C8D') // Borda verde escuro para ativado, cinza para não ativado
           : '#000000';
-        const strokeWeight = isPredio ? 2.5 : 3; // Borda para prédios
+        const strokeWeight = isPredio ? 2 : 3; // Borda para prédios
 
         ctoMarker = new google.maps.Marker({
           position: ctoPosition,
@@ -2577,12 +2578,13 @@
             fillColor: ctoColor,
             fillOpacity: 1,
             strokeColor: strokeColor,
-            strokeWeight: strokeWeight
+            strokeWeight: strokeWeight,
+            anchor: new google.maps.Point(0, 8) // Ancorar no centro da base do prédio
           },
           label: {
-            text: isPredio ? 'P' : `${currentMarkerNumber}`, // "P" para Prédio
+            text: isPredio ? '' : `${currentMarkerNumber}`, // Sem label para prédios (o ícone já é identificável)
             color: '#FFFFFF',
-            fontSize: isPredio ? '12px' : '14px',
+            fontSize: '14px',
             fontWeight: 'bold'
           },
           zIndex: 1000 + markerNumber,
