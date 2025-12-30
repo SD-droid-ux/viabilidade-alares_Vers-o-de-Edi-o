@@ -1770,33 +1770,38 @@
             // IMPORTANTE: Usar as mesmas coordenadas parseadas usadas no marcador
             path.push({ lat: ctoLat, lng: ctoLng });
 
-            // Usar steps.path para MÁXIMA PRECISÃO e DETALHAMENTO
-            // Cada step.path contém TODOS os pontos que seguem exatamente as ruas
-            // Isso garante que a rota seja o mais detalhada possível
-            if (route.legs && route.legs.length > 0) {
-              route.legs.forEach((leg) => {
-                if (leg.steps && leg.steps.length > 0) {
-                  leg.steps.forEach((step, stepIndex) => {
-                    // step.path contém TODOS os pontos detalhados deste trecho da rota
-                    // Inclui pontos de início, meio e fim do step, seguindo exatamente a rua
-                    if (step.path && step.path.length > 0) {
-                      step.path.forEach((point, pointIndex) => {
-                        const lat = point.lat();
-                        const lng = point.lng();
-                        
-                        // Adicionar todos os pontos, exceto o primeiro de cada step (para evitar duplicatas)
-                        // O primeiro step já começa na CTO, então pulamos o primeiro ponto do primeiro step
-                        if (stepIndex === 0 && pointIndex === 0) {
-                          // Pular o primeiro ponto do primeiro step (já adicionamos a CTO)
-                          return;
-                        }
-                        
-                        path.push({ lat, lng });
-                      });
-                    }
-                  });
-                }
+            // Usar overview_path da rota que já contém todos os pontos otimizados e detalhados
+            // overview_path é a representação mais precisa da rota calculada pela API
+            // Ele já segue exatamente as ruas com todos os detalhes necessários
+            if (route.overview_path && route.overview_path.length > 0) {
+              // overview_path já contém todos os pontos da rota, incluindo início e fim
+              // É a forma mais precisa e confiável de obter a rota completa
+              route.overview_path.forEach(point => {
+                path.push({ lat: point.lat(), lng: point.lng() });
               });
+            } else {
+              // Fallback: usar steps.path se overview_path não estiver disponível
+              if (route.legs && route.legs.length > 0) {
+                route.legs.forEach((leg) => {
+                  if (leg.steps && leg.steps.length > 0) {
+                    leg.steps.forEach((step, stepIndex) => {
+                      if (step.path && step.path.length > 0) {
+                        step.path.forEach((point, pointIndex) => {
+                          const lat = point.lat();
+                          const lng = point.lng();
+                          
+                          // Adicionar todos os pontos, exceto o primeiro do primeiro step (já temos a CTO)
+                          if (stepIndex === 0 && pointIndex === 0) {
+                            return;
+                          }
+                          
+                          path.push({ lat, lng });
+                        });
+                      }
+                    });
+                  }
+                });
+              }
             }
 
             // Terminar exatamente no cliente (conectado ao marcador da casinha)
@@ -1868,13 +1873,15 @@
             // Se houver segmentos longos, eles são parte da rota real e devem ser mantidos
             const filteredPath = path; // Manter todos os pontos sem filtragem
 
-            // Aplicar offset lateral para evitar sobreposição de rotas
-            const offsetPath = applyRouteOffset(filteredPath, index);
+            // NÃO aplicar offset - usar a rota exata da API para máxima precisão
+            // O offset estava distorcendo a rota e fazendo ela não chegar ao cliente corretamente
+            // Se houver sobreposição de rotas, é melhor ter rotas precisas do que rotas deslocadas
+            const offsetPath = filteredPath; // Usar path original sem offset
 
             // Calcular cor da rota baseada na cor da CTO
             const routeColor = getCTOColor(cto.pct_ocup || 0);
             
-            // Desenhar Polyline usando TODOS os pontos detalhados com offset
+            // Desenhar Polyline usando TODOS os pontos detalhados SEM offset
             // IMPORTANTE: geodesic: false garante que a rota siga EXATAMENTE os pontos fornecidos
             // Isso faz com que a rota siga cada curva e mudança de direção das ruas
             const routePolyline = new google.maps.Polyline({
