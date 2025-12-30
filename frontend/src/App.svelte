@@ -2789,7 +2789,7 @@
         // Isso garante alinhamento perfeito entre marcador e rota
         // IMPORTANTE: As coordenadas devem ser exatamente as mesmas usadas na rota
         ctoMarker = new google.maps.Marker({
-          position: markerPosition,
+          position: originalPosition,
           map: map,
           title: isPredio 
             ? `🏢 ${cto.nome} (PRÉDIO) - ${cto.distancia_metros}m - Não cria rota`
