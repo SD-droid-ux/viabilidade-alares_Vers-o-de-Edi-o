@@ -1543,18 +1543,18 @@
 
     try {
       // ============================================
-      // ETAPA 1: Buscar PRÉDIOS dentro de 250m
+      // ETAPA 1: Buscar PRÉDIOS dentro de 100m (OTIMIZAÇÃO: reduzido de 250m para melhor performance)
       // ============================================
-      console.log(`🏢 [Frontend] ETAPA 1: Buscando PRÉDIOS próximos de (${clientCoords.lat}, ${clientCoords.lng})...`);
+      console.log(`🏢 [Frontend] ETAPA 1: Buscando PRÉDIOS próximos de (${clientCoords.lat}, ${clientCoords.lng}) dentro de 100m...`);
       
-      const prediosResponse = await fetch(getApiUrl(`/api/condominios/nearby?lat=${clientCoords.lat}&lng=${clientCoords.lng}&radius=250`));
+      const prediosResponse = await fetch(getApiUrl(`/api/condominios/nearby?lat=${clientCoords.lat}&lng=${clientCoords.lng}&radius=100`));
       
       let predios = [];
       if (prediosResponse.ok) {
         const prediosData = await prediosResponse.json();
         if (prediosData.success && prediosData.condominios) {
           predios = prediosData.condominios
-            .filter(p => p.distancia_metros <= 250)
+            .filter(p => p.distancia_metros <= 100)
             .map(p => ({
               nome: p.nome_predio || 'Prédio',
               latitude: parseFloat(p.latitude),
@@ -1574,7 +1574,7 @@
               id: ''
             }));
           
-          console.log(`✅ [Frontend] ${predios.length} prédios encontrados dentro de 250m`);
+          console.log(`✅ [Frontend] ${predios.length} prédios encontrados dentro de 100m`);
           
           // Adicionar prédios imediatamente ao array (sem calcular rotas)
           if (predios.length > 0) {
