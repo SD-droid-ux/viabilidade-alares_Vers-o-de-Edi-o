@@ -1552,10 +1552,18 @@
       
       console.log(`✅ [Frontend] ${validCTOs.length} CTOs encontradas dentro de 250m`);
       
-      // Limitar a no máximo 5 CTOs para calcular distância real
-      const ctosToCheck = validCTOs.slice(0, 5);
+      // Separar CTOs de prédio das CTOs normais
+      const ctosPredio = validCTOs.filter(cto => cto.is_condominio === true);
+      const ctosNormais = validCTOs.filter(cto => !cto.is_condominio || cto.is_condominio === false);
+      
+      if (ctosPredio.length > 0) {
+        console.log(`🏢 [Frontend] ${ctosPredio.length} CTOs de prédio encontradas (não serão criadas rotas)`);
+      }
+      
+      // Limitar a no máximo 5 CTOs normais para calcular distância real
+      const ctosToCheck = ctosNormais.slice(0, 5);
 
-      // Calcular distância REAL para cada CTO encontrada
+      // Calcular distância REAL apenas para CTOs normais (não de prédio)
       const ctosWithRealDistance = [];
 
       for (const cto of ctosToCheck) {
@@ -1575,7 +1583,6 @@
               distancia_km: Math.round((realDistance / 1000) * 1000) / 1000,
               distancia_real: realDistance
             });
-          } else {
           }
         } catch (err) {
           console.error(`❌ Erro ao calcular distância real para ${cto.nome}:`, err);
@@ -1587,17 +1594,31 @@
         }
       }
 
-      if (ctosWithRealDistance.length === 0) {
+      // Adicionar CTOs de prédio sem calcular distância real (não criam rota)
+      const ctosPredioFormatadas = ctosPredio.map(cto => ({
+        ...cto,
+        distancia_km: Math.round((cto.distancia_metros / 1000) * 1000) / 1000,
+        distancia_real: cto.distancia_metros // Usar distância linear para prédios
+      }));
+
+      // Combinar CTOs normais (com rota) e CTOs de prédio (sem rota)
+      const todasCTOs = [...ctosWithRealDistance, ...ctosPredioFormatadas];
+      
+      if (todasCTOs.length === 0) {
         error = 'Nenhuma CTO encontrada dentro de 250m de distância real (via ruas)';
         loadingCTOs = false;
         return;
       }
 
-      // Ordenar por distância real
-      ctosWithRealDistance.sort((a, b) => a.distancia_real - b.distancia_real);
+      // Ordenar por distância (real para normais, linear para prédios)
+      todasCTOs.sort((a, b) => {
+        const distA = a.distancia_real || a.distancia_metros || 0;
+        const distB = b.distancia_real || b.distancia_metros || 0;
+        return distA - distB;
+      });
 
-      // Limitar a no máximo 5 CTOs
-      ctos = ctosWithRealDistance.slice(0, 5);
+      // Limitar a no máximo 5 CTOs no total
+      ctos = todasCTOs.slice(0, 5);
 
       // Desenhar rotas e marcadores com percursos reais
       await drawRoutesAndMarkers();
@@ -2482,15 +2503,17 @@
       bounds.extend(ctoPosition);
 
       // Desenhar rota REAL usando Directions API (seguindo ruas)
+      // NÃO criar rota para CTOs de prédio/condomínio
       // Não criar rota se a distância for 0m (CTO está no mesmo local do cliente)
-      if (cto.distancia_metros && cto.distancia_metros > 0) {
+      if (!cto.is_condominio && cto.distancia_metros && cto.distancia_metros > 0) {
         try {
           await drawRealRoute(cto, i);
         } catch (routeErr) {
           console.warn(`⚠️ Erro ao desenhar rota para CTO ${i + 1} (${cto.nome}):`, routeErr);
           // Continuar mesmo se a rota falhar
         }
-      } else {
+      } else if (cto.is_condominio) {
+        console.log(`🏢 [Frontend] CTO ${cto.nome} é de prédio - rota não será criada`);
       }
 
       // Adicionar marcador da CTO
@@ -2498,28 +2521,68 @@
       let markerCreated = false;
       
       try {
-        // Calcular cor baseada na porcentagem de ocupação (pct_ocup)
-        const ctoColor = getCTOColor(cto.pct_ocup || 0);
+        // Verificar se é CTO de prédio para aplicar visual diferente
+        const isPredio = cto.is_condominio === true;
+        
+        // Para prédios, usar verde baseado no STATUS_CTO
+        // STATUS_CTO = "ATIVADO" → verde mais vivo (#28A745 ou similar)
+        // STATUS_CTO ≠ "ATIVADO" → verde mais apagado (#6C757D ou #95A5A6)
+        let ctoColor;
+        if (isPredio) {
+          const statusCto = cto.status_cto_condominio || cto.condominio_data?.status_cto || '';
+          const isAtivado = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
+          // Verde mais vivo para ATIVADO, verde mais apagado para outros
+          ctoColor = isAtivado ? '#28A745' : '#95A5A6'; // #28A745 = verde vivo, #95A5A6 = verde apagado/cinza
+        } else {
+          // Para CTOs normais, usar cor baseada na porcentagem de ocupação
+          ctoColor = getCTOColor(cto.pct_ocup || 0);
+        }
 
         // Usar markerNumber para numeração sequencial (1, 2, 3, 4, 5)
         const currentMarkerNumber = markerNumber;
 
+        // Visual diferente para prédios: usar ícone de prédio (retângulo)
+        // Criar path customizado para prédio usando SVG path
+        // Formato: retângulo vertical representando prédio
+        let iconPath;
+        let iconScale;
+        
+        if (isPredio) {
+          // Path SVG para retângulo (prédio)
+          // M = move to, L = line to, Z = close path
+          iconPath = 'M -10,-12 L 10,-12 L 10,12 L -10,12 Z';
+          iconScale = 1; // Escala 1 para path customizado
+        } else {
+          iconPath = google.maps.SymbolPath.CIRCLE;
+          iconScale = 18;
+        }
+        
+        // Borda mais escura para prédios ativados, mais clara para não ativados
+        const statusCto = isPredio ? (cto.status_cto_condominio || cto.condominio_data?.status_cto || '') : '';
+        const isAtivado = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
+        const strokeColor = isPredio 
+          ? (isAtivado ? '#1E7E34' : '#7F8C8D') // Borda verde escuro para ativado, cinza para não ativado
+          : '#000000';
+        const strokeWeight = isPredio ? 2.5 : 3; // Borda para prédios
+
         ctoMarker = new google.maps.Marker({
           position: ctoPosition,
           map: map,
-          title: `${cto.nome} - ${cto.distancia_metros}m (${cto.vagas_total - cto.clientes_conectados} portas disponíveis)`,
+          title: isPredio 
+            ? `🏢 ${cto.nome} (PRÉDIO) - ${cto.distancia_metros}m - Não cria rota`
+            : `${cto.nome} - ${cto.distancia_metros}m (${cto.vagas_total - cto.clientes_conectados} portas disponíveis)`,
           icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 18,
-            fillColor: ctoColor, // Cor dinâmica baseada na porcentagem de portas ocupadas
+            path: iconPath,
+            scale: iconScale,
+            fillColor: ctoColor,
             fillOpacity: 1,
-            strokeColor: '#000000',
-            strokeWeight: 3
+            strokeColor: strokeColor,
+            strokeWeight: strokeWeight
           },
           label: {
-            text: `${currentMarkerNumber}`,
+            text: isPredio ? 'P' : `${currentMarkerNumber}`, // "P" para Prédio
             color: '#FFFFFF',
-            fontSize: '14px',
+            fontSize: isPredio ? '12px' : '14px',
             fontWeight: 'bold'
           },
           zIndex: 1000 + markerNumber,
@@ -2535,9 +2598,15 @@
         markerNumber++;
 
         // InfoWindow para a CTO (ordem solicitada pelo usuário)
+        const isPredio = cto.is_condominio === true;
+        const predioInfo = isPredio && cto.condominio_data 
+          ? `<br><strong style="color: #6C757D;">🏢 PRÉDIO/CONDOMÍNIO:</strong> ${cto.condominio_data.nome_predio || 'N/A'}<br><strong style="color: #DC3545;">⚠️ Esta CTO não cria rota até o cliente</strong>`
+          : '';
+        
         const ctoInfoWindow = new google.maps.InfoWindow({
           content: `
             <div style="padding: 8px; font-family: 'Inter', sans-serif; line-height: 1.6;">
+                ${isPredio ? '<div style="background-color: #FFE5E5; padding: 4px; margin-bottom: 8px; border-left: 3px solid #DC3545;"><strong style="color: #DC3545;">🏢 CTO DE PRÉDIO/CONDOMÍNIO</strong></div>' : ''}
                 <strong>Cidade:</strong> ${cto.cidade || 'N/A'}<br>
                 <strong>POP:</strong> ${cto.pop || 'N/A'}<br>
                 <strong>Nome:</strong> ${cto.nome || 'N/A'}<br>
@@ -2546,6 +2615,7 @@
                 <strong>Portas Conectadas:</strong> ${cto.clientes_conectados || 0}<br>
                 <strong>Portas Disponíveis:</strong> ${(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}<br>
                 <strong>Distância:</strong> ${cto.distancia_metros || 0}m (${cto.distancia_km || 0}km)
+                ${predioInfo}
             </div>
           `
         });
