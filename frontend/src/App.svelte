@@ -249,12 +249,23 @@
   // Função para filtrar segmentos muito longos da rota (indicam ruas não mapeadas)
   // Quando detecta segmentos muito longos, mantém apenas os pontos principais
   // Isso evita que a rota siga pontos que cortam terrenos quando a rua não está mapeada
+  // IMPORTANTE: Sempre preserva o primeiro ponto (CTO) e o último ponto (cliente)
   function filterLongSegments(path, maxSegmentLength = 100) {
     if (path.length < 2) return path;
     
-    const filteredPath = [path[0]]; // Sempre manter o primeiro ponto
+    // Sempre manter o primeiro ponto (CTO) e o último ponto (cliente)
+    const firstPoint = path[0];
+    const lastPoint = path[path.length - 1];
     
-    for (let i = 1; i < path.length; i++) {
+    // Se houver apenas 2 pontos, retornar como está
+    if (path.length === 2) {
+      return path;
+    }
+    
+    const filteredPath = [firstPoint]; // Sempre manter o primeiro ponto (CTO)
+    
+    // Processar apenas os pontos intermediários (não o primeiro nem o último)
+    for (let i = 1; i < path.length - 1; i++) {
       const prevPoint = filteredPath[filteredPath.length - 1];
       const currentPoint = path[i];
       
@@ -268,16 +279,17 @@
       
       // Se o segmento é muito longo (mais de maxSegmentLength metros), indica possível rua não mapeada
       // Nesse caso, manter apenas o ponto atual (pular pontos intermediários que cortam terreno)
-      // Isso cria uma linha mais "limpa" que conecta os pontos principais sem seguir o terreno
       if (segmentDistance > maxSegmentLength) {
         // Adicionar o ponto atual (ponto após o segmento longo)
-        // Os pontos intermediários que cortam terreno são pulados
         filteredPath.push(currentPoint);
       } else {
         // Segmento normal (rua mapeada), manter todos os pontos
         filteredPath.push(currentPoint);
       }
     }
+    
+    // Sempre adicionar o último ponto (cliente) no final
+    filteredPath.push(lastPoint);
     
     return filteredPath;
   }
@@ -1754,30 +1766,43 @@
             const route = result.routes[0];
             const path = [];
 
-            // Começar exatamente na CTO (conectado ao marcador)
-            // IMPORTANTE: Usar as mesmas coordenadas parseadas usadas no marcador
-            path.push({ lat: ctoLat, lng: ctoLng });
-
-            // Usar steps.path para máxima precisão (todos os pontos seguindo as ruas)
-            // A API já projeta os pontos de início e fim nas ruas mais próximas
-            if (route.legs && route.legs.length > 0) {
-              route.legs.forEach((leg) => {
-                // Adicionar todos os pontos dos steps (seguindo as ruas)
-                // O step.path já inclui pontos de início e fim de cada step
-                if (leg.steps && leg.steps.length > 0) {
-                  leg.steps.forEach(step => {
-                    if (step.path && step.path.length > 0) {
-                      step.path.forEach(point => {
-                        path.push({ lat: point.lat(), lng: point.lng() });
-                      });
-                    }
-                  });
-                }
+            // Usar overview_path da rota que já contém todos os pontos otimizados
+            // Isso garante que a rota siga exatamente o caminho calculado pela API
+            if (route.overview_path && route.overview_path.length > 0) {
+              // overview_path já contém todos os pontos da rota, incluindo início e fim
+              route.overview_path.forEach(point => {
+                path.push({ lat: point.lat(), lng: point.lng() });
               });
+            } else {
+              // Fallback: usar steps.path se overview_path não estiver disponível
+              // Começar exatamente na CTO (conectado ao marcador)
+              path.push({ lat: ctoLat, lng: ctoLng });
+
+              // Adicionar todos os pontos dos steps (seguindo as ruas)
+              if (route.legs && route.legs.length > 0) {
+                route.legs.forEach((leg) => {
+                  if (leg.steps && leg.steps.length > 0) {
+                    leg.steps.forEach(step => {
+                      if (step.path && step.path.length > 0) {
+                        step.path.forEach(point => {
+                          path.push({ lat: point.lat(), lng: point.lng() });
+                        });
+                      }
+                    });
+                  }
+                });
+              }
+
+              // Terminar exatamente no cliente (conectado ao marcador da casinha)
+              path.push({ lat: clientCoords.lat, lng: clientCoords.lng });
             }
 
-            // Terminar exatamente no cliente (conectado ao marcador da casinha)
-            path.push({ lat: clientCoords.lat, lng: clientCoords.lng });
+            // GARANTIR que o primeiro ponto seja exatamente a CTO e o último seja o cliente
+            // Isso corrige qualquer pequena diferença que a API possa ter
+            if (path.length > 0) {
+              path[0] = { lat: ctoLat, lng: ctoLng };
+              path[path.length - 1] = { lat: clientCoords.lat, lng: clientCoords.lng };
+            }
 
             // Validar se o path tem pontos válidos antes de desenhar
             if (path.length === 0) {
