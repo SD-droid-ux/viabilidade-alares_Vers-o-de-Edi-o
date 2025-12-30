@@ -1895,23 +1895,30 @@
               editable: editingRoutes // Tornar editável se estiver no modo de edição
             });
 
+            // Adicionar rota ao array ANTES de criar listeners para garantir índice correto
+            routes.push(routePolyline);
+            const actualRouteIndex = routes.length - 1; // Índice da rota no array routes
+            
             // Armazenar dados da rota para edição
             routeData.push({
               polyline: routePolyline,
-              ctoIndex: index,
+              ctoIndex: index, // Índice da CTO no array ctos
+              routeIndex: actualRouteIndex, // Índice da rota no array routes (NOVO)
               cto: cto,
               originalPath: [...filteredPath] // Cópia do path original
             });
 
             // Adicionar listener de clique na rota para mostrar popup
+            // Usar o índice correto da rota no array routes
             routePolyline.addListener('click', (event) => {
-              handleRouteClick(index, event);
+              handleRouteClick(actualRouteIndex, event);
             });
 
             // Adicionar listeners para salvar alterações quando a rota for editada
-            if (editingRouteIndex === index) {
+            // Usar ctoIndex (não routeIndex) para saveRouteEdit
+            if (editingRouteIndex === actualRouteIndex) {
               routePolyline.addListener('set_at', () => {
-                saveRouteEdit(index);
+                saveRouteEdit(index); // index é o ctoIndex
               });
               routePolyline.addListener('insert_at', () => {
                 saveRouteEdit(index);
@@ -1920,8 +1927,6 @@
                 saveRouteEdit(index);
               });
             }
-
-            routes.push(routePolyline);
             resolve();
           } else {
             // Melhorar tratamento de erros com diferentes status codes
@@ -2346,6 +2351,15 @@
 
   // Função para editar uma rota específica
   function editSingleRoute(routeIndex) {
+    console.log(`🔧 editSingleRoute chamada com routeIndex: ${routeIndex}`);
+    console.log(`📊 routes.length: ${routes.length}, routeData.length: ${routeData.length}`);
+    
+    // Validar se o routeIndex é válido
+    if (routeIndex === null || routeIndex === undefined || routeIndex < 0 || routeIndex >= routes.length) {
+      console.error(`❌ routeIndex inválido: ${routeIndex}`);
+      return;
+    }
+    
     // Se já estiver editando outra rota, finalizar primeiro
     if (editingRouteIndex !== null && editingRouteIndex !== routeIndex) {
       finishEditingRoute(editingRouteIndex);
@@ -2353,8 +2367,23 @@
     
     editingRouteIndex = routeIndex;
     const route = routes[routeIndex];
+    
+    if (!route) {
+      console.error(`❌ Rota não encontrada no índice ${routeIndex}`);
+      return;
+    }
+    
+    // Encontrar routeInfo correspondente
     const routeInfo = routeData.find(rd => rd.polyline === route);
-    const ctoIndex = routeInfo ? routeInfo.ctoIndex : routeIndex;
+    
+    if (!routeInfo) {
+      console.error(`❌ RouteInfo não encontrada para rota ${routeIndex}`);
+      console.log(`🔍 routeData:`, routeData.map(rd => ({ ctoIndex: rd.ctoIndex, ctoNome: rd.cto?.nome })));
+      return;
+    }
+    
+    const ctoIndex = routeInfo.ctoIndex;
+    console.log(`✅ RouteInfo encontrada: CTO ${ctoIndex} (${routeInfo.cto?.nome})`);
     
     if (route && route.setEditable) {
       route.setEditable(true);
