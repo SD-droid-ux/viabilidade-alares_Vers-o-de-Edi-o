@@ -2701,6 +2701,10 @@
       // Verificar se é prédio
       const isPredio = cto.is_condominio === true;
       
+      if (isPredio) {
+        console.log(`🏢 Prédio detectado: ${cto.nome}, coordenadas: ${ctoLat}, ${ctoLng}`);
+      }
+      
       // Usar posição original para bounds
       bounds.extend(originalPosition);
 
@@ -2764,15 +2768,24 @@
           // Determinar qual ícone usar baseado no status
           const statusCto = cto.status_cto_condominio || cto.condominio_data?.status_cto || '';
           const isAtivado = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
-          const iconUrl = isAtivado 
-            ? '/building-icon-activated.svg' 
-            : '/building-icon-inactive.svg';
           
-          // Usar imagem SVG para prédios
+          // Cores baseadas no status
+          const fillColor = isAtivado ? '#28A745' : '#95A5A6';
+          const strokeColor = isAtivado ? '#1E7E34' : '#7F8C8D';
+          
+          console.log(`🏢 Criando marcador de prédio: ${cto.nome}, status: ${statusCto}, ativado: ${isAtivado}`);
+          
+          // Usar path SVG customizado para prédio (mais confiável que imagem externa)
+          // Path simplificado: prédio retangular alto representando um edifício
+          // Similar ao ícone da imagem, mas usando path SVG direto
           iconConfig = {
-            url: iconUrl,
-            scaledSize: new google.maps.Size(24, 32), // Tamanho do ícone (24x32 pixels)
-            anchor: new google.maps.Point(12, 32) // Anchor na base do prédio (centro horizontal, base vertical)
+            path: 'M 2,4 L 2,30 L 22,30 L 22,4 Z', // Contorno do prédio
+            scale: 1.8, // Mesma escala usada anteriormente
+            fillColor: fillColor,
+            fillOpacity: 1,
+            strokeColor: strokeColor,
+            strokeWeight: 2.5,
+            anchor: new google.maps.Point(12, 30) // Anchor na base do prédio
           };
         } else {
           // Para CTOs de rua: usar círculo com anchor no centro (0,0)
