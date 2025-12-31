@@ -2757,34 +2757,35 @@
         const currentMarkerNumber = isPredio ? null : markerNumber;
 
         // Visual diferente para prédios: usar ícone de prédio com múltiplos andares
-        // Criar path customizado para prédio usando SVG path
-        // Formato: prédio com base, andares e telhado (visual mais realista)
-        let iconPath;
-        let iconScale;
-        let iconAnchor;
+        // Usar imagem SVG do prédio em vez de path customizado
+        let iconConfig;
         
         if (isPredio) {
-          // Path SVG para prédio: similar à casinha mas representando um prédio
-          // Baseado no path da casinha: M12 2L2 7v13h6v-6h8v6h6V7L12 2z
-          // Adaptado para prédio: mais alto, mais estreito, telhado menor
-          // Estrutura: telhado triangular + base retangular alta (prédio)
-          iconPath = 'M 12,2 L 2,6 L 2,22 L 8,22 L 8,16 L 16,16 L 16,22 L 22,22 L 22,6 L 12,2 Z';
-          iconScale = 1.8; // Mesma escala da casinha
-          iconAnchor = new google.maps.Point(12, 22); // Anchor na base do prédio (mesmo da casinha)
+          // Determinar qual ícone usar baseado no status
+          const statusCto = cto.status_cto_condominio || cto.condominio_data?.status_cto || '';
+          const isAtivado = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
+          const iconUrl = isAtivado 
+            ? '/building-icon-activated.svg' 
+            : '/building-icon-inactive.svg';
+          
+          // Usar imagem SVG para prédios
+          iconConfig = {
+            url: iconUrl,
+            scaledSize: new google.maps.Size(24, 32), // Tamanho do ícone (24x32 pixels)
+            anchor: new google.maps.Point(12, 32) // Anchor na base do prédio (centro horizontal, base vertical)
+          };
         } else {
           // Para CTOs de rua: usar círculo com anchor no centro (0,0)
-          iconPath = google.maps.SymbolPath.CIRCLE;
-          iconScale = 18;
-          iconAnchor = new google.maps.Point(0, 0); // Centro do círculo - CRÍTICO para alinhamento correto
+          iconConfig = {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 18,
+            fillColor: ctoColor,
+            fillOpacity: 1,
+            strokeColor: '#000000',
+            strokeWeight: 3,
+            anchor: new google.maps.Point(0, 0) // Centro do círculo - CRÍTICO para alinhamento correto
+          };
         }
-        
-        // Borda mais escura para prédios ativados, mais clara para não ativados
-        const statusCto = isPredio ? (cto.status_cto_condominio || cto.condominio_data?.status_cto || '') : '';
-        const isAtivado = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
-        const strokeColor = isPredio 
-          ? (isAtivado ? '#1E7E34' : '#7F8C8D') // Borda verde escuro para ativado, cinza para não ativado
-          : '#000000';
-        const strokeWeight = isPredio ? 2.5 : 3; // Borda similar à casinha
 
         // Para CTOs de rua, sempre usar originalPosition (já definido acima)
         // Isso garante alinhamento perfeito entre marcador e rota
@@ -2795,15 +2796,7 @@
           title: isPredio 
             ? `🏢 ${cto.nome} (PRÉDIO) - ${cto.distancia_metros}m - Não cria rota`
             : `${cto.nome} - ${cto.distancia_metros}m (${cto.vagas_total - cto.clientes_conectados} portas disponíveis)`,
-          icon: {
-            path: iconPath,
-            scale: iconScale,
-            fillColor: ctoColor,
-            fillOpacity: 1,
-            strokeColor: strokeColor,
-            strokeWeight: strokeWeight,
-            anchor: iconAnchor // Anchor correto: centro para círculos, base para prédios
-          },
+          icon: iconConfig,
           label: isPredio ? undefined : (currentMarkerNumber ? { // Sem label para prédios, label numérico para CTOs normais
             text: `${currentMarkerNumber}`,
             color: '#FFFFFF',
