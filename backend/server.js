@@ -961,29 +961,9 @@ app.get('/api/condominios/nearby', async (req, res) => {
         
         if (!ctosError && ctosData) {
           // Agrupar CTOs internas por prédio
-          // Estratégia: Matching por ID → por localização exata → por nome do prédio
+          // Estratégia: Matching por ID → agrupar por nome + localização → buscar todas as CTOs
           const ctosPorPrédio = new Map(); // Map<prédioKey, array de CTOs>
           const ctosProcessadas = new Set(); // Set para evitar duplicatas
-          
-          // Criar Map de prédios agrupados por nome e localização (para matching por nome)
-          const prédiosPorNomeELocal = new Map(); // Map<"nome_predio|lat|lng", array de prédios>
-          nearbyCondominios.forEach(prédio => {
-            const prédioLat = parseFloat(prédio.latitude);
-            const prédioLng = parseFloat(prédio.longitude);
-            const nomePredio = String(prédio.nome_predio || '').trim();
-            
-            if (!isNaN(prédioLat) && !isNaN(prédioLng) && nomePredio) {
-              // Arredondar coordenadas para 6 casas decimais (precisão de ~10cm)
-              const latRounded = Math.round(prédioLat * 1000000) / 1000000;
-              const lngRounded = Math.round(prédioLng * 1000000) / 1000000;
-              const key = `${nomePredio}|${latRounded}|${lngRounded}`;
-              
-              if (!prédiosPorNomeELocal.has(key)) {
-                prédiosPorNomeELocal.set(key, []);
-              }
-              prédiosPorNomeELocal.get(key).push(prédio);
-            }
-          });
           
           // PASSO 1: Matching por ID (como antes)
           ctosData.forEach(cto => {
@@ -1023,84 +1003,9 @@ app.get('/api/condominios/nearby', async (req, res) => {
             }
           });
           
-          // PASSO 2: Matching por localização exata E nome do prédio
-          // CTOs dentro do mesmo prédio têm coordenadas idênticas e estão associadas ao mesmo nome de prédio
-          // Estratégia: Agrupar prédios por nome + localização, depois associar todas as CTOs nessa localização
-          const radiusProximidade = 2; // 2 metros (mesma localização)
-          
-          ctosData.forEach(cto => {
-            // Pular CTOs já processadas por ID
-            const ctoId = cto.id_cto || cto.id;
-            if (ctosProcessadas.has(ctoId)) {
-              return;
-            }
-            
-            const ctoLat = parseFloat(cto.latitude);
-            const ctoLng = parseFloat(cto.longitude);
-            
-            if (isNaN(ctoLat) || isNaN(ctoLng)) {
-              return;
-            }
-            
-            // Arredondar coordenadas da CTO para comparação (mesma precisão dos prédios)
-            const ctoLatRounded = Math.round(ctoLat * 1000000) / 1000000;
-            const ctoLngRounded = Math.round(ctoLng * 1000000) / 1000000;
-            
-            // Verificar se esta CTO está na mesma localização de algum prédio (dentro de 2m)
-            // E associar ao prédio (ou grupo de prédios) com mesmo nome e localização
-            nearbyCondominios.forEach(prédio => {
-              const prédioLat = parseFloat(prédio.latitude);
-              const prédioLng = parseFloat(prédio.longitude);
-              const nomePredio = String(prédio.nome_predio || '').trim();
-              
-              if (isNaN(prédioLat) || isNaN(prédioLng) || !nomePredio) {
-                return;
-              }
-              
-              // Calcular distância entre CTO e prédio
-              const distance = calculateDistance(ctoLat, ctoLng, prédioLat, prédioLng);
-              
-              // Se está dentro de 2m (mesma localização), considerar como CTO interna do prédio
-              if (distance <= radiusProximidade) {
-                // Usar o primeiro prédio do grupo (prédios com mesmo nome e localização)
-                // Isso garante que todas as CTOs na mesma localização sejam associadas ao mesmo prédio
-                const prédioKey = prédio.id || prédio.nome_predio;
-                
-                if (!ctosPorPrédio.has(prédioKey)) {
-                  ctosPorPrédio.set(prédioKey, []);
-                }
-                
-                // Verificar se esta CTO já não está na lista (evitar duplicatas)
-                const ctosExistentes = ctosPorPrédio.get(prédioKey);
-                const jaExiste = ctosExistentes.some(c => {
-                  const cId = c.id;
-                  const ctoIdStr = String(ctoId);
-                  const ctoIdCto = String(cto.id_cto || '');
-                  return (cId === ctoIdStr) || (cId === ctoIdCto);
-                });
-                
-                if (!jaExiste) {
-                  ctosPorPrédio.get(prédioKey).push({
-                    nome: cto.cto || cto.id_cto || '',
-                    id: cto.id_cto || cto.id?.toString() || '',
-                    vagas_total: cto.portas || 0,
-                    clientes_conectados: cto.ocupado || 0,
-                    portas_disponiveis: (cto.portas || 0) - (cto.ocupado || 0),
-                    status_cto: cto.status_cto || '',
-                    cidade: cto.cid_rede || '',
-                    pop: cto.pop || ''
-                  });
-                  
-                  ctosProcessadas.add(ctoId); // Marcar como processada
-                  console.log(`🏢 [API] CTO ${cto.id_cto} (${cto.cto || ''}) associada ao prédio "${nomePredio}" por localização idêntica (${Math.round(distance * 100) / 100}m)`);
-                }
-              }
-            });
-          });
-          
-          // PASSO 3: Consolidar CTOs de prédios com mesmo nome e localização
-          // Se há múltiplos prédios com mesmo nome e localização, consolidar suas CTOs
-          const prédiosConsolidados = new Map(); // Map<"nome|lat|lng", prédio consolidado>
+          // PASSO 2: Agrupar prédios por nome + localização PRIMEIRO
+          // Estratégia: Agrupar prédios, depois buscar TODAS as CTOs naquela localização
+          const prédiosPorNomeELocal = new Map(); // Map<"nome|lat|lng", array de prédios>
           
           nearbyCondominios.forEach(prédio => {
             const prédioLat = parseFloat(prédio.latitude);
@@ -1108,37 +1013,108 @@ app.get('/api/condominios/nearby', async (req, res) => {
             const nomePredio = String(prédio.nome_predio || '').trim();
             
             if (!isNaN(prédioLat) && !isNaN(prédioLng) && nomePredio) {
+              // Arredondar coordenadas para agrupar prédios na mesma localização
               const latRounded = Math.round(prédioLat * 1000000) / 1000000;
               const lngRounded = Math.round(prédioLng * 1000000) / 1000000;
               const key = `${nomePredio}|${latRounded}|${lngRounded}`;
               
-              if (!prédiosConsolidados.has(key)) {
-                prédiosConsolidados.set(key, {
-                  prédio: prédio,
-                  ctosConsolidadas: new Set()
-                });
+              if (!prédiosPorNomeELocal.has(key)) {
+                prédiosPorNomeELocal.set(key, []);
               }
-              
-              // Adicionar CTOs deste prédio ao grupo consolidado
-              const prédioKey = prédio.id || prédio.nome_predio;
-              const ctosDestePrédio = ctosPorPrédio.get(prédioKey) || [];
-              ctosDestePrédio.forEach(cto => {
-                prédiosConsolidados.get(key).ctosConsolidadas.add(JSON.stringify(cto));
-              });
+              prédiosPorNomeELocal.get(key).push(prédio);
             }
           });
           
-          // Atualizar ctosPorPrédio com CTOs consolidadas
-          prédiosConsolidados.forEach((consolidado, key) => {
-            const prédio = consolidado.prédio;
-            const prédioKey = prédio.id || prédio.nome_predio;
+          // PASSO 3: Para cada grupo de prédios (mesmo nome + localização), buscar TODAS as CTOs nessa localização
+          const radiusProximidade = 2; // 2 metros (mesma localização)
+          const ctosPorGrupoPrédio = new Map(); // Map<"nome|lat|lng", array de CTOs>
+          
+          prédiosPorNomeELocal.forEach((prédiosDoGrupo, grupoKey) => {
+            if (prédiosDoGrupo.length === 0) return;
             
-            // Converter Set de strings JSON de volta para objetos
-            const ctosConsolidadasArray = Array.from(consolidado.ctosConsolidadas).map(s => JSON.parse(s));
+            // Usar coordenadas do primeiro prédio do grupo como referência
+            const prédioReferencia = prédiosDoGrupo[0];
+            const prédioLatRef = parseFloat(prédioReferencia.latitude);
+            const prédioLngRef = parseFloat(prédioReferencia.longitude);
+            const nomePredioRef = String(prédioReferencia.nome_predio || '').trim();
             
-            if (ctosConsolidadasArray.length > 0) {
-              ctosPorPrédio.set(prédioKey, ctosConsolidadasArray);
-              console.log(`🏢 [API] Prédio "${prédio.nome_predio}" consolidado com ${ctosConsolidadasArray.length} CTOs internas`);
+            if (isNaN(prédioLatRef) || isNaN(prédioLngRef) || !nomePredioRef) return;
+            
+            // Buscar TODAS as CTOs na mesma localização deste grupo de prédios
+            const ctosDoGrupo = [];
+            const ctosIdsProcessadas = new Set();
+            
+            ctosData.forEach(cto => {
+              const ctoId = cto.id_cto || cto.id;
+              
+              // Pular CTOs já processadas por ID no PASSO 1
+              if (ctosProcessadas.has(ctoId)) {
+                return;
+              }
+              
+              // Pular CTOs já adicionadas a este grupo
+              if (ctosIdsProcessadas.has(ctoId)) {
+                return;
+              }
+              
+              const ctoLat = parseFloat(cto.latitude);
+              const ctoLng = parseFloat(cto.longitude);
+              
+              if (isNaN(ctoLat) || isNaN(ctoLng)) {
+                return;
+              }
+              
+              // Calcular distância entre CTO e prédio de referência
+              const distance = calculateDistance(ctoLat, ctoLng, prédioLatRef, prédioLngRef);
+              
+              // Se está dentro de 2m (mesma localização), adicionar ao grupo
+              if (distance <= radiusProximidade) {
+                ctosDoGrupo.push({
+                  nome: cto.cto || cto.id_cto || '',
+                  id: cto.id_cto || cto.id?.toString() || '',
+                  vagas_total: cto.portas || 0,
+                  clientes_conectados: cto.ocupado || 0,
+                  portas_disponiveis: (cto.portas || 0) - (cto.ocupado || 0),
+                  status_cto: cto.status_cto || '',
+                  cidade: cto.cid_rede || '',
+                  pop: cto.pop || ''
+                });
+                
+                ctosIdsProcessadas.add(ctoId);
+                ctosProcessadas.add(ctoId); // Marcar como processada globalmente
+                console.log(`🏢 [API] CTO ${cto.id_cto} (${cto.cto || ''}) associada ao grupo de prédios "${nomePredioRef}" por localização idêntica (${Math.round(distance * 100) / 100}m)`);
+              }
+            });
+            
+            if (ctosDoGrupo.length > 0) {
+              ctosPorGrupoPrédio.set(grupoKey, ctosDoGrupo);
+              console.log(`🏢 [API] Grupo "${nomePredioRef}" (${prédiosDoGrupo.length} prédio(s)) tem ${ctosDoGrupo.length} CTOs internas`);
+            }
+          });
+          
+          // PASSO 4: Associar CTOs do grupo a TODOS os prédios do grupo
+          prédiosPorNomeELocal.forEach((prédiosDoGrupo, grupoKey) => {
+            const ctosDoGrupo = ctosPorGrupoPrédio.get(grupoKey) || [];
+            
+            if (ctosDoGrupo.length > 0) {
+              // Associar todas as CTOs do grupo a TODOS os prédios do grupo
+              prédiosDoGrupo.forEach(prédio => {
+                const prédioKey = prédio.id || prédio.nome_predio;
+                
+                // Combinar CTOs já existentes (do PASSO 1) com CTOs do grupo
+                const ctosExistentes = ctosPorPrédio.get(prédioKey) || [];
+                const todasCTOs = [...ctosExistentes];
+                
+                // Adicionar CTOs do grupo (evitando duplicatas)
+                ctosDoGrupo.forEach(ctoGrupo => {
+                  const jaExiste = todasCTOs.some(c => c.id === ctoGrupo.id);
+                  if (!jaExiste) {
+                    todasCTOs.push(ctoGrupo);
+                  }
+                });
+                
+                ctosPorPrédio.set(prédioKey, todasCTOs);
+              });
             }
           });
           
