@@ -2926,6 +2926,7 @@
               `;
             }
             
+            // Conteúdo inicial do InfoWindow (será atualizado com endereço)
             infoWindowContent = `
               <div style="padding: 12px; font-family: 'Inter', sans-serif; line-height: 1.6; max-width: 350px;">
                 <div style="background-color: #FFE5E5; padding: 8px; margin-bottom: 12px; border-left: 4px solid #DC3545; border-radius: 4px;">
@@ -2934,7 +2935,9 @@
                 <strong>Nome:</strong> ${String(nomePredio)}<br>
                 <strong>Status:</strong> ${String(statusCto)}<br>
                 <strong>Distância:</strong> ${Number(cto.distancia_metros || 0)}m (${Number(cto.distancia_km || 0)}km)<br>
-                <strong style="color: #DC3545;">⚠️ Não cria rota até o cliente</strong>
+                <div id="predio-endereco-${index}" style="margin-top: 8px;">
+                  <strong>Endereço:</strong> <span style="color: #6C757D;">Carregando...</span>
+                </div>
                 ${ctosListHTML}
               </div>
             `;
@@ -2974,9 +2977,145 @@
             content: infoWindowContent
           });
 
-          // Adicionar listener de clique
-          ctoMarker.addListener('click', () => {
+          // Adicionar listener de clique (async para buscar endereço do prédio)
+          ctoMarker.addListener('click', async () => {
             ctoInfoWindow.open(map, ctoMarker);
+            
+            // Se for prédio, buscar endereço completo via reverse geocoding
+            if (isPredio) {
+              try {
+                const predioLat = parseFloat(cto.latitude);
+                const predioLng = parseFloat(cto.longitude);
+                
+                if (!isNaN(predioLat) && !isNaN(predioLng)) {
+                  const result = await reverseGeocode(predioLat, predioLng);
+                  
+                  if (result.results && result.results.length > 0) {
+                    const bestResult = result.results[0];
+                    const components = bestResult.address_components || [];
+                    
+                    // Extrair componentes do endereço
+                    const streetComponent = components.find(c => 
+                      c.types.includes('route') || c.types.includes('street_address')
+                    );
+                    const streetNumberComponent = components.find(c => 
+                      c.types.includes('street_number')
+                    );
+                    const neighborhoodComponent = components.find(c => 
+                      c.types.includes('sublocality') || 
+                      c.types.includes('sublocality_level_1') ||
+                      c.types.includes('neighborhood')
+                    );
+                    const postalCodeComponent = components.find(c => 
+                      c.types.includes('postal_code')
+                    );
+                    
+                    const rua = streetComponent?.long_name || streetComponent?.short_name || '';
+                    const numero = streetNumberComponent?.long_name || '';
+                    const bairro = neighborhoodComponent?.long_name || neighborhoodComponent?.short_name || '';
+                    const cep = postalCodeComponent?.long_name || '';
+                    
+                    // Formatar endereço completo
+                    let enderecoCompleto = '';
+                    if (rua) {
+                      enderecoCompleto = rua;
+                      if (numero) {
+                        enderecoCompleto += `, ${numero}`;
+                      }
+                      if (bairro) {
+                        enderecoCompleto += ` - ${bairro}`;
+                      }
+                      if (cep) {
+                        enderecoCompleto += ` - CEP: ${cep}`;
+                      }
+                    } else {
+                      // Fallback: usar endereço formatado completo
+                      enderecoCompleto = bestResult.formatted_address || 'Endereço não disponível';
+                    }
+                    
+                    // Atualizar conteúdo do InfoWindow com endereço
+                    const enderecoElement = document.getElementById(`predio-endereco-${index}`);
+                    if (enderecoElement) {
+                      enderecoElement.innerHTML = `<strong>Endereço:</strong> ${enderecoCompleto}`;
+                    } else {
+                      // Se o elemento não foi encontrado, atualizar o conteúdo completo do InfoWindow
+                      const nomePredio = cto.nome || 'Prédio';
+                      const statusCto = cto.status_cto_condominio || 'N/A';
+                      const ctosInternas = cto.ctos_internas || [];
+                      
+                      let ctosListHTML = '';
+                      if (ctosInternas.length > 0) {
+                        ctosListHTML = '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #ddd;">';
+                        ctosListHTML += `<strong style="color: #6C757D; font-size: 13px;">CTOs Internas (${ctosInternas.length}):</strong><br>`;
+                        
+                        ctosInternas.forEach((ctoInterna, idx) => {
+                          const statusCtoInterna = ctoInterna.status_cto || '';
+                          const isAtiva = statusCtoInterna && statusCtoInterna.toUpperCase().trim() === 'ATIVADO';
+                          const borderColor = isAtiva ? '#28A745' : '#DC3545';
+                          const bgColor = isAtiva ? '#f8f9fa' : '#fff5f5';
+                          
+                          ctosListHTML += `
+                            <div style="margin-top: 8px; padding: 8px; background-color: ${bgColor}; border-left: 3px solid ${borderColor}; border-radius: 4px;">
+                              <strong style="color: #333; font-size: 12px;">CTO ${idx + 1}:</strong><br>
+                              <strong>Nome:</strong> ${String(ctoInterna.nome || 'N/A')}<br>
+                              <strong>ID:</strong> ${String(ctoInterna.id || 'N/A')}<br>
+                              <strong>Portas Disponíveis:</strong> ${Number(ctoInterna.portas_disponiveis || 0)}<br>
+                              <strong>Portas Totais:</strong> ${Number(ctoInterna.vagas_total || 0)}<br>
+                              <strong>Portas Conectadas:</strong> ${Number(ctoInterna.clientes_conectados || 0)}<br>
+                              <strong>Status:</strong> <span style="color: ${isAtiva ? '#28A745' : '#DC3545'}; font-weight: bold;">${String(ctoInterna.status_cto || 'N/A')}</span><br>
+                              ${!isAtiva ? '<div style="color: #DC3545; font-size: 11px; margin-top: 4px; font-weight: bold;">⚠️ CTO NÃO ATIVA</div>' : ''}
+                            </div>
+                          `;
+                        });
+                        
+                        const totalPortasDisponiveis = ctosInternas.reduce((sum, c) => sum + (c.portas_disponiveis || 0), 0);
+                        const totalPortasTotais = ctosInternas.reduce((sum, c) => sum + (c.vagas_total || 0), 0);
+                        const totalPortasConectadas = ctosInternas.reduce((sum, c) => sum + (c.clientes_conectados || 0), 0);
+                        
+                        ctosListHTML += `
+                          <div style="margin-top: 8px; padding: 8px; background-color: #e8f5e9; border-left: 3px solid #28A745; border-radius: 4px;">
+                            <strong style="color: #1B5E20;">Resumo Total:</strong><br>
+                            <strong>Total de Portas Disponíveis:</strong> ${totalPortasDisponiveis}<br>
+                            <strong>Total de Portas:</strong> ${totalPortasTotais}<br>
+                            <strong>Total de Portas Conectadas:</strong> ${totalPortasConectadas}<br>
+                          </div>
+                        `;
+                        
+                        ctosListHTML += '</div>';
+                      } else {
+                        ctosListHTML = `
+                          <div style="margin-top: 12px; padding: 8px; background-color: #fff3cd; border-left: 3px solid #ffc107; border-radius: 4px;">
+                            <strong style="color: #856404;">(Sem CTOs implantadas)</strong>
+                          </div>
+                        `;
+                      }
+                      
+                      const updatedContent = `
+                        <div style="padding: 12px; font-family: 'Inter', sans-serif; line-height: 1.6; max-width: 350px;">
+                          <div style="background-color: #FFE5E5; padding: 8px; margin-bottom: 12px; border-left: 4px solid #DC3545; border-radius: 4px;">
+                            <strong style="color: #DC3545; font-size: 14px;">🏢 PRÉDIO/CONDOMÍNIO</strong>
+                          </div>
+                          <strong>Nome:</strong> ${String(nomePredio)}<br>
+                          <strong>Status:</strong> ${String(statusCto)}<br>
+                          <strong>Distância:</strong> ${Number(cto.distancia_metros || 0)}m (${Number(cto.distancia_km || 0)}km)<br>
+                          <div style="margin-top: 8px;">
+                            <strong>Endereço:</strong> ${enderecoCompleto}
+                          </div>
+                          ${ctosListHTML}
+                        </div>
+                      `;
+                      ctoInfoWindow.setContent(updatedContent);
+                    }
+                  }
+                }
+              } catch (err) {
+                console.error('Erro ao buscar endereço do prédio:', err);
+                const enderecoElement = document.getElementById(`predio-endereco-${index}`);
+                if (enderecoElement) {
+                  enderecoElement.innerHTML = '<strong>Endereço:</strong> <span style="color: #DC3545;">Não foi possível obter o endereço</span>';
+                }
+              }
+            }
             
             // Mostrar popup vermelho de alerta se CTO não estiver ativa (apenas para CTOs de rua)
             if (!isPredio) {
