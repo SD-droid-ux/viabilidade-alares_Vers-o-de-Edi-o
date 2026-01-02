@@ -644,16 +644,15 @@ app.get('/api/ctos/nearby', async (req, res) => {
         const lngMin = lng - radiusDegrees;
         const lngMax = lng + radiusDegrees;
         
-        // Buscar apenas CTOs ATIVAS dentro da bounding box (muito eficiente com índice)
-        // Filtrar por status_cto = 'ATIVA' (case-insensitive)
+        // Buscar TODAS as CTOs dentro da bounding box (incluindo não ativas)
         const { data, error } = await supabase
           .from('ctos')
           .select('*')
           .gte('latitude', latMin)
           .lte('latitude', latMax)
           .gte('longitude', lngMin)
-          .lte('longitude', lngMax)
-          .ilike('status_cto', 'ATIVADO'); // Filtrar apenas CTOs ativas (case-insensitive, corresponde exatamente a "ATIVA")
+          .lte('longitude', lngMax);
+          // Removido filtro de status - agora retorna CTOs ativas e não ativas
         
         if (error) {
           console.error('❌ [API] Erro ao buscar CTOs:', error);
@@ -795,7 +794,8 @@ app.get('/api/ctos/nearby', async (req, res) => {
             distancia_metros: Math.round(distance * 100) / 100,
             is_condominio: false, // Garantir que não é prédio
             condominio_data: null,
-            status_cto_condominio: null
+            status_cto_condominio: null,
+            status_cto: row.status_cto || '' // Incluir status da CTO
           });
         }
         
@@ -1005,8 +1005,8 @@ app.get('/api/condominios/nearby', async (req, res) => {
           .gte('latitude', latMinCTOs)
           .lte('latitude', latMaxCTOs)
           .gte('longitude', lngMinCTOs)
-          .lte('longitude', lngMaxCTOs)
-          .ilike('status_cto', 'ATIVADO');
+          .lte('longitude', lngMaxCTOs);
+          // Removido filtro de status - agora retorna CTOs ativas e não ativas
         
         if (!ctosError && ctosData) {
           // Criar Map de CTOs por ID para lookup rápido
