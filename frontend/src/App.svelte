@@ -2883,15 +2883,22 @@
               ctosListHTML += `<strong style="color: #6C757D; font-size: 13px;">CTOs Internas (${ctosInternas.length}):</strong><br>`;
               
               ctosInternas.forEach((ctoInterna, idx) => {
+                // Verificar se a CTO interna está ativa
+                const statusCtoInterna = ctoInterna.status_cto || '';
+                const isAtiva = statusCtoInterna && statusCtoInterna.toUpperCase().trim() === 'ATIVADO';
+                const borderColor = isAtiva ? '#28A745' : '#DC3545';
+                const bgColor = isAtiva ? '#f8f9fa' : '#fff5f5';
+                
                 ctosListHTML += `
-                  <div style="margin-top: 8px; padding: 8px; background-color: #f8f9fa; border-left: 3px solid #28A745; border-radius: 4px;">
+                  <div style="margin-top: 8px; padding: 8px; background-color: ${bgColor}; border-left: 3px solid ${borderColor}; border-radius: 4px;">
                     <strong style="color: #333; font-size: 12px;">CTO ${idx + 1}:</strong><br>
                     <strong>Nome:</strong> ${String(ctoInterna.nome || 'N/A')}<br>
                     <strong>ID:</strong> ${String(ctoInterna.id || 'N/A')}<br>
                     <strong>Portas Disponíveis:</strong> ${Number(ctoInterna.portas_disponiveis || 0)}<br>
                     <strong>Portas Totais:</strong> ${Number(ctoInterna.vagas_total || 0)}<br>
                     <strong>Portas Conectadas:</strong> ${Number(ctoInterna.clientes_conectados || 0)}<br>
-                    <strong>Status:</strong> ${String(ctoInterna.status_cto || 'N/A')}<br>
+                    <strong>Status:</strong> <span style="color: ${isAtiva ? '#28A745' : '#DC3545'}; font-weight: bold;">${String(ctoInterna.status_cto || 'N/A')}</span><br>
+                    ${!isAtiva ? '<div style="color: #DC3545; font-size: 11px; margin-top: 4px; font-weight: bold;">⚠️ CTO NÃO ATIVA</div>' : ''}
                   </div>
                 `;
               });
@@ -2933,12 +2940,28 @@
             `;
           } else {
             // InfoWindow para CTO NORMAL (rua)
+            // Verificar se a CTO está ativa
+            const statusCto = cto.status_cto || '';
+            const isAtiva = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
+            
+            // Adicionar alerta vermelho se não estiver ativa
+            let alertaHTML = '';
+            if (!isAtiva) {
+              alertaHTML = `
+                <div style="background-color: #DC3545; color: white; padding: 12px; margin-bottom: 12px; border-radius: 4px; font-weight: bold; text-align: center;">
+                  ⚠️ CTO NÃO ATIVA
+                </div>
+              `;
+            }
+            
             infoWindowContent = `
               <div style="padding: 8px; font-family: 'Inter', sans-serif; line-height: 1.6;">
+                ${alertaHTML}
                 <strong>Cidade:</strong> ${String(cto.cidade || 'N/A')}<br>
                 <strong>POP:</strong> ${String(cto.pop || 'N/A')}<br>
                 <strong>Nome:</strong> ${String(cto.nome || 'N/A')}<br>
                 <strong>ID:</strong> ${String(cto.id || 'N/A')}<br>
+                <strong>Status:</strong> <span style="color: ${isAtiva ? '#28A745' : '#DC3545'}; font-weight: bold;">${String(statusCto || 'N/A')}</span><br>
                 <strong>Total de Portas:</strong> ${Number(cto.vagas_total || 0)}<br>
                 <strong>Portas Conectadas:</strong> ${Number(cto.clientes_conectados || 0)}<br>
                 <strong>Portas Disponíveis:</strong> ${Number((cto.vagas_total || 0) - (cto.clientes_conectados || 0))}<br>
@@ -2954,6 +2977,92 @@
           // Adicionar listener de clique
           ctoMarker.addListener('click', () => {
             ctoInfoWindow.open(map, ctoMarker);
+            
+            // Mostrar popup vermelho de alerta se CTO não estiver ativa (apenas para CTOs de rua)
+            if (!isPredio) {
+              const statusCto = cto.status_cto || '';
+              const isAtiva = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
+              
+              if (!isAtiva) {
+                // Criar e mostrar popup vermelho de alerta
+                const alertPopup = document.createElement('div');
+                alertPopup.style.cssText = `
+                  position: fixed;
+                  top: 50%;
+                  left: 50%;
+                  transform: translate(-50%, -50%);
+                  background-color: #DC3545;
+                  color: white;
+                  padding: 24px 32px;
+                  border-radius: 8px;
+                  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+                  z-index: 10000;
+                  font-family: 'Inter', sans-serif;
+                  font-size: 18px;
+                  font-weight: bold;
+                  text-align: center;
+                  max-width: 400px;
+                  animation: fadeIn 0.3s ease-in;
+                `;
+                alertPopup.innerHTML = `
+                  <div style="font-size: 32px; margin-bottom: 12px;">⚠️</div>
+                  <div>CTO NÃO ATIVA</div>
+                  <div style="font-size: 14px; font-weight: normal; margin-top: 8px; opacity: 0.9;">
+                    Esta CTO não está ativa no sistema
+                  </div>
+                  <button onclick="this.parentElement.remove()" style="
+                    margin-top: 16px;
+                    padding: 8px 24px;
+                    background-color: white;
+                    color: #DC3545;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    font-size: 14px;
+                  ">Fechar</button>
+                `;
+                
+                // Adicionar animação CSS se não existir
+                if (!document.getElementById('alert-popup-style')) {
+                  const style = document.createElement('style');
+                  style.id = 'alert-popup-style';
+                  style.textContent = `
+                    @keyframes fadeIn {
+                      from { opacity: 0; transform: translate(-50%, -60%); }
+                      to { opacity: 1; transform: translate(-50%, -50%); }
+                    }
+                  `;
+                  document.head.appendChild(style);
+                }
+                
+                document.body.appendChild(alertPopup);
+                
+                // Remover popup após 5 segundos ou ao clicar fora
+                setTimeout(() => {
+                  if (alertPopup.parentElement) {
+                    alertPopup.remove();
+                  }
+                }, 5000);
+                
+                // Remover ao clicar fora
+                const overlay = document.createElement('div');
+                overlay.style.cssText = `
+                  position: fixed;
+                  top: 0;
+                  left: 0;
+                  width: 100%;
+                  height: 100%;
+                  background-color: rgba(0, 0, 0, 0.5);
+                  z-index: 9999;
+                `;
+                overlay.addEventListener('click', () => {
+                  alertPopup.remove();
+                  overlay.remove();
+                });
+                document.body.insertBefore(overlay, alertPopup);
+              }
+            }
           });
         } else {
           console.error(`❌ Falha ao criar marcador ${isPredio ? 'de prédio' : currentMarkerNumber} para ${cto.nome}: marcador não foi adicionado ao mapa`);
