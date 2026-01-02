@@ -2991,12 +2991,19 @@
                   const result = await reverseGeocode(predioLat, predioLng);
                   
                   if (result.results && result.results.length > 0) {
-                    const bestResult = result.results[0];
+                    // Priorizar resultado com mais informações (street_address ou premise)
+                    // Se não encontrar, usar o primeiro resultado
+                    let bestResult = result.results.find(r => {
+                      const types = r.types || [];
+                      return types.includes('street_address') || 
+                             types.includes('premise') || 
+                             types.includes('route');
+                    }) || result.results[0];
                     const components = bestResult.address_components || [];
                     
-                    // Extrair componentes do endereço
+                    // Extrair todos os componentes do endereço de forma mais completa
                     const streetComponent = components.find(c => 
-                      c.types.includes('route') || c.types.includes('street_address')
+                      c.types.includes('route')
                     );
                     const streetNumberComponent = components.find(c => 
                       c.types.includes('street_number')
@@ -3004,7 +3011,15 @@
                     const neighborhoodComponent = components.find(c => 
                       c.types.includes('sublocality') || 
                       c.types.includes('sublocality_level_1') ||
-                      c.types.includes('neighborhood')
+                      c.types.includes('neighborhood') ||
+                      c.types.includes('sublocality_level_2')
+                    );
+                    const cityComponent = components.find(c => 
+                      c.types.includes('locality') || 
+                      c.types.includes('administrative_area_level_2')
+                    );
+                    const stateComponent = components.find(c => 
+                      c.types.includes('administrative_area_level_1')
                     );
                     const postalCodeComponent = components.find(c => 
                       c.types.includes('postal_code')
@@ -3013,23 +3028,62 @@
                     const rua = streetComponent?.long_name || streetComponent?.short_name || '';
                     const numero = streetNumberComponent?.long_name || '';
                     const bairro = neighborhoodComponent?.long_name || neighborhoodComponent?.short_name || '';
+                    const cidade = cityComponent?.long_name || '';
+                    const estado = stateComponent?.short_name || '';
                     const cep = postalCodeComponent?.long_name || '';
                     
-                    // Formatar endereço completo
+                    // Formatar endereço completo de forma mais estruturada
                     let enderecoCompleto = '';
+                    const partesEndereco = [];
+                    
+                    // Adicionar rua
                     if (rua) {
-                      enderecoCompleto = rua;
-                      if (numero) {
-                        enderecoCompleto += `, ${numero}`;
-                      }
-                      if (bairro) {
+                      partesEndereco.push(rua);
+                    }
+                    
+                    // Adicionar número
+                    if (numero) {
+                      partesEndereco.push(numero);
+                    }
+                    
+                    // Se temos rua ou número, formatar como "Rua, Número"
+                    if (partesEndereco.length > 0) {
+                      enderecoCompleto = partesEndereco.join(', ');
+                    }
+                    
+                    // Adicionar bairro
+                    if (bairro) {
+                      if (enderecoCompleto) {
                         enderecoCompleto += ` - ${bairro}`;
+                      } else {
+                        enderecoCompleto = bairro;
                       }
-                      if (cep) {
-                        enderecoCompleto += ` - CEP: ${cep}`;
+                    }
+                    
+                    // Adicionar cidade e estado
+                    if (cidade) {
+                      if (enderecoCompleto) {
+                        enderecoCompleto += `, ${cidade}`;
+                      } else {
+                        enderecoCompleto = cidade;
                       }
-                    } else {
-                      // Fallback: usar endereço formatado completo
+                      
+                      if (estado) {
+                        enderecoCompleto += ` - ${estado}`;
+                      }
+                    }
+                    
+                    // Adicionar CEP
+                    if (cep) {
+                      if (enderecoCompleto) {
+                        enderecoCompleto += `, ${cep}`;
+                      } else {
+                        enderecoCompleto = `CEP: ${cep}`;
+                      }
+                    }
+                    
+                    // Se não conseguiu montar endereço estruturado, usar o formatted_address do Google
+                    if (!enderecoCompleto || (!rua && !numero && !bairro)) {
                       enderecoCompleto = bestResult.formatted_address || 'Endereço não disponível';
                     }
                     
