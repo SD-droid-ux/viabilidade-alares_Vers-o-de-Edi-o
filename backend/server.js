@@ -2685,7 +2685,16 @@ async function saveVIALARecord(record) {
   // Tentar Supabase primeiro
   const saved = await saveVIALARecordToSupabase(record);
   if (saved) {
-    return; // Sucesso no Supabase
+    // Sucesso no Supabase - também atualizar Excel para manter sincronização
+    console.log('💾 [Save] Atualizando arquivo Excel após salvar no Supabase...');
+    try {
+      await saveVIALARecordToExcel(record);
+      console.log('✅ [Save] Arquivo Excel atualizado com sucesso');
+    } catch (excelErr) {
+      // Não falhar se Excel der erro, apenas logar
+      console.warn('⚠️ [Save] Erro ao atualizar Excel (não crítico):', excelErr.message);
+    }
+    return;
   }
   
   // Fallback para Excel
@@ -4773,17 +4782,54 @@ app.get('/api/vi-ala/list', async (req, res) => {
 });
 
 // Rota para baixar o arquivo base_VI ALA.xlsx completo
-app.get('/api/vi-ala.xlsx', (req, res) => {
+app.get('/api/vi-ala.xlsx', async (req, res) => {
   try {
-    if (!fs.existsSync(BASE_VI_ALA_FILE)) {
-      return res.status(404).json({ error: 'Arquivo base_VI ALA.xlsx não encontrado' });
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
     }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
     
     console.log('📥 Requisição para baixar base_VI ALA.xlsx');
-    res.sendFile(path.resolve(BASE_VI_ALA_FILE));
+    
+    // Ler dados (tenta Supabase primeiro, fallback para Excel)
+    const data = await _readVIALABaseInternal();
+    
+    // Criar worksheet com os dados
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'VI ALA');
+    
+    // Gerar buffer do arquivo Excel
+    const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    
+    // Configurar headers para download
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="base_VI ALA.xlsx"');
+    res.setHeader('Content-Length', excelBuffer.length);
+    
+    console.log(`✅ Arquivo Excel gerado com ${data.length} registros`);
+    
+    // Enviar arquivo
+    res.send(excelBuffer);
   } catch (err) {
-    console.error('❌ Erro ao servir base_VI ALA.xlsx:', err);
-    res.status(500).json({ error: 'Erro ao servir arquivo base_VI ALA.xlsx' });
+    console.error('❌ Erro ao gerar/servir base_VI ALA.xlsx:', err);
+    console.error('❌ Stack:', err.stack);
+    
+    // Garantir headers CORS mesmo em erro
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Erro ao gerar arquivo base_VI ALA.xlsx' });
+    }
   }
 });
 
