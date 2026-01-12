@@ -2924,9 +2924,28 @@ app.delete('/api/projetistas/:nome', requireAdmin, async (req, res) => {
 async function requireAdmin(req, res, next) {
   try {
     // Tentar obter usuário do body, header ou query (flexível para diferentes métodos HTTP)
-    const usuario = req.body?.usuario || req.headers['x-usuario'] || req.query.usuario;
+    // Headers HTTP são case-insensitive, mas Node.js pode retornar em diferentes casos
+    // Buscar header em diferentes variações de case
+    let headerUsuario = null;
+    const headerKeys = Object.keys(req.headers);
+    for (const key of headerKeys) {
+      if (key.toLowerCase() === 'x-usuario') {
+        headerUsuario = req.headers[key];
+        break;
+      }
+    }
+    
+    const usuario = req.body?.usuario || headerUsuario || req.query.usuario;
+    
+    console.log('🔍 [Auth] Verificando autorização admin:', {
+      bodyUsuario: req.body?.usuario,
+      headerUsuario: headerUsuario,
+      queryUsuario: req.query.usuario,
+      usuarioFinal: usuario
+    });
     
     if (!usuario || !usuario.trim()) {
+      console.error('❌ [Auth] Usuário não fornecido na requisição');
       return res.status(401).json({ success: false, error: 'Usuário não autenticado' });
     }
     
@@ -2952,23 +2971,36 @@ async function requireAdmin(req, res, next) {
       }
     }
     
-    // Fallback: buscar do Excel
-    if (tipoUsuario === 'user') {
-      const projetistas = readProjetistas();
-      const projetista = projetistas.find(p => {
-        const nomeProj = typeof p === 'string' ? p : p.nome;
-        return nomeProj.toLowerCase() === usuarioLimpo.toLowerCase();
-      });
-      
-      if (projetista && typeof projetista !== 'string') {
-        tipoUsuario = (projetista.tipo || 'user').toLowerCase();
+    // Fallback: buscar do Excel (sempre verificar se não encontrou no Supabase)
+    if (tipoUsuario === 'user' || !tipoUsuario) {
+      try {
+        const projetistas = await readProjetistasAsync();
+        const projetista = projetistas.find(p => {
+          const nomeProj = typeof p === 'string' ? p : p.nome;
+          return nomeProj.toLowerCase() === usuarioLimpo.toLowerCase();
+        });
+        
+        if (projetista && typeof projetista !== 'string') {
+          tipoUsuario = (projetista.tipo || 'user').toLowerCase();
+          console.log(`📋 [Auth] Tipo encontrado no Excel para '${usuarioLimpo}': ${tipoUsuario}`);
+        } else if (projetista) {
+          console.log(`⚠️ [Auth] Projetista '${usuarioLimpo}' encontrado mas sem tipo definido (usando default: user)`);
+        } else {
+          console.warn(`⚠️ [Auth] Projetista '${usuarioLimpo}' não encontrado em nenhuma fonte`);
+        }
+      } catch (excelErr) {
+        console.error('❌ [Auth] Erro ao buscar tipo do Excel:', excelErr);
       }
     }
     
     // Verificar se é admin
+    console.log(`🔍 [Auth] Tipo do usuário '${usuarioLimpo}': ${tipoUsuario}`);
     if (tipoUsuario !== 'admin') {
+      console.warn(`⚠️ [Auth] Acesso negado para usuário '${usuarioLimpo}' (tipo: ${tipoUsuario})`);
       return res.status(403).json({ success: false, error: 'Acesso negado. Apenas administradores podem realizar esta ação.' });
     }
+    
+    console.log(`✅ [Auth] Usuário '${usuarioLimpo}' autorizado como admin`);
     
     // Adicionar tipo ao request para uso posterior
     req.userTipo = tipoUsuario;
