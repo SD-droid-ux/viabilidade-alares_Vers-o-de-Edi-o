@@ -1629,8 +1629,8 @@ app.get('/api/base-last-modified', async (req, res) => {
   }
 });
 
-// Rota para deletar todos os dados da base de dados CTO
-app.delete('/api/base/delete', async (req, res) => {
+// Rota para deletar todos os dados da base de dados CTO (apenas Admin)
+app.delete('/api/base/delete', requireAdmin, async (req, res) => {
   try {
     // Garantir headers CORS
     const origin = req.headers.origin;
@@ -1846,7 +1846,7 @@ async function readProjetistasFromSupabase() {
     
     const { data, error } = await supabase
       .from('projetistas')
-      .select('nome, senha')
+      .select('nome, senha, tipo')
       .order('nome', { ascending: true });
     
     if (error) {
@@ -1856,7 +1856,8 @@ async function readProjetistasFromSupabase() {
     
     const projetistas = (data || []).map(p => ({
       nome: p.nome || '',
-      senha: p.senha || ''
+      senha: p.senha || '',
+      tipo: p.tipo || 'user' // Default para 'user' se não existir
     }));
     
     console.log(`✅ [Supabase] ${projetistas.length} projetistas carregados do Supabase`);
@@ -1888,18 +1889,21 @@ function readProjetistasFromExcel() {
     
     console.log(`📊 [Excel] Colunas encontradas no Excel: ${Object.keys(data[0] || {})}`);
     
-    // Procurar colunas 'nome' e 'senha' (case insensitive)
+    // Procurar colunas 'nome', 'senha' e 'tipo' (case insensitive)
     const nomeCol = data.length > 0 ? Object.keys(data[0]).find(col => col.toLowerCase().trim() === 'nome') : 'nome';
     const senhaCol = data.length > 0 ? Object.keys(data[0]).find(col => col.toLowerCase().trim() === 'senha') : 'senha';
+    const tipoCol = data.length > 0 ? Object.keys(data[0]).find(col => col.toLowerCase().trim() === 'tipo') : 'tipo';
     
     const projetistas = data
       .map(row => {
         const nome = row.nome || row.Nome || row[nomeCol] || '';
         const senha = row.senha || row.Senha || row[senhaCol] || '';
+        const tipo = row.tipo || row.Tipo || row[tipoCol] || 'user'; // Default para 'user'
         if (nome && nome.trim() !== '') {
           return {
             nome: nome.trim(),
-            senha: senha ? senha.trim() : ''
+            senha: senha ? senha.trim() : '',
+            tipo: tipo ? tipo.trim().toLowerCase() : 'user' // Normalizar para lowercase
           };
         }
         return null;
@@ -1950,11 +1954,12 @@ async function saveProjetistasToSupabase(projetistas) {
     // Normalizar dados
     const dataToSave = projetistas.map(p => {
       if (typeof p === 'string') {
-        return { nome: p.trim(), senha: '' };
+        return { nome: p.trim(), senha: '', tipo: 'user' };
       }
       return {
         nome: (p.nome || '').trim(),
-        senha: (p.senha || '').trim()
+        senha: (p.senha || '').trim(),
+        tipo: (p.tipo || 'user').trim().toLowerCase() // Default para 'user' e normalizar
       };
     }).filter(p => p.nome); // Remover vazios
     
@@ -1999,13 +2004,17 @@ async function saveProjetistasToSupabase(projetistas) {
 async function saveProjetistasToExcel(projetistas) {
   return await withLock('projetistas', async () => {
     try {
-      // Criar dados para o Excel (com nome e senha)
+      // Criar dados para o Excel (com nome, senha e tipo)
       const data = projetistas.map(p => {
         if (typeof p === 'string') {
           // Compatibilidade: se for string antiga, converter para objeto
-          return { nome: p, senha: '' };
+          return { nome: p, senha: '', tipo: 'user' };
         }
-        return { nome: p.nome || '', senha: p.senha || '' };
+        return { 
+          nome: p.nome || '', 
+          senha: p.senha || '', 
+          tipo: (p.tipo || 'user').trim().toLowerCase() // Default para 'user' e normalizar
+        };
       });
       
       // Criar workbook
@@ -2715,8 +2724,8 @@ app.get('/api/projetistas', async (req, res) => {
   }
 });
 
-// Rota para adicionar projetista
-app.post('/api/projetistas', async (req, res) => {
+// Rota para adicionar projetista (apenas Admin)
+app.post('/api/projetistas', requireAdmin, async (req, res) => {
   try {
     const { nome, senha } = req.body;
     
@@ -2745,10 +2754,10 @@ app.post('/api/projetistas', async (req, res) => {
           return res.json({ success: false, error: 'Projetista já existe' });
         }
         
-        // Inserir no Supabase
+        // Inserir no Supabase (novo usuário sempre começa como 'user')
         const { error } = await supabase
           .from('projetistas')
-          .insert([{ nome: nomeLimpo, senha: senhaLimpa }]);
+          .insert([{ nome: nomeLimpo, senha: senhaLimpa, tipo: 'user' }]);
         
         if (error) {
           throw error;
@@ -2780,8 +2789,8 @@ app.post('/api/projetistas', async (req, res) => {
       return res.json({ success: false, error: 'Projetista já existe' });
     }
     
-    // Adicionar novo projetista com senha
-    projetistas.push({ nome: nomeLimpo, senha: senhaLimpa });
+    // Adicionar novo projetista com senha (novo usuário sempre começa como 'user')
+    projetistas.push({ nome: nomeLimpo, senha: senhaLimpa, tipo: 'user' });
     
     // Ordenar alfabeticamente por nome
     projetistas.sort((a, b) => {
@@ -2802,8 +2811,8 @@ app.post('/api/projetistas', async (req, res) => {
   }
 });
 
-// Rota para deletar projetista
-app.delete('/api/projetistas/:nome', async (req, res) => {
+// Rota para deletar projetista (apenas Admin)
+app.delete('/api/projetistas/:nome', requireAdmin, async (req, res) => {
   try {
     const nomeEncoded = req.params.nome;
     const nomeDecoded = decodeURIComponent(nomeEncoded).trim();
@@ -2911,6 +2920,65 @@ app.delete('/api/projetistas/:nome', async (req, res) => {
   }
 });
 
+// Middleware de autorização para verificar se o usuário é Admin
+async function requireAdmin(req, res, next) {
+  try {
+    // Tentar obter usuário do body, header ou query (flexível para diferentes métodos HTTP)
+    const usuario = req.body?.usuario || req.headers['x-usuario'] || req.query.usuario;
+    
+    if (!usuario || !usuario.trim()) {
+      return res.status(401).json({ success: false, error: 'Usuário não autenticado' });
+    }
+    
+    const usuarioLimpo = usuario.trim();
+    
+    // Buscar tipo do usuário
+    let tipoUsuario = 'user'; // Default
+    
+    if (supabase && isSupabaseAvailable()) {
+      try {
+        const { data, error } = await supabase
+          .from('projetistas')
+          .select('tipo')
+          .ilike('nome', usuarioLimpo)
+          .limit(1);
+        
+        if (!error && data && data.length > 0) {
+          tipoUsuario = (data[0].tipo || 'user').toLowerCase();
+        }
+      } catch (err) {
+        console.error('❌ [Auth] Erro ao buscar tipo do usuário no Supabase:', err);
+        // Continuar com fallback
+      }
+    }
+    
+    // Fallback: buscar do Excel
+    if (tipoUsuario === 'user') {
+      const projetistas = readProjetistas();
+      const projetista = projetistas.find(p => {
+        const nomeProj = typeof p === 'string' ? p : p.nome;
+        return nomeProj.toLowerCase() === usuarioLimpo.toLowerCase();
+      });
+      
+      if (projetista && typeof projetista !== 'string') {
+        tipoUsuario = (projetista.tipo || 'user').toLowerCase();
+      }
+    }
+    
+    // Verificar se é admin
+    if (tipoUsuario !== 'admin') {
+      return res.status(403).json({ success: false, error: 'Acesso negado. Apenas administradores podem realizar esta ação.' });
+    }
+    
+    // Adicionar tipo ao request para uso posterior
+    req.userTipo = tipoUsuario;
+    next();
+  } catch (err) {
+    console.error('❌ [Auth] Erro no middleware de autorização:', err);
+    return res.status(500).json({ success: false, error: 'Erro ao verificar permissões' });
+  }
+}
+
 // Rota para autenticar usuário (validar login)
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -2927,12 +2995,15 @@ app.post('/api/auth/login', async (req, res) => {
     const usuarioLimpo = usuario.trim();
     const senhaLimpa = senha.trim();
     
+    let projetistaEncontrado = null;
+    let tipoUsuario = 'user'; // Default
+    
     // Tentar buscar no Supabase primeiro
     if (supabase && isSupabaseAvailable()) {
       try {
         const { data, error } = await supabase
           .from('projetistas')
-          .select('nome, senha')
+          .select('nome, senha, tipo')
           .ilike('nome', usuarioLimpo)
           .limit(1);
         
@@ -2944,51 +3015,41 @@ app.post('/api/auth/login', async (req, res) => {
           return res.json({ success: false, error: 'Usuário ou senha incorretos' });
         }
         
-        const projetista = data[0];
-        if (projetista.senha !== senhaLimpa) {
+        projetistaEncontrado = data[0];
+        if (projetistaEncontrado.senha !== senhaLimpa) {
           return res.json({ success: false, error: 'Usuário ou senha incorretos' });
         }
         
-        // Login válido - continuar com registro de sessão
+        tipoUsuario = (projetistaEncontrado.tipo || 'user').toLowerCase();
       } catch (supabaseErr) {
         console.error('❌ [Supabase] Erro ao validar login, usando fallback Excel:', supabaseErr);
         // Continuar com fallback Excel
-        const projetistas = readProjetistas();
-    
-    // Buscar projetista pelo nome (case insensitive)
-    const projetista = projetistas.find(p => {
-      const nomeProj = typeof p === 'string' ? p : p.nome;
-      return nomeProj.toLowerCase() === usuarioLimpo.toLowerCase();
-    });
-    
-    if (!projetista) {
-      return res.json({ success: false, error: 'Usuário ou senha incorretos' });
+      }
     }
     
-    // Verificar senha
-    const senhaProj = typeof projetista === 'string' ? '' : projetista.senha;
-    if (senhaProj !== senhaLimpa) {
-      return res.json({ success: false, error: 'Usuário ou senha incorretos' });
-        }
-      }
-    } else {
-      // Fallback: usar Excel
-      const projetistas = readProjetistas();
+    // Fallback: usar Excel se não encontrou no Supabase
+    if (!projetistaEncontrado) {
+      const projetistas = await readProjetistasAsync();
       
       // Buscar projetista pelo nome (case insensitive)
-      const projetista = projetistas.find(p => {
+      projetistaEncontrado = projetistas.find(p => {
         const nomeProj = typeof p === 'string' ? p : p.nome;
         return nomeProj.toLowerCase() === usuarioLimpo.toLowerCase();
       });
       
-      if (!projetista) {
+      if (!projetistaEncontrado) {
         return res.json({ success: false, error: 'Usuário ou senha incorretos' });
       }
       
       // Verificar senha
-      const senhaProj = typeof projetista === 'string' ? '' : projetista.senha;
+      const senhaProj = typeof projetistaEncontrado === 'string' ? '' : projetistaEncontrado.senha;
       if (senhaProj !== senhaLimpa) {
         return res.json({ success: false, error: 'Usuário ou senha incorretos' });
+      }
+      
+      // Obter tipo do usuário
+      if (typeof projetistaEncontrado !== 'string') {
+        tipoUsuario = (projetistaEncontrado.tipo || 'user').toLowerCase();
       }
     }
     
@@ -2996,15 +3057,21 @@ app.post('/api/auth/login', async (req, res) => {
     const now = Date.now();
     activeSessions[usuarioLimpo] = {
       lastActivity: now,
-      loginTime: now
+      loginTime: now,
+      tipo: tipoUsuario
     };
     // Remover do histórico de logout se existir
     if (logoutHistory[usuarioLimpo]) {
       delete logoutHistory[usuarioLimpo];
     }
-    console.log(`🟢 Usuário ${usuarioLimpo} fez login`);
+    console.log(`🟢 Usuário ${usuarioLimpo} (${tipoUsuario}) fez login`);
     
-    res.json({ success: true, message: 'Login realizado com sucesso' });
+    res.json({ 
+      success: true, 
+      message: 'Login realizado com sucesso',
+      tipo: tipoUsuario,
+      usuario: usuarioLimpo
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -3236,6 +3303,112 @@ app.put('/api/projetistas/:nome/name', async (req, res) => {
     res.json({ success: true, message: 'Nome atualizado com sucesso', novoNome: novoNomeLimpo });
   } catch (err) {
     console.error('❌ Erro ao atualizar nome:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Rota para alterar tipo de usuário (apenas Admin)
+app.put('/api/projetistas/:nome/role', requireAdmin, async (req, res) => {
+  try {
+    const nomeEncoded = req.params.nome;
+    const nomeDecoded = decodeURIComponent(nomeEncoded).trim();
+    const { tipo } = req.body;
+    
+    if (!nomeDecoded) {
+      return res.status(400).json({ success: false, error: 'Nome do projetista não pode estar vazio' });
+    }
+    
+    if (!tipo || !tipo.trim()) {
+      return res.status(400).json({ success: false, error: 'Tipo é obrigatório' });
+    }
+    
+    const tipoLimpo = tipo.trim().toLowerCase();
+    
+    // Validar tipo (apenas 'admin' ou 'user')
+    if (tipoLimpo !== 'admin' && tipoLimpo !== 'user') {
+      return res.status(400).json({ success: false, error: 'Tipo deve ser "admin" ou "user"' });
+    }
+    
+    // Tentar atualizar no Supabase primeiro
+    if (supabase && isSupabaseAvailable()) {
+      try {
+        // Buscar projetista
+        const { data: existing } = await supabase
+          .from('projetistas')
+          .select('id, nome, tipo')
+          .ilike('nome', nomeDecoded)
+          .limit(1);
+        
+        if (!existing || existing.length === 0) {
+          return res.status(404).json({ success: false, error: 'Projetista não encontrado' });
+        }
+        
+        // Atualizar tipo
+        const { error } = await supabase
+          .from('projetistas')
+          .update({ tipo: tipoLimpo })
+          .ilike('nome', nomeDecoded);
+        
+        if (error) {
+          throw error;
+        }
+        
+        console.log(`✅ [Supabase] Tipo do projetista '${nomeDecoded}' atualizado para '${tipoLimpo}' no Supabase`);
+        
+        // Atualizar sessão ativa se o usuário estiver logado
+        if (activeSessions[nomeDecoded]) {
+          activeSessions[nomeDecoded].tipo = tipoLimpo;
+        }
+        
+        return res.json({ 
+          success: true, 
+          message: `Tipo do usuário atualizado para '${tipoLimpo}' com sucesso`,
+          tipo: tipoLimpo
+        });
+      } catch (supabaseErr) {
+        console.error('❌ [Supabase] Erro ao atualizar tipo, usando fallback Excel:', supabaseErr);
+        // Continuar com fallback Excel
+      }
+    }
+    
+    // Fallback: usar Excel
+    let projetistas = await readProjetistasAsync();
+    
+    // Buscar projetista pelo nome (case insensitive)
+    const projetistaIndex = projetistas.findIndex(p => {
+      const nomeProj = typeof p === 'string' ? p : p.nome;
+      return nomeProj.toLowerCase() === nomeDecoded.toLowerCase();
+    });
+    
+    if (projetistaIndex === -1) {
+      return res.status(404).json({ success: false, error: 'Projetista não encontrado' });
+    }
+    
+    // Atualizar tipo
+    const projetista = projetistas[projetistaIndex];
+    if (typeof projetista === 'string') {
+      projetistas[projetistaIndex] = { nome: projetista, senha: '', tipo: tipoLimpo };
+    } else {
+      projetistas[projetistaIndex] = { ...projetista, tipo: tipoLimpo };
+    }
+    
+    // Salvar no Excel
+    await saveProjetistas(projetistas);
+    
+    // Atualizar sessão ativa se o usuário estiver logado
+    if (activeSessions[nomeDecoded]) {
+      activeSessions[nomeDecoded].tipo = tipoLimpo;
+    }
+    
+    console.log(`✅ Tipo do projetista '${nomeDecoded}' atualizado para '${tipoLimpo}' com sucesso`);
+    
+    res.json({ 
+      success: true, 
+      message: `Tipo do usuário atualizado para '${tipoLimpo}' com sucesso`,
+      tipo: tipoLimpo
+    });
+  } catch (err) {
+    console.error('❌ Erro ao atualizar tipo:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
