@@ -125,6 +125,7 @@
     top: 0;
     z-index: 100;
     width: 100%;
+    box-sizing: border-box;
   }
 
   .header-content {
@@ -132,13 +133,16 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 1rem;
+    box-sizing: border-box;
   }
 
   .header-left {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    flex-shrink: 0;
+    flex-shrink: 1;
+    min-width: 0;
   }
 
   .dashboard-title {
@@ -159,7 +163,7 @@
   .header-right {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.75rem;
     flex-shrink: 0;
     margin-left: auto;
   }
@@ -173,6 +177,7 @@
     border-radius: 8px;
     backdrop-filter: blur(10px);
     white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .logout-button {
@@ -187,6 +192,7 @@
     justify-content: center;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     backdrop-filter: blur(10px);
+    flex-shrink: 0;
   }
 
   .logout-button:hover {
@@ -465,20 +471,37 @@
     }
 
     .header-left {
-      flex-shrink: 0;
+      flex-shrink: 1;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .dashboard-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dashboard-subtitle {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .header-right {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
+      gap: 0.5rem;
       flex-shrink: 0;
       margin-left: auto;
     }
 
     .user-name {
       font-size: 0.875rem;
-      padding: 0.4rem 0.875rem;
+      padding: 0.4rem 0.75rem;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .dashboard-main {
@@ -522,6 +545,45 @@
   @media (max-width: 480px) {
     .dashboard-header {
       padding: 1rem;
+    }
+
+    .header-content {
+      gap: 0.5rem;
+    }
+
+    .header-left {
+      flex-shrink: 1;
+      min-width: 0;
+    }
+
+    .dashboard-title {
+      font-size: 1.25rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dashboard-subtitle {
+      font-size: 0.75rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .header-right {
+      gap: 0.5rem;
+    }
+
+    .user-name {
+      font-size: 0.8125rem;
+      padding: 0.375rem 0.625rem;
+      max-width: 100px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .logout-button {
+      padding: 0.5rem;
     }
 
     .dashboard-main {
