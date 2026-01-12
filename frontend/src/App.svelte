@@ -150,6 +150,7 @@
   // Estado de autenticação
   let isLoggedIn = false;
   let currentUser = '';
+  let userTipo = 'user'; // Tipo de usuário: 'admin' ou 'user'
   let isLoading = false;
   let loadingMessage = '';
   let heartbeatInterval = null;
@@ -509,10 +510,11 @@
 
   // Função chamada quando o login é bem-sucedido
   async function handleLoginSuccess() {
-    // Carregar nome do usuário do localStorage
+    // Carregar nome do usuário e tipo do localStorage
     try {
       if (typeof localStorage !== 'undefined') {
         currentUser = localStorage.getItem('usuario') || '';
+        userTipo = localStorage.getItem('userTipo') || 'user'; // Default para 'user'
       }
     } catch (err) {
       console.error('Erro ao carregar usuário:', err);
@@ -607,6 +609,7 @@
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem('isLoggedIn');
         localStorage.removeItem('usuario');
+        localStorage.removeItem('userTipo');
       }
       // Parar heartbeat
       stopHeartbeat();
@@ -614,6 +617,7 @@
       // Resetar estado
       isLoggedIn = false;
       currentUser = '';
+      userTipo = 'user';
       // Limpar dados do mapa
       if (map) {
         markers.forEach(marker => {
@@ -784,11 +788,14 @@
       if (savedLogin === 'true') {
         localStorage.removeItem('isLoggedIn');
         localStorage.removeItem('usuario');
+        localStorage.removeItem('userTipo');
         isLoggedIn = false;
         currentUser = '';
+        userTipo = 'user';
       } else {
         isLoggedIn = false;
         currentUser = '';
+        userTipo = 'user';
       }
     } catch (err) {
       console.error('Erro ao verificar login:', err);
@@ -5665,6 +5672,8 @@
       onUpdateProjetistas={(list) => { projetistasList = list; }}
       onUpdateTabulacoes={(list) => { tabulacoesList = list; }}
       baseDataExists={baseDataExists}
+      userTipo={userTipo}
+      currentUser={currentUser}
     />
 {/if}
 
