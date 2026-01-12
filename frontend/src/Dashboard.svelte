@@ -106,7 +106,6 @@
     background-position: center center;
     background-repeat: no-repeat;
     background-attachment: fixed;
-    background-color: rgba(123, 104, 238, 0.05);
     padding: 0;
     position: relative;
     overflow-x: hidden;
@@ -121,7 +120,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, rgba(248, 250, 252, 0.35) 0%, rgba(241, 245, 249, 0.4) 50%, rgba(232, 236, 241, 0.35) 100%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%);
     pointer-events: none;
     z-index: 0;
   }
@@ -245,26 +244,28 @@
   }
 
   .welcome-title {
-    color: #1a202c;
+    color: #ffffff;
     font-size: 2.25rem;
     font-weight: 700;
     margin: 0 0 0.75rem 0;
     letter-spacing: -0.5px;
-    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    text-shadow: 0 2px 4px rgba(255, 255, 255, 0.8);
-    filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.9));
+    text-shadow: 
+      0 2px 8px rgba(123, 104, 238, 0.5),
+      0 4px 16px rgba(100, 149, 237, 0.3),
+      0 0 20px rgba(123, 104, 238, 0.2);
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
   }
 
   .welcome-subtitle {
-    color: #475569;
+    color: rgba(255, 255, 255, 0.95);
     font-size: 1.125rem;
     margin: 0;
     font-weight: 500;
     letter-spacing: 0.2px;
-    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
+    text-shadow: 
+      0 2px 6px rgba(123, 104, 238, 0.4),
+      0 1px 3px rgba(100, 149, 237, 0.3),
+      0 0 10px rgba(123, 104, 238, 0.2);
   }
 
   .tools-section {
@@ -273,7 +274,7 @@
   }
 
   .section-title {
-    color: #1e293b;
+    color: #ffffff;
     font-size: 1.5rem;
     font-weight: 600;
     margin: 0 0 2.5rem 0;
@@ -281,7 +282,10 @@
     text-align: center;
     position: relative;
     padding-bottom: 1rem;
-    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
+    text-shadow: 
+      0 2px 6px rgba(123, 104, 238, 0.5),
+      0 1px 3px rgba(100, 149, 237, 0.4),
+      0 0 15px rgba(123, 104, 238, 0.2);
   }
 
   .section-title::after {
@@ -317,11 +321,11 @@
   }
 
   .tool-card {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(20px) saturate(180%);
     border-radius: 20px;
     padding: 2rem;
-    border: 1.5px solid rgba(226, 232, 240, 0.8);
+    border: 1.5px solid rgba(255, 255, 255, 0.3);
     cursor: pointer;
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
@@ -330,8 +334,10 @@
     position: relative;
     overflow: hidden;
     box-shadow: 
-      0 8px 16px rgba(0, 0, 0, 0.1),
-      0 2px 8px rgba(0, 0, 0, 0.08);
+      0 8px 32px rgba(123, 104, 238, 0.15),
+      0 4px 16px rgba(100, 149, 237, 0.1),
+      0 2px 8px rgba(0, 0, 0, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
     text-align: left;
     width: 100%;
     max-width: 400px;
@@ -367,9 +373,12 @@
   .tool-card:hover {
     transform: translateY(-6px) scale(1.02);
     box-shadow: 
-      0 12px 32px rgba(123, 104, 238, 0.12),
-      0 4px 12px rgba(0, 0, 0, 0.08);
-    border-color: #7B68EE;
+      0 16px 40px rgba(123, 104, 238, 0.25),
+      0 8px 20px rgba(100, 149, 237, 0.15),
+      0 4px 12px rgba(0, 0, 0, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 1);
+    border-color: rgba(123, 104, 238, 0.5);
+    background: rgba(255, 255, 255, 1);
   }
 
   .tool-card:hover::after {
@@ -433,7 +442,7 @@
   }
 
   .tool-title {
-    color: #1e293b;
+    color: #4c1d95;
     font-size: 1.25rem;
     font-weight: 600;
     margin: 0;
@@ -442,11 +451,12 @@
   }
 
   .tool-description {
-    color: #64748b;
+    color: #5b21b6;
     font-size: 0.9375rem;
     line-height: 1.6;
     margin: 0;
     font-weight: 400;
+    opacity: 0.85;
   }
 
   .tool-arrow {
