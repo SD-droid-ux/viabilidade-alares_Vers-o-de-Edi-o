@@ -38,7 +38,6 @@
     // Validar credenciais com o backend
     try {
       const apiUrl = getApiUrl('/api/auth/login');
-      console.log('🔗 [Login] Tentando conectar em:', apiUrl);
       
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -51,14 +50,8 @@
         }),
       });
 
-      console.log('📥 [Login] Resposta recebida:', response.status, response.statusText);
-      console.log('📥 [Login] Content-Type:', response.headers.get('content-type'));
-      
       if (!response.ok) {
-        console.error('❌ [Login] Erro HTTP:', response.status, response.statusText);
-        // Tentar ler o texto da resposta para ver o que foi retornado
         const text = await response.text();
-        console.error('❌ [Login] Resposta (texto):', text.substring(0, 200));
         loginError = `Erro ao conectar: ${response.status} ${response.statusText}`;
         return;
       }
@@ -66,15 +59,11 @@
       // Verificar se a resposta é JSON
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
-        const text = await response.text();
-        console.error('❌ [Login] Resposta não é JSON! Content-Type:', contentType);
-        console.error('❌ [Login] Resposta recebida (primeiros 500 chars):', text.substring(0, 500));
         loginError = 'O servidor retornou uma resposta inválida. Verifique se o backend está configurado corretamente.';
         return;
       }
 
       const data = await response.json();
-      console.log('📦 [Login] Dados recebidos:', data);
 
       if (!data.success) {
         loginError = data.error || 'Usuário ou senha incorretos';
@@ -92,6 +81,14 @@
           localStorage.setItem('userTipo', 'user'); // Default
         }
       }
+
+      // Chamar callback de sucesso imediatamente após salvar dados
+      // Não usar await para não bloquear - deixar o callback executar em paralelo
+      if (typeof onLoginSuccess === 'function') {
+        onLoginSuccess().catch(err => {
+          console.error('Erro ao processar login:', err);
+        });
+      }
     } catch (err) {
       console.error('❌ [Login] Erro ao validar login:', err);
       console.error('❌ [Login] Tipo do erro:', err.name);
@@ -105,16 +102,6 @@
         loginError = `Erro ao conectar: ${err.message}`;
       }
       return;
-    }
-
-    // Chamar callback de sucesso
-    try {
-      if (typeof onLoginSuccess === 'function') {
-        await onLoginSuccess();
-      }
-    } catch (err) {
-      console.error('Erro ao processar login:', err);
-      loginError = 'Erro ao processar login. Tente novamente.';
     }
   }
 
