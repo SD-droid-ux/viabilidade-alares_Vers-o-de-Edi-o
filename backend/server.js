@@ -3329,6 +3329,18 @@ app.put('/api/projetistas/:nome/role', requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Tipo deve ser "admin" ou "user"' });
     }
     
+    // Obter o usuário que está fazendo a requisição (do middleware requireAdmin já validou que é admin)
+    const usuarioRequisicao = req.body?.usuario || req.headers['x-usuario'] || req.query.usuario || '';
+    const usuarioRequisicaoLimpo = usuarioRequisicao.trim().toLowerCase();
+    
+    // IMPEDIR que um usuário altere seu próprio tipo (segurança)
+    if (usuarioRequisicaoLimpo && nomeDecoded.toLowerCase() === usuarioRequisicaoLimpo) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Você não pode alterar seu próprio tipo de usuário. Peça a outro administrador para fazer isso.' 
+      });
+    }
+    
     // Tentar atualizar no Supabase primeiro
     if (supabase && isSupabaseAvailable()) {
       try {
