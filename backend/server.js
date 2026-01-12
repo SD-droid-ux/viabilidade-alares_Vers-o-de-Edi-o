@@ -37,7 +37,7 @@ app.use((req, res, next) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Content-Length');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Content-Length, X-Usuario, x-usuario');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Max-Age', '86400'); // 24 horas
     res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Type');
@@ -59,7 +59,8 @@ app.use((req, res, next) => {
 // Usar também o middleware cors como backup
 app.use(cors({
   origin: true, // Permitir todas as origens
-  credentials: true
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Content-Length', 'X-Usuario', 'x-usuario']
 }));
 
 // Configurar body parser com limites maiores e timeout maior
