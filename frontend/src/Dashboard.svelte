@@ -3,6 +3,10 @@
   export let currentUser = '';
   export let onLogout = () => {};
 
+  // Imagem de fundo do Dashboard
+  // Altere aqui o nome do arquivo quando adicionar a nova imagem em /public
+  const backgroundImage = '/background-login.png'; // Troque pelo nome da sua imagem
+
   // Lista de ferramentas disponíveis
   const tools = [
     {
@@ -29,7 +33,7 @@
   }
 </script>
 
-<div class="dashboard-container">
+<div class="dashboard-container" style="background-image: url('{backgroundImage}');">
   <header class="dashboard-header">
     <div class="header-content">
       <div class="header-left">
@@ -98,8 +102,7 @@
   .dashboard-container {
     min-height: 100vh;
     background: 
-      linear-gradient(135deg, rgba(123, 104, 238, 0.05) 0%, rgba(100, 149, 237, 0.05) 100%),
-      url('/background-login.png');
+      linear-gradient(135deg, rgba(123, 104, 238, 0.05) 0%, rgba(100, 149, 237, 0.05) 100%);
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
