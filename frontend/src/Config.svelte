@@ -8,6 +8,8 @@
   export let onUpdateProjetistas = (list) => {};
   export let onUpdateTabulacoes = (list) => {};
   export let baseDataExists = true;
+  export let userTipo = 'user'; // Tipo de usuário: 'admin' ou 'user'
+  export let currentUser = ''; // Nome do usuário atual
 
   // Estados
   let projetistasList = [];
@@ -42,6 +44,10 @@
   let uploadPollInterval = null; // Intervalo de polling para verificar status
   let showDeleteBaseModal = false; // Modal de confirmação para deletar base
   let deletingBase = false; // Flag para indicar que está deletando base
+  let showChangeRoleModal = false; // Modal para alterar tipo de usuário
+  let projetistaToChangeRole = '';
+  let newRole = 'user';
+  let changeRoleError = '';
 
   // Carregar dados do localStorage primeiro (instantâneo)
   function loadFromLocalStorage() {
@@ -403,7 +409,9 @@
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
+          'X-Usuario': currentUser || '', // Enviar usuário no header para autorização
         },
+        body: JSON.stringify({ usuario: currentUser || '' }), // Também no body para compatibilidade
       });
 
       console.log('📥 [Delete] Resposta recebida:', response.status, response.statusText);
@@ -626,7 +634,9 @@
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
+          'X-Usuario': currentUser || '', // Enviar usuário no header para autorização
         },
+        body: JSON.stringify({ usuario: currentUser || '' }), // Também no body para compatibilidade
       });
 
       if (response.ok) {
@@ -696,6 +706,61 @@
     showProjetistaPassword = false;
   }
 
+  // Função para abrir modal de alterar tipo de usuário
+  function openChangeRoleModal(nome) {
+    projetistaToChangeRole = nome;
+    newRole = 'user'; // Default
+    changeRoleError = '';
+    showChangeRoleModal = true;
+  }
+
+  // Função para fechar modal de alterar tipo
+  function closeChangeRoleModal() {
+    showChangeRoleModal = false;
+    projetistaToChangeRole = '';
+    newRole = 'user';
+    changeRoleError = '';
+  }
+
+  // Função para alterar tipo de usuário
+  async function changeUserRole() {
+    if (!projetistaToChangeRole) return;
+    
+    changeRoleError = '';
+    
+    if (!newRole || (newRole !== 'admin' && newRole !== 'user')) {
+      changeRoleError = 'Tipo inválido. Deve ser "admin" ou "user"';
+      return;
+    }
+    
+    try {
+      const response = await fetch(getApiUrl(`/api/projetistas/${encodeURIComponent(projetistaToChangeRole)}/role`), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Usuario': currentUser || '',
+        },
+        body: JSON.stringify({
+          tipo: newRole,
+          usuario: currentUser || ''
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        closeChangeRoleModal();
+        // Recarregar lista de projetistas
+        await loadProjetistas();
+      } else {
+        changeRoleError = data.error || 'Erro ao alterar tipo de usuário';
+      }
+    } catch (err) {
+      console.error('Erro ao alterar tipo de usuário:', err);
+      changeRoleError = 'Erro ao alterar tipo de usuário. Tente novamente.';
+    }
+  }
+
   // Função para adicionar projetista
   async function addProjetista() {
     projetistaError = '';
@@ -715,10 +780,12 @@
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Usuario': currentUser || '', // Enviar usuário no header para autorização
         },
         body: JSON.stringify({
           nome: newProjetistaName.trim(),
-          senha: newProjetistaSenha.trim()
+          senha: newProjetistaSenha.trim(),
+          usuario: currentUser || '' // Também no body para compatibilidade
         }),
       });
 
@@ -1068,27 +1135,41 @@
                     <span class="offline-indicator" title="Offline">🔴</span>
                   {/if}
                 </div>
-                <button 
-                  class="btn-delete" 
-                  on:click={() => confirmDeleteProjetista(projetista)}
-                  aria-label="Excluir {projetista}"
-                  title="Excluir {projetista}"
-                >
-                  🗑️
-                </button>
+                {#if userTipo === 'admin'}
+                  <div class="projetista-actions">
+                    <button 
+                      class="btn-change-role" 
+                      on:click={() => openChangeRoleModal(projetista)}
+                      aria-label="Alterar tipo de {projetista}"
+                      title="Alterar tipo de usuário"
+                    >
+                      👤
+                    </button>
+                    <button 
+                      class="btn-delete" 
+                      on:click={() => confirmDeleteProjetista(projetista)}
+                      aria-label="Excluir {projetista}"
+                      title="Excluir {projetista}"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                {/if}
               </div>
             {/each}
           </div>
         {/if}
-        <div class="add-projetista-section">
-          <button 
-            class="btn-add" 
-            on:click={openAddProjetistaModal}
-            title="Adicionar novo projetista"
-          >
-            + Adicionar novo projetista
-          </button>
-        </div>
+        {#if userTipo === 'admin'}
+          <div class="add-projetista-section">
+            <button 
+              class="btn-add" 
+              on:click={openAddProjetistaModal}
+              title="Adicionar novo projetista"
+            >
+              + Adicionar novo projetista
+            </button>
+          </div>
+        {/if}
       </div>
 
       <div class="settings-section">
@@ -1242,16 +1323,18 @@
           </div>
           <p class="upload-hint">Selecione um arquivo Excel (.xlsx ou .xls) com a estrutura da base atual</p>
           
-          <div class="delete-base-container" style="margin-top: 1rem;">
-            <button 
-              class="btn-delete-base" 
-              on:click={() => showDeleteBaseModal = true}
-              disabled={deletingBase || uploadingBase}
-              title="Deletar todos os dados da base de dados CTO"
-            >
-              🗑️ Deletar Base Atual
-            </button>
-          </div>
+          {#if userTipo === 'admin'}
+            <div class="delete-base-container" style="margin-top: 1rem;">
+              <button 
+                class="btn-delete-base" 
+                on:click={() => showDeleteBaseModal = true}
+                disabled={deletingBase || uploadingBase}
+                title="Deletar todos os dados da base de dados CTO"
+              >
+                🗑️ Deletar Base Atual
+              </button>
+            </div>
+          {/if}
           
           {#if baseDataExists && baseLastModified}
             <p class="last-modified-text">
@@ -1463,6 +1546,73 @@
             <button type="button" class="btn-cancel" on:click={closeAddProjetistaModal}>Cancelar</button>
             <button type="submit" class="btn-add-confirm">
               Adicionar
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Modal de Alterar Tipo de Usuário -->
+{#if showChangeRoleModal}
+  <div 
+    class="modal-overlay" 
+    on:click={closeChangeRoleModal}
+    on:keydown={(e) => e.key === 'Escape' && closeChangeRoleModal()}
+    role="button"
+    tabindex="-1"
+    aria-label="Fechar modal"
+  >
+    <div 
+      class="modal-content" 
+      on:click|stopPropagation
+      on:keydown={(e) => e.stopPropagation()}
+      role="dialog"
+      tabindex="0"
+      aria-modal="true"
+      aria-labelledby="change-role-title"
+    >
+      <div class="modal-header">
+        <h2 id="change-role-title">Alterar Tipo de Usuário</h2>
+        <button class="modal-close" on:click={closeChangeRoleModal} aria-label="Fechar modal">×</button>
+      </div>
+
+      <div class="modal-body">
+        <form on:submit|preventDefault={changeUserRole}>
+          <div class="form-group">
+            <label for="projetistaNomeRole">Usuário</label>
+            <input 
+              type="text" 
+              id="projetistaNomeRole"
+              value={projetistaToChangeRole}
+              disabled
+              readonly
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="userRole">Tipo de Usuário <span class="required">*</span></label>
+            <select 
+              id="userRole"
+              bind:value={newRole}
+              required
+            >
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+
+          {#if changeRoleError}
+            <div class="error-message-modal">
+              {changeRoleError}
+            </div>
+          {/if}
+
+          <div class="modal-actions">
+            <button type="button" class="btn-cancel" on:click={closeChangeRoleModal}>Cancelar</button>
+            <button type="submit" class="btn-add-confirm">
+              Alterar Tipo
             </button>
           </div>
         </form>
@@ -1884,6 +2034,36 @@
   }
 
   .btn-delete:active {
+    transform: translateY(0);
+  }
+
+  .projetista-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .btn-change-role {
+    background: linear-gradient(135deg, #4CAF50 0%, #45A049 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-change-role:hover {
+    background: linear-gradient(135deg, #5CBF60 0%, #55B059 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(76, 175, 80, 0.3);
+  }
+
+  .btn-change-role:active {
     transform: translateY(0);
   }
 
