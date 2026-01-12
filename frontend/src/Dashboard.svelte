@@ -37,9 +37,7 @@
         <p class="dashboard-subtitle">Setor de Planejamento e Projetos - Engenharia Alares</p>
       </div>
       <div class="header-right">
-        <div class="user-info">
-          <span class="user-name">{currentUser}</span>
-        </div>
+        <span class="user-name">{currentUser}</span>
         <button class="logout-button" on:click={handleLogoutClick} title="Sair">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -160,13 +158,7 @@
   .header-right {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
-  }
-
-  .user-info {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+    gap: 1rem;
   }
 
   .user-name {
@@ -177,6 +169,7 @@
     background: rgba(255, 255, 255, 0.15);
     border-radius: 8px;
     backdrop-filter: blur(10px);
+    white-space: nowrap;
   }
 
   .logout-button {
@@ -461,14 +454,25 @@
     }
 
     .header-content {
-      flex-direction: column;
-      align-items: flex-start;
+      flex-wrap: wrap;
       gap: 1rem;
     }
 
+    .header-left {
+      flex: 1;
+      min-width: 200px;
+    }
+
     .header-right {
-      width: 100%;
-      justify-content: space-between;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-left: auto;
+    }
+
+    .user-name {
+      font-size: 0.875rem;
+      padding: 0.4rem 0.875rem;
     }
 
     .dashboard-main {
