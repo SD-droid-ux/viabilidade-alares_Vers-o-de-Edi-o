@@ -52,30 +52,39 @@
   </header>
 
   <main class="dashboard-main">
-    <div class="tools-section">
-      <h2 class="section-title">Ferramentas Disponíveis</h2>
-      <div class="tools-grid">
-        {#each tools as tool (tool.id)}
-          <button
-            class="tool-card"
-            class:disabled={!tool.available}
-            on:click={() => handleToolClick(tool)}
-            disabled={!tool.available}
-          >
-            <div class="tool-icon" style="background: linear-gradient(135deg, {tool.color}15 0%, {tool.color}25 100%);">
-              <span class="icon-emoji">{tool.icon}</span>
-            </div>
-            <div class="tool-content">
-              <h3 class="tool-title">{tool.title}</h3>
-              <p class="tool-description">{tool.description}</p>
-            </div>
-            <div class="tool-arrow">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-          </button>
-        {/each}
+    <div class="main-wrapper">
+      <div class="welcome-section">
+        <h2 class="welcome-title">Bem-vindo, {currentUser}!</h2>
+        <p class="welcome-subtitle">Selecione uma ferramenta abaixo para começar</p>
+      </div>
+
+      <div class="tools-section">
+        <h2 class="section-title">Ferramentas Disponíveis</h2>
+        <div class="tools-grid">
+          {#each tools as tool (tool.id)}
+            <button
+              class="tool-card"
+              class:disabled={!tool.available}
+              on:click={() => handleToolClick(tool)}
+              disabled={!tool.available}
+            >
+              <div class="tool-icon-wrapper">
+                <div class="tool-icon" style="background: linear-gradient(135deg, {tool.color}15 0%, {tool.color}25 100%);">
+                  <span class="icon-emoji">{tool.icon}</span>
+                </div>
+              </div>
+              <div class="tool-content">
+                <h3 class="tool-title">{tool.title}</h3>
+                <p class="tool-description">{tool.description}</p>
+              </div>
+              <div class="tool-arrow">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+            </button>
+          {/each}
+        </div>
       </div>
     </div>
   </main>
@@ -90,9 +99,24 @@
 
   .dashboard-container {
     min-height: 100vh;
-    background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e8ecf1 100%);
     display: flex;
     flex-direction: column;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  .dashboard-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: 
+      radial-gradient(circle at 20% 50%, rgba(123, 104, 238, 0.03) 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, rgba(100, 149, 237, 0.03) 0%, transparent 50%);
+    pointer-events: none;
   }
 
   .dashboard-header {
@@ -182,44 +206,116 @@
 
   .dashboard-main {
     flex: 1;
-    max-width: 1400px;
     width: 100%;
-    margin: 0 auto;
-    padding: 3rem 2rem;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 4rem 2rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .main-wrapper {
+    max-width: 1200px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 3rem;
+  }
+
+  .welcome-section {
+    text-align: center;
+    padding: 2rem 0;
+    animation: fadeInUp 0.6s ease-out;
+  }
+
+  .welcome-title {
+    color: #1a202c;
+    font-size: 2.25rem;
+    font-weight: 700;
+    margin: 0 0 0.75rem 0;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .welcome-subtitle {
+    color: #64748b;
+    font-size: 1.125rem;
+    margin: 0;
+    font-weight: 400;
+    letter-spacing: 0.2px;
   }
 
   .tools-section {
     width: 100%;
+    animation: fadeInUp 0.8s ease-out 0.2s both;
   }
 
   .section-title {
-    color: #2D3748;
+    color: #1e293b;
     font-size: 1.5rem;
     font-weight: 600;
-    margin: 0 0 2rem 0;
+    margin: 0 0 2.5rem 0;
     letter-spacing: -0.3px;
+    text-align: center;
+    position: relative;
+    padding-bottom: 1rem;
+  }
+
+  .section-title::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(90deg, #7B68EE 0%, #6495ED 100%);
+    border-radius: 2px;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .tools-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 2rem;
+    justify-items: center;
+    max-width: 1000px;
+    margin: 0 auto;
   }
 
   .tool-card {
     background: white;
-    border-radius: 16px;
-    padding: 1.75rem;
+    border-radius: 20px;
+    padding: 2rem;
     border: 1.5px solid #e2e8f0;
     cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 1.5rem;
     position: relative;
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    box-shadow: 
+      0 4px 6px rgba(0, 0, 0, 0.05),
+      0 1px 3px rgba(0, 0, 0, 0.08);
     text-align: left;
+    width: 100%;
+    max-width: 400px;
+    min-height: 220px;
   }
 
   .tool-card::before {
@@ -229,16 +325,35 @@
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, #7B68EE 0%, #6B5BEE 100%);
+    background: linear-gradient(90deg, #7B68EE 0%, #6495ED 100%);
     transform: scaleX(0);
     transform-origin: left;
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .tool-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(123, 104, 238, 0.02) 0%, rgba(100, 149, 237, 0.02) 100%);
+    opacity: 0;
+    transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: none;
   }
 
   .tool-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(123, 104, 238, 0.15);
+    transform: translateY(-6px) scale(1.02);
+    box-shadow: 
+      0 12px 32px rgba(123, 104, 238, 0.12),
+      0 4px 12px rgba(0, 0, 0, 0.08);
     border-color: #7B68EE;
+  }
+
+  .tool-card:hover::after {
+    opacity: 1;
   }
 
   .tool-card:hover::before {
@@ -261,18 +376,26 @@
     border-color: #e2e8f0;
   }
 
+  .tool-icon-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
   .tool-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: 14px;
+    width: 72px;
+    height: 72px;
+    border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   }
 
   .tool-card:hover .tool-icon {
     transform: scale(1.1) rotate(5deg);
+    box-shadow: 0 4px 16px rgba(123, 104, 238, 0.2);
   }
 
   .icon-emoji {
@@ -284,37 +407,43 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.75rem;
+    z-index: 1;
+    position: relative;
   }
 
   .tool-title {
-    color: #2D3748;
-    font-size: 1.125rem;
+    color: #1e293b;
+    font-size: 1.25rem;
     font-weight: 600;
     margin: 0;
-    letter-spacing: -0.2px;
+    letter-spacing: -0.3px;
+    line-height: 1.3;
   }
 
   .tool-description {
-    color: #718096;
-    font-size: 0.875rem;
-    line-height: 1.5;
+    color: #64748b;
+    font-size: 0.9375rem;
+    line-height: 1.6;
     margin: 0;
+    font-weight: 400;
   }
 
   .tool-arrow {
     position: absolute;
-    top: 1.75rem;
-    right: 1.75rem;
+    top: 2rem;
+    right: 2rem;
     color: #7B68EE;
     opacity: 0;
-    transform: translateX(-8px);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateX(-12px);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 2;
   }
 
   .tool-card:hover .tool-arrow {
     opacity: 1;
     transform: translateX(0);
+    color: #6495ED;
   }
 
   /* Responsividade */
@@ -343,16 +472,40 @@
     }
 
     .dashboard-main {
-      padding: 2rem 1.5rem;
+      padding: 2.5rem 1.5rem;
+    }
+
+    .main-wrapper {
+      gap: 2.5rem;
+    }
+
+    .welcome-section {
+      padding: 1.5rem 0;
+    }
+
+    .welcome-title {
+      font-size: 1.875rem;
+    }
+
+    .welcome-subtitle {
+      font-size: 1rem;
     }
 
     .tools-grid {
       grid-template-columns: 1fr;
-      gap: 1.25rem;
+      gap: 1.5rem;
+      max-width: 100%;
     }
 
     .tool-card {
-      padding: 1.5rem;
+      padding: 1.75rem;
+      max-width: 100%;
+      min-height: auto;
+    }
+
+    .section-title {
+      font-size: 1.375rem;
+      margin-bottom: 2rem;
     }
   }
 
@@ -362,11 +515,45 @@
     }
 
     .dashboard-main {
-      padding: 1.5rem 1rem;
+      padding: 2rem 1rem;
+    }
+
+    .main-wrapper {
+      gap: 2rem;
+    }
+
+    .welcome-title {
+      font-size: 1.625rem;
+    }
+
+    .welcome-subtitle {
+      font-size: 0.9375rem;
     }
 
     .section-title {
       font-size: 1.25rem;
+      margin-bottom: 1.75rem;
+    }
+
+    .tools-grid {
+      gap: 1.25rem;
+    }
+
+    .tool-card {
+      padding: 1.5rem;
+    }
+
+    .tool-icon {
+      width: 64px;
+      height: 64px;
+    }
+
+    .tool-title {
+      font-size: 1.125rem;
+    }
+
+    .tool-description {
+      font-size: 0.875rem;
     }
 
     .user-name {
@@ -375,5 +562,4 @@
     }
   }
 </style>
-
 
