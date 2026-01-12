@@ -5,7 +5,7 @@
 
   // Imagem de fundo do Dashboard
   // Altere aqui o nome do arquivo quando adicionar a nova imagem em /public
-  const backgroundImage = '/dashboard-background.png'; // Troque pelo nome da sua imagem
+  const backgroundImage = '/background-login.png'; // Troque pelo nome da sua imagem
 
   // Lista de ferramentas disponíveis
   const tools = [
@@ -101,16 +101,16 @@
 
   .dashboard-container {
     min-height: 100vh;
-    background: 
-      linear-gradient(135deg, rgba(123, 104, 238, 0.05) 0%, rgba(100, 149, 237, 0.05) 100%);
+    background-image: url('{backgroundImage}');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
-    background-attachment: fixed;
-    display: flex;
-    flex-direction: column;
+    background-color: rgba(123, 104, 238, 0.1);
+    padding: 0;
     position: relative;
     overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
   }
 
   .dashboard-container::before {
@@ -120,10 +120,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: 
-      linear-gradient(135deg, rgba(248, 250, 252, 0.85) 0%, rgba(241, 245, 249, 0.9) 50%, rgba(232, 236, 241, 0.85) 100%),
-      radial-gradient(circle at 20% 50%, rgba(123, 104, 238, 0.03) 0%, transparent 50%),
-      radial-gradient(circle at 80% 80%, rgba(100, 149, 237, 0.03) 0%, transparent 50%);
+    background: linear-gradient(135deg, rgba(248, 250, 252, 0.7) 0%, rgba(241, 245, 249, 0.75) 50%, rgba(232, 236, 241, 0.7) 100%);
     pointer-events: none;
     z-index: 0;
   }
@@ -138,6 +135,7 @@
     width: 100%;
     box-sizing: border-box;
     position: relative;
+    backdrop-filter: blur(10px);
   }
 
   .header-content {
