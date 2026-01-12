@@ -1162,8 +1162,6 @@
                       >
                         👤
                       </button>
-                    {/if}
-                    {#if projetista.toLowerCase() !== currentUser.toLowerCase()}
                       <button 
                         class="btn-delete" 
                         on:click={() => confirmDeleteProjetista(projetista)}
@@ -1172,10 +1170,6 @@
                       >
                         🗑️
                       </button>
-                    {:else}
-                      <span class="self-user-indicator" title="Você não pode alterar ou excluir seu próprio perfil">
-                        Você
-                      </span>
                     {/if}
                   </div>
                 {/if}
@@ -2089,14 +2083,6 @@
 
   .btn-change-role:active {
     transform: translateY(0);
-  }
-
-  .self-user-indicator {
-    color: #7B68EE;
-    font-size: 0.875rem;
-    font-weight: 500;
-    padding: 0.5rem 0.75rem;
-    font-style: italic;
   }
 
   /* Modal Styles */
