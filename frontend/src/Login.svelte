@@ -85,6 +85,12 @@
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('isLoggedIn', 'true');
         localStorage.setItem('usuario', loginForm.usuario.trim());
+        // Armazenar tipo de usuário (admin ou user)
+        if (data.tipo) {
+          localStorage.setItem('userTipo', data.tipo);
+        } else {
+          localStorage.setItem('userTipo', 'user'); // Default
+        }
       }
     } catch (err) {
       console.error('❌ [Login] Erro ao validar login:', err);
