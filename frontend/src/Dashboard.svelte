@@ -124,11 +124,11 @@
     position: sticky;
     top: 0;
     z-index: 100;
+    width: 100%;
   }
 
   .header-content {
-    max-width: 1400px;
-    margin: 0 auto;
+    width: 100%;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -138,6 +138,7 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+    flex-shrink: 0;
   }
 
   .dashboard-title {
@@ -159,6 +160,8 @@
     display: flex;
     align-items: center;
     gap: 1rem;
+    flex-shrink: 0;
+    margin-left: auto;
   }
 
   .user-name {
@@ -454,19 +457,22 @@
     }
 
     .header-content {
-      flex-wrap: wrap;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       gap: 1rem;
     }
 
     .header-left {
-      flex: 1;
-      min-width: 200px;
+      flex-shrink: 0;
     }
 
     .header-right {
       display: flex;
       align-items: center;
       gap: 0.75rem;
+      flex-shrink: 0;
       margin-left: auto;
     }
 
