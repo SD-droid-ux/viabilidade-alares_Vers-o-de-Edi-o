@@ -523,13 +523,13 @@
       console.error('Erro ao carregar usuário:', err);
     }
     
-    // Iniciar heartbeat para manter usuário online
-    startHeartbeat();
-    
-    // Mostrar Dashboard após login
+    // Mostrar Dashboard imediatamente (sem await)
     isLoggedIn = true;
     currentView = 'dashboard';
     currentTool = null;
+    
+    // Iniciar heartbeat em background (não bloquear)
+    startHeartbeat();
   }
 
   // Função para selecionar uma ferramenta do Dashboard
