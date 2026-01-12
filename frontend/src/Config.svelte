@@ -789,7 +789,22 @@
         }),
       });
 
+      // Verificar status da resposta primeiro
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || `Erro HTTP ${response.status}` };
+        }
+        console.error('❌ [Add Projetista] Erro HTTP:', response.status, errorData);
+        projetistaError = errorData.error || `Erro ao adicionar projetista (${response.status})`;
+        return;
+      }
+
       const data = await response.json();
+      console.log('📦 [Add Projetista] Resposta:', data);
 
       if (data.success) {
         projetistasList = data.projetistas || [];
@@ -807,6 +822,7 @@
         
         closeAddProjetistaModal();
       } else {
+        console.error('❌ [Add Projetista] Erro na resposta:', data);
         projetistaError = data.error || 'Erro ao adicionar projetista';
       }
     } catch (err) {
