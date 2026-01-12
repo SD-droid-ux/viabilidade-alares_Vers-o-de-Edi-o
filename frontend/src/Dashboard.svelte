@@ -5,7 +5,7 @@
 
   // Imagem de fundo do Dashboard
   // Altere aqui o nome do arquivo quando adicionar a nova imagem em /public
-  const backgroundImage = '/background-login.png'; // Troque pelo nome da sua imagem
+  const backgroundImage = '/dashboard-background.png'; // Troque pelo nome da sua imagem
 
   // Lista de ferramentas disponíveis
   const tools = [
