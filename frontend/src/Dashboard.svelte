@@ -103,9 +103,10 @@
     min-height: 100vh;
     background-image: url('{backgroundImage}');
     background-size: cover;
-    background-position: center;
+    background-position: center center;
     background-repeat: no-repeat;
-    background-color: rgba(123, 104, 238, 0.1);
+    background-attachment: fixed;
+    background-color: rgba(123, 104, 238, 0.05);
     padding: 0;
     position: relative;
     overflow-x: hidden;
@@ -120,7 +121,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, rgba(248, 250, 252, 0.7) 0%, rgba(241, 245, 249, 0.75) 50%, rgba(232, 236, 241, 0.7) 100%);
+    background: linear-gradient(135deg, rgba(248, 250, 252, 0.35) 0%, rgba(241, 245, 249, 0.4) 50%, rgba(232, 236, 241, 0.35) 100%);
     pointer-events: none;
     z-index: 0;
   }
@@ -239,6 +240,8 @@
     text-align: center;
     padding: 2rem 0;
     animation: fadeInUp 0.6s ease-out;
+    position: relative;
+    z-index: 1;
   }
 
   .welcome-title {
@@ -251,14 +254,17 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    text-shadow: 0 2px 4px rgba(255, 255, 255, 0.8);
+    filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.9));
   }
 
   .welcome-subtitle {
-    color: #64748b;
+    color: #475569;
     font-size: 1.125rem;
     margin: 0;
-    font-weight: 400;
+    font-weight: 500;
     letter-spacing: 0.2px;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
   }
 
   .tools-section {
@@ -275,6 +281,7 @@
     text-align: center;
     position: relative;
     padding-bottom: 1rem;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
   }
 
   .section-title::after {
@@ -310,10 +317,11 @@
   }
 
   .tool-card {
-    background: white;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
     border-radius: 20px;
     padding: 2rem;
-    border: 1.5px solid #e2e8f0;
+    border: 1.5px solid rgba(226, 232, 240, 0.8);
     cursor: pointer;
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
@@ -322,8 +330,8 @@
     position: relative;
     overflow: hidden;
     box-shadow: 
-      0 4px 6px rgba(0, 0, 0, 0.05),
-      0 1px 3px rgba(0, 0, 0, 0.08);
+      0 8px 16px rgba(0, 0, 0, 0.1),
+      0 2px 8px rgba(0, 0, 0, 0.08);
     text-align: left;
     width: 100%;
     max-width: 400px;
