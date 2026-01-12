@@ -6,6 +6,7 @@
   import Login from './Login.svelte';
   import Config from './Config.svelte';
   import Loading from './Loading.svelte';
+  import Dashboard from './Dashboard.svelte';
 
   // Helper para URL da API (suporta desenvolvimento e produção)
   const API_URL = import.meta.env.VITE_API_URL || '';
@@ -154,6 +155,8 @@
   let isLoading = false;
   let loadingMessage = '';
   let heartbeatInterval = null;
+  let currentView = 'dashboard'; // 'dashboard' ou 'tool' (ferramenta específica)
+  let currentTool = null; // ID da ferramenta atual
   
   // Estados para modal de trocar senha
   let showChangePasswordModal = false;
@@ -523,67 +526,104 @@
     // Iniciar heartbeat para manter usuário online
     startHeartbeat();
     
-    // Mostrar tela de loading
-    isLoading = true;
-    isLoggedIn = false; // Ainda não mostrar a aplicação
-    
-    try {
-      // Etapa 1: Carregando Mapa
-      loadingMessage = 'Carregando Mapa';
-      await loadGoogleMaps();
+    // Mostrar Dashboard após login
+    isLoggedIn = true;
+    currentView = 'dashboard';
+    currentTool = null;
+  }
+
+  // Função para selecionar uma ferramenta do Dashboard
+  async function handleToolSelect(toolId) {
+    if (toolId === 'viabilidade-alares') {
+      // Carregar a ferramenta de Viabilidade
+      currentTool = toolId;
+      currentView = 'tool';
       
-      // Pequeno delay para visualização
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Mostrar loading enquanto carrega a ferramenta
+      isLoading = true;
       
-      // Etapa 2: Verificando Base de dados (não carrega tudo - apenas verifica disponibilidade)
-      loadingMessage = 'Verificando Base de dados';
-      baseDataExists = true; // Resetar estado
       try {
-        await checkBaseAvailable();
+        // Etapa 1: Carregando Mapa
+        loadingMessage = 'Carregando Mapa';
+        await loadGoogleMaps();
+        
+        // Pequeno delay para visualização
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Etapa 2: Verificando Base de dados
+        loadingMessage = 'Verificando Base de dados';
+        baseDataExists = true; // Resetar estado
+        try {
+          await checkBaseAvailable();
+        } catch (err) {
+          console.warn('Aviso: Não foi possível verificar base de dados:', err.message);
+          baseDataExists = false;
+        }
+        
+        // Pequeno delay para visualização
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Etapa 3: Carregando ambiente Virtual
+        loadingMessage = 'Carregando ambiente Virtual';
+        loadProjetistas();
+        await loadTabulacoes();
+        
+        // Pequeno delay para visualização
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Etapa 4: Ajuste Finais
+        loadingMessage = 'Ajuste Finais';
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Etapa 5: Abrindo Ferramenta Virtual
+        loadingMessage = 'Abrindo Ferramenta Virtual';
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Tudo carregado
+        isLoading = false;
+        
+        // Aguardar o DOM atualizar antes de inicializar o mapa
+        await tick();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Agora inicializar o mapa após o elemento estar no DOM
+        initMap();
       } catch (err) {
-        console.warn('Aviso: Não foi possível verificar base de dados:', err.message);
-        baseDataExists = false;
+        console.error('Erro ao inicializar aplicação:', err);
+        error = 'Erro ao inicializar aplicação: ' + err.message;
+        isLoading = false;
+        
+        // Tentar inicializar o mapa mesmo com erro
+        await tick();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        initMap();
       }
-      
-      // Pequeno delay para visualização
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Etapa 3: Carregando ambiente Virtual
-      loadingMessage = 'Carregando ambiente Virtual';
-      loadProjetistas();
-      await loadTabulacoes();
-      
-      // Pequeno delay para visualização
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Etapa 4: Ajuste Finais
-      loadingMessage = 'Ajuste Finais';
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Etapa 5: Abrindo Ferramenta Virtual
-      loadingMessage = 'Abrindo Ferramenta Virtual';
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Tudo carregado, mostrar aplicação
-      isLoading = false;
-      isLoggedIn = true;
-      
-      // Aguardar o DOM atualizar antes de inicializar o mapa
-      await tick();
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Agora inicializar o mapa após o elemento estar no DOM
-      initMap();
-    } catch (err) {
-      console.error('Erro ao inicializar aplicação:', err);
-      error = 'Erro ao inicializar aplicação: ' + err.message;
-      isLoading = false;
-      isLoggedIn = true; // Mostrar aplicação mesmo com erro
-      
-      // Tentar inicializar o mapa mesmo com erro
-      await tick();
-      await new Promise(resolve => setTimeout(resolve, 100));
-      initMap();
+    }
+    // Futuras ferramentas serão adicionadas aqui
+  }
+
+  // Função para voltar ao Dashboard
+  function handleBackToDashboard() {
+    currentView = 'dashboard';
+    currentTool = null;
+    // Limpar estado da ferramenta se necessário
+    if (map) {
+      // Limpar mapa e marcadores
+      markers.forEach(marker => marker.setMap(null));
+      markers = [];
+      if (clientMarker) {
+        clientMarker.setMap(null);
+        clientMarker = null;
+      }
+      if (clientInfoWindow) {
+        clientInfoWindow.close();
+        clientInfoWindow = null;
+      }
+      routes.forEach(route => route.setMap(null));
+      routes = [];
+      routeData = [];
+      ctos = [];
+      clientCoords = null;
     }
   }
 
@@ -617,6 +657,8 @@
       // Resetar estado
       isLoggedIn = false;
       currentUser = '';
+      currentView = 'dashboard';
+      currentTool = null;
       userTipo = 'user';
       // Limpar dados do mapa
       if (map) {
@@ -4821,11 +4863,31 @@
 {:else if isLoading}
   <!-- Tela de Loading -->
   <Loading currentMessage={loadingMessage} />
+{:else if currentView === 'dashboard'}
+  <!-- Dashboard -->
+  <Dashboard 
+    currentUser={currentUser}
+    onToolSelect={handleToolSelect}
+    onLogout={handleLogout}
+  />
 {:else}
-  <!-- Conteúdo Principal -->
+  <!-- Conteúdo Principal (Ferramenta) -->
 <div class="app-container">
   <header>
-    <h1>Viabilidade Alares - Engenharia</h1>
+    <div class="header-left">
+      <button 
+        class="back-button" 
+        on:click={handleBackToDashboard}
+        aria-label="Voltar ao Dashboard" 
+        title="Voltar ao Dashboard"
+        type="button"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <h1>Viabilidade Alares - Engenharia</h1>
+    </div>
     <button 
       class="settings-button" 
       on:click|stopPropagation={openSettingsModal}
@@ -5718,6 +5780,37 @@
     align-items: center;
     position: relative;
     z-index: 1000;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .back-button {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1.5px solid rgba(255, 255, 255, 0.25);
+    border-radius: 10px;
+    padding: 0.625rem;
+    cursor: pointer;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+  }
+
+  .back-button:hover {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: translateX(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .back-button:active {
+    transform: translateX(0);
   }
 
   header h1 {
