@@ -97,7 +97,13 @@
 
   .dashboard-container {
     min-height: 100vh;
-    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e8ecf1 100%);
+    background: 
+      linear-gradient(135deg, rgba(123, 104, 238, 0.05) 0%, rgba(100, 149, 237, 0.05) 100%),
+      url('/background-login.png');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
     display: flex;
     flex-direction: column;
     position: relative;
@@ -112,9 +118,11 @@
     right: 0;
     bottom: 0;
     background: 
+      linear-gradient(135deg, rgba(248, 250, 252, 0.85) 0%, rgba(241, 245, 249, 0.9) 50%, rgba(232, 236, 241, 0.85) 100%),
       radial-gradient(circle at 20% 50%, rgba(123, 104, 238, 0.03) 0%, transparent 50%),
       radial-gradient(circle at 80% 80%, rgba(100, 149, 237, 0.03) 0%, transparent 50%);
     pointer-events: none;
+    z-index: 0;
   }
 
   .dashboard-header {
@@ -126,6 +134,7 @@
     z-index: 100;
     width: 100%;
     box-sizing: border-box;
+    position: relative;
   }
 
   .header-content {
