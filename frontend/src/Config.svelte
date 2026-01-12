@@ -2068,7 +2068,7 @@
   }
 
   .btn-change-role {
-    background: linear-gradient(135deg, #4CAF50 0%, #45A049 100%);
+    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
     color: white;
     border: none;
     border-radius: 6px;
@@ -2082,9 +2082,9 @@
   }
 
   .btn-change-role:hover {
-    background: linear-gradient(135deg, #5CBF60 0%, #55B059 100%);
+    background: linear-gradient(135deg, #8B7AE8 0%, #7499F0 100%);
     transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(76, 175, 80, 0.3);
+    box-shadow: 0 2px 6px rgba(123, 104, 238, 0.3);
   }
 
   .btn-change-role:active {
