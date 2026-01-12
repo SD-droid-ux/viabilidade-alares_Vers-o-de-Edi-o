@@ -103,7 +103,7 @@
     min-height: 100vh;
     background-image: url('{backgroundImage}');
     background-size: cover;
-    background-position: center center;
+    background-position: right bottom;
     background-repeat: no-repeat;
     background-attachment: fixed;
     padding: 0;
