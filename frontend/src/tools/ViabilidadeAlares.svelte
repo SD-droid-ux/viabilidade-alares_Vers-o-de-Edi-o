@@ -4,12 +4,14 @@
   import * as XLSX from 'xlsx';
   import html2canvas from 'html2canvas';
   import Config from '../Config.svelte';
+  import Loading from '../Loading.svelte';
   import { getApiUrl } from '../config.js';
 
   // Props do componente
   export let currentUser = '';
   export let userTipo = 'user';
   export let onBackToDashboard = () => {};
+  export let onSettingsRequest = null; // Callback para quando configurações são solicitadas
 
   // Helper para URL da API - usando função do config.js
   // (getApiUrl já foi importado acima)
@@ -686,6 +688,10 @@
   // Inicializar ferramenta quando o componente é montado
   onMount(async () => {
     try {
+      // Registrar função de configurações com o parent
+      if (onSettingsRequest && typeof onSettingsRequest === 'function') {
+        onSettingsRequest(openSettings);
+      }
       await initializeTool();
     } catch (err) {
       console.error('Erro ao inicializar ferramenta:', err);
@@ -956,6 +962,11 @@
       event.stopPropagation();
       event.preventDefault();
     }
+    showSettingsModal = true;
+  }
+
+  // Wrapper para chamar openSettingsModal sem parâmetros (para ToolWrapper)
+  function openSettings() {
     showSettingsModal = true;
   }
 
@@ -4682,6 +4693,10 @@
 
 </script>
 
+<!-- Tela de Loading -->
+{#if isLoading}
+  <Loading currentMessage={loadingMessage} />
+{:else}
 <!-- Conteúdo da Ferramenta de Viabilidade -->
 <div class="viabilidade-content">
   <div class="main-content">
@@ -4977,6 +4992,8 @@
     </main>
   </div>
 </div>
+{/if}
+<!-- Fim do bloco {:else} do loading -->
 
 <!-- Modal de Relatório -->
 {#if showReportModal}
