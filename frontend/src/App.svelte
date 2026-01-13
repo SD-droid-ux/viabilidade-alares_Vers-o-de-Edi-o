@@ -7,6 +7,7 @@
   import Config from './Config.svelte';
   import Loading from './Loading.svelte';
   import Dashboard from './Dashboard.svelte';
+  import { toolsRegistry, getToolById } from './tools/toolsRegistry.js';
 
   // Helper para URL da API (suporta desenvolvimento e produção)
   const API_URL = import.meta.env.VITE_API_URL || '';
@@ -534,11 +535,20 @@
 
   // Função para selecionar uma ferramenta do Dashboard
   async function handleToolSelect(toolId) {
+    const tool = getToolById(toolId);
+    
+    if (!tool || !tool.available) {
+      console.error(`Ferramenta ${toolId} não encontrada ou não disponível`);
+      return;
+    }
+    
+    // Definir ferramenta atual
+    currentTool = toolId;
+    currentView = 'tool';
+    
+    // Inicialização específica por ferramenta
     if (toolId === 'viabilidade-alares') {
       // Carregar a ferramenta de Viabilidade
-      currentTool = toolId;
-      currentView = 'tool';
-      
       // Mostrar loading enquanto carrega a ferramenta
       isLoading = true;
       
@@ -599,7 +609,7 @@
         initMap();
       }
     }
-    // Futuras ferramentas serão adicionadas aqui
+    // Outras ferramentas podem ter suas próprias inicializações aqui
   }
 
   // Função para voltar ao Dashboard
@@ -4886,7 +4896,14 @@
           <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
-      <h1>Viabilidade Alares - Engenharia</h1>
+      <h1>
+        {#if currentTool}
+          {@const tool = getToolById(currentTool)}
+          {tool ? tool.title : 'Ferramenta'}
+        {:else}
+          Ferramenta
+        {/if}
+      </h1>
     </div>
     <button 
       class="settings-button" 
