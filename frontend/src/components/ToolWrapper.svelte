@@ -105,19 +105,23 @@
   }
 
   .settings-button {
-    background: rgba(255, 255, 255, 0.2);
+    background: none;
     border: none;
-    border-radius: 8px;
-    padding: 0.5rem 0.75rem;
+    color: white;
+    font-size: 1.5rem;
+    padding: 0;
     cursor: pointer;
-    font-size: 1.25rem;
-    transition: background 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s ease;
+    position: relative;
+    z-index: 1001;
   }
 
-  /* Animação de rotação quando o mouse passa sobre a engrenagem */
+  /* Gira quando o usuário passar o mouse ou clicar */
   .settings-button:hover,
   .settings-button:active {
-    background: rgba(255, 255, 255, 0.3);
     animation: rotateOnce 0.5s ease-in-out;
   }
 
