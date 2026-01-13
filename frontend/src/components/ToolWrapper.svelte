@@ -9,6 +9,7 @@
   export let toolTitle = 'Ferramenta';
   export let onBackToDashboard = () => {};
   export let onOpenSettings = () => {};
+  export let onSettingsHover = () => {}; // Função chamada quando o mouse passa sobre a engrenagem
   export let showSettingsButton = true;
 </script>
 
@@ -32,6 +33,7 @@
       <button 
         class="settings-button" 
         on:click|stopPropagation={onOpenSettings}
+        on:mouseenter={onSettingsHover}
         aria-label="Configurações" 
         title="Configurações"
         type="button"
@@ -109,12 +111,23 @@
     padding: 0.5rem 0.75rem;
     cursor: pointer;
     font-size: 1.25rem;
-    transition: all 0.2s ease;
+    transition: background 0.2s ease;
   }
 
-  .settings-button:hover {
+  /* Animação de rotação quando o mouse passa sobre a engrenagem */
+  .settings-button:hover,
+  .settings-button:active {
     background: rgba(255, 255, 255, 0.3);
-    transform: rotate(90deg);
+    animation: rotateOnce 0.5s ease-in-out;
+  }
+
+  @keyframes rotateOnce {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(45deg);
+    }
   }
 
   .main-content {
@@ -140,5 +153,4 @@
     }
   }
 </style>
-
 
