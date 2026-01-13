@@ -82,6 +82,7 @@
   let heartbeatInterval = null;
   let currentView = 'dashboard'; // 'dashboard' ou 'tool' (ferramenta específica)
   let currentTool = null; // ID da ferramenta atual
+  let toolSettingsHandler = null; // Função de configurações da ferramenta atual
 
   // ============================================
   // FUNÇÕES DO PORTAL (Gerenciamento Global)
@@ -162,7 +163,20 @@
   function handleBackToDashboard() {
     currentView = 'dashboard';
     currentTool = null;
+    toolSettingsHandler = null; // Limpar handler de configurações
     // Cada ferramenta gerencia sua própria limpeza através do onDestroy do componente
+  }
+
+  // Função para registrar handler de configurações da ferramenta
+  function registerToolSettings(handler) {
+    toolSettingsHandler = handler;
+  }
+
+  // Função para abrir configurações (chamada pelo ToolWrapper)
+  function handleOpenSettings() {
+    if (toolSettingsHandler && typeof toolSettingsHandler === 'function') {
+      toolSettingsHandler();
+    }
   }
 
   // Função de logout
@@ -229,13 +243,14 @@
       <ToolWrapper
         toolTitle={tool.title}
         onBackToDashboard={handleBackToDashboard}
-        onOpenSettings={() => {}}
-        showSettingsButton={false}
+        onOpenSettings={handleOpenSettings}
+        showSettingsButton={toolSettingsHandler !== null}
       >
         <svelte:component this={tool.component} 
           currentUser={currentUser}
           userTipo={userTipo}
           onBackToDashboard={handleBackToDashboard}
+          onSettingsRequest={registerToolSettings}
         />
       </ToolWrapper>
     {:else}
