@@ -5668,35 +5668,6 @@
     font-weight: 600;
   }
 
-  .settings-button {
-    background: none;
-    border: none;
-    color: white;
-    font-size: 1.5rem;
-    padding: 0;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.3s ease;
-    position: relative;
-    z-index: 1001;
-  }
-
-  /* Gira quando o usuário passar o mouse ou clicar */
-  .settings-button:hover,
-  .settings-button:active {
-    animation: rotateOnce 0.5s ease-in-out;
-  }
-
-  @keyframes rotateOnce {
-    0% {
-      transform: rotate(0deg);
-    }
-    100% {
-      transform: rotate(45deg);
-    }
-  }
 
   .main-content {
     display: flex;
