@@ -7,6 +7,7 @@
   import Config from './Config.svelte';
   import Loading from './Loading.svelte';
   import Dashboard from './Dashboard.svelte';
+  import ToolWrapper from './components/ToolWrapper.svelte';
   import { toolsRegistry, getToolById } from './tools/toolsRegistry.js';
 
   // Helper para URL da API (suporta desenvolvimento e produção)
@@ -4881,43 +4882,23 @@
     onLogout={handleLogout}
   />
 {:else}
-  <!-- Conteúdo Principal (Ferramenta) -->
-<div class="app-container">
-  <header>
-    <div class="header-left">
-      <button 
-        class="back-button" 
-        on:click={handleBackToDashboard}
-        aria-label="Voltar ao Dashboard" 
-        title="Voltar ao Dashboard"
-        type="button"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M19 12H5M12 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-      <h1>
-        {#if currentTool}
-          {@const tool = getToolById(currentTool)}
-          {tool ? tool.title : 'Ferramenta'}
-        {:else}
-          Ferramenta
-        {/if}
-      </h1>
-    </div>
-    <button 
-      class="settings-button" 
-      on:click|stopPropagation={openSettingsModal}
-      on:mouseenter={preloadSettingsData}
-      aria-label="Configurações" 
-      title="Configurações"
-      type="button"
-    >
-      ⚙️
-    </button>
-  </header>
-
-  <div class="main-content">
+  <!-- Conteúdo Principal (Ferramenta) - Renderização Dinâmica -->
+  {#if currentTool}
+    {@const tool = getToolById(currentTool)}
+    {#if tool && tool.component}
+      {#if currentTool === 'viabilidade-alares'}
+        <!-- Ferramenta de Viabilidade (mantida no App.svelte por enquanto) -->
+        <ToolWrapper
+          toolTitle={tool.title}
+          onBackToDashboard={handleBackToDashboard}
+          onOpenSettings={() => {
+            preloadSettingsData();
+            openSettingsModal();
+          }}
+          showSettingsButton={true}
+        >
+          <div class="viabilidade-content">
+            <div class="main-content">
     <aside class="sidebar">
       <!-- Box de aviso quando não há base de dados -->
       {#if !baseDataExists}
@@ -5210,9 +5191,37 @@
         </div>
       {/if}
     </main>
-  </div>
-</div>
-{/if}
+            </div>
+          </div>
+        </ToolWrapper>
+      {:else}
+        <!-- Outras ferramentas serão renderizadas aqui dinamicamente -->
+        <ToolWrapper
+          toolTitle={tool.title}
+          onBackToDashboard={handleBackToDashboard}
+          onOpenSettings={() => {}}
+          showSettingsButton={false}
+        >
+          <svelte:component this={tool.component} 
+            currentUser={currentUser}
+            userTipo={userTipo}
+            onBackToDashboard={handleBackToDashboard}
+          />
+        </ToolWrapper>
+      {/if}
+    {:else}
+      <div class="error-container">
+        <h2>Ferramenta não encontrada</h2>
+        <p>A ferramenta selecionada não está disponível.</p>
+        <button on:click={handleBackToDashboard}>Voltar ao Dashboard</button>
+      </div>
+    {/if}
+  {:else}
+    <div class="error-container">
+      <h2>Nenhuma ferramenta selecionada</h2>
+      <button on:click={handleBackToDashboard}>Voltar ao Dashboard</button>
+    </div>
+  {/if}
 
 <!-- Modal de Relatório -->
 {#if showReportModal}
@@ -5763,6 +5772,47 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   }
 
+  .viabilidade-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .error-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  .error-container h2 {
+    color: #7B68EE;
+    margin-bottom: 1rem;
+  }
+
+  .error-container button {
+    background: linear-gradient(135deg, #7B68EE 0%, #6B5BEE 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 1rem;
+  }
+
+  .error-container button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(123, 104, 238, 0.3);
+  }
+
+  /* Estilos antigos mantidos para compatibilidade com Viabilidade */
   .app-container {
     display: flex;
     flex-direction: column;
