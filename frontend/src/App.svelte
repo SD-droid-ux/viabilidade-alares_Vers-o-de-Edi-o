@@ -4887,7 +4887,7 @@
     {@const tool = getToolById(currentTool)}
     {#if tool && tool.component}
       {#if currentTool === 'viabilidade-alares'}
-        <!-- Ferramenta de Viabilidade (mantida no App.svelte por enquanto) -->
+        <!-- Ferramenta de Viabilidade - Renderização Dinâmica -->
         <ToolWrapper
           toolTitle={tool.title}
           onBackToDashboard={handleBackToDashboard}
@@ -4897,8 +4897,43 @@
           }}
           showSettingsButton={true}
         >
-          <div class="viabilidade-content">
-            <div class="main-content">
+          <svelte:component this={tool.component} 
+            currentUser={currentUser}
+            userTipo={userTipo}
+            onBackToDashboard={handleBackToDashboard}
+          />
+        </ToolWrapper>
+      {:else}
+        <!-- Outras ferramentas -->
+        <ToolWrapper
+          toolTitle={tool.title}
+          onBackToDashboard={handleBackToDashboard}
+          onOpenSettings={() => {}}
+          showSettingsButton={false}
+        >
+          <svelte:component this={tool.component} 
+            currentUser={currentUser}
+            userTipo={userTipo}
+            onBackToDashboard={handleBackToDashboard}
+          />
+        </ToolWrapper>
+      {/if}
+    {:else}
+      <div class="error-container">
+        <h2>Ferramenta não encontrada</h2>
+        <p>A ferramenta selecionada não está disponível.</p>
+        <button on:click={handleBackToDashboard}>Voltar ao Dashboard</button>
+      </div>
+    {/if}
+  {:else}
+    <div class="error-container">
+      <h2>Nenhuma ferramenta selecionada</h2>
+      <button on:click={handleBackToDashboard}>Voltar ao Dashboard</button>
+    </div>
+  {/if}
+</script>
+
+<!-- Conteúdo removido - agora está no ViabilidadeAlares.svelte -->
     <aside class="sidebar">
       <!-- Box de aviso quando não há base de dados -->
       {#if !baseDataExists}
