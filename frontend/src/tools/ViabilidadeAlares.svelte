@@ -692,6 +692,11 @@
       if (onSettingsRequest && typeof onSettingsRequest === 'function') {
         onSettingsRequest(openSettings);
       }
+      
+      // Registrar função de pré-carregamento no hover
+      if (onSettingsHover && typeof onSettingsHover === 'function') {
+        onSettingsHover(preloadSettingsData);
+      }
       await initializeTool();
     } catch (err) {
       console.error('Erro ao inicializar ferramenta:', err);
@@ -967,8 +972,13 @@
 
   // Wrapper para chamar openSettingsModal sem parâmetros (para ToolWrapper)
   function openSettings() {
+    // Pré-carregar dados antes de abrir (se ainda não foi carregado)
+    preloadSettingsData();
     showSettingsModal = true;
   }
+
+  // Expor função de pré-carregamento para o parent (ToolWrapper via App.svelte)
+  export let onSettingsHover = null; // Callback para quando o mouse passa sobre a engrenagem
 
   // Função para fechar tela de configurações
   function closeSettingsModal() {
