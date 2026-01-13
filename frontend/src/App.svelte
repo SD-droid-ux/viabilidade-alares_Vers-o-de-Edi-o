@@ -83,6 +83,7 @@
   let currentView = 'dashboard'; // 'dashboard' ou 'tool' (ferramenta específica)
   let currentTool = null; // ID da ferramenta atual
   let toolSettingsHandler = null; // Função de configurações da ferramenta atual
+  let toolSettingsHoverHandler = null; // Função de pré-carregamento no hover da engrenagem
 
   // ============================================
   // FUNÇÕES DO PORTAL (Gerenciamento Global)
@@ -164,6 +165,7 @@
     currentView = 'dashboard';
     currentTool = null;
     toolSettingsHandler = null; // Limpar handler de configurações
+    toolSettingsHoverHandler = null; // Limpar handler de hover
     // Cada ferramenta gerencia sua própria limpeza através do onDestroy do componente
   }
 
@@ -172,10 +174,22 @@
     toolSettingsHandler = handler;
   }
 
+  // Função para registrar handler de pré-carregamento no hover
+  function registerToolSettingsHover(handler) {
+    toolSettingsHoverHandler = handler;
+  }
+
   // Função para abrir configurações (chamada pelo ToolWrapper)
   function handleOpenSettings() {
     if (toolSettingsHandler && typeof toolSettingsHandler === 'function') {
       toolSettingsHandler();
+    }
+  }
+
+  // Função para pré-carregar dados quando o mouse passa sobre a engrenagem
+  function handleSettingsHover() {
+    if (toolSettingsHoverHandler && typeof toolSettingsHoverHandler === 'function') {
+      toolSettingsHoverHandler();
     }
   }
 
@@ -244,6 +258,7 @@
         toolTitle={tool.title}
         onBackToDashboard={handleBackToDashboard}
         onOpenSettings={handleOpenSettings}
+        onSettingsHover={handleSettingsHover}
         showSettingsButton={toolSettingsHandler !== null}
       >
         <svelte:component this={tool.component} 
@@ -251,6 +266,7 @@
           userTipo={userTipo}
           onBackToDashboard={handleBackToDashboard}
           onSettingsRequest={registerToolSettings}
+          onSettingsHover={registerToolSettingsHover}
         />
       </ToolWrapper>
     {:else}
