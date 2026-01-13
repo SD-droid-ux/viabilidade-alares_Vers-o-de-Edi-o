@@ -1,1 +1,72 @@
+// ============================================
+// Registry de Ferramentas do Portal
+// ============================================
+// Este arquivo centraliza o registro de todas as ferramentas
+// disponíveis no portal. Para adicionar uma nova ferramenta:
+// 1. Crie o componente da ferramenta em tools/
+// 2. Importe e registre aqui
+// ============================================
+
+import ViabilidadeAlares from './ViabilidadeAlares.svelte';
+
+/**
+ * Registry de todas as ferramentas disponíveis no portal
+ * Cada ferramenta deve ter:
+ * - id: identificador único
+ * - title: nome da ferramenta
+ * - description: descrição curta
+ * - icon: emoji ou ícone
+ * - color: cor principal (hex)
+ * - component: componente Svelte
+ * - available: se está disponível
+ */
+export const toolsRegistry = [
+  {
+    id: 'viabilidade-alares',
+    title: 'Viabilidade Alares - Engenharia',
+    description: 'Análise de viabilidade técnica para identificação de CTOs próximas a endereços de clientes',
+    icon: '🏗️',
+    color: '#7B68EE',
+    component: ViabilidadeAlares,
+    available: true
+  }
+  // Adicione novas ferramentas aqui:
+  // {
+  //   id: 'nova-ferramenta',
+  //   title: 'Nova Ferramenta',
+  //   description: 'Descrição da nova ferramenta',
+  //   icon: '🔧',
+  //   color: '#FF5733',
+  //   component: NovaFerramenta,
+  //   available: true
+  // }
+];
+
+/**
+ * Busca uma ferramenta pelo ID
+ * @param {string} toolId - ID da ferramenta
+ * @returns {object|null} - Objeto da ferramenta ou null se não encontrada
+ */
+export function getToolById(toolId) {
+  return toolsRegistry.find(tool => tool.id === toolId) || null;
+}
+
+/**
+ * Retorna todas as ferramentas disponíveis
+ * @returns {array} - Array de ferramentas disponíveis
+ */
+export function getAvailableTools() {
+  return toolsRegistry.filter(tool => tool.available);
+}
+
+/**
+ * Verifica se uma ferramenta existe e está disponível
+ * @param {string} toolId - ID da ferramenta
+ * @returns {boolean} - true se existe e está disponível
+ */
+export function isToolAvailable(toolId) {
+  const tool = getToolById(toolId);
+  return tool && tool.available;
+}
+
 
