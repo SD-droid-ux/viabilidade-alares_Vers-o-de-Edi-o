@@ -1,4 +1,6 @@
 <script>
+  import { getAvailableTools } from './tools/toolsRegistry.js';
+  
   export let onToolSelect = (toolId) => {};
   export let currentUser = '';
   export let onLogout = () => {};
@@ -7,18 +9,8 @@
   // Altere aqui o nome do arquivo quando adicionar a nova imagem em /public
   const backgroundImage = '/dashboard-background.png'; // Troque pelo nome da sua imagem
 
-  // Lista de ferramentas disponíveis
-  const tools = [
-    {
-      id: 'viabilidade-alares',
-      title: 'Viabilidade Alares - Engenharia',
-      description: 'Análise de viabilidade técnica para identificação de CTOs próximas a endereços de clientes',
-      icon: '🏗️',
-      color: '#7B68EE',
-      available: true
-    }
-    // Futuras ferramentas serão adicionadas aqui
-  ];
+  // Lista de ferramentas disponíveis (vem do registry)
+  $: tools = getAvailableTools();
 
   function handleToolClick(tool) {
     if (tool.available) {
