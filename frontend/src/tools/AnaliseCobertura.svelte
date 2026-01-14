@@ -41,6 +41,16 @@
   // Resultados
   let ctos = [];
   let error = null;
+
+  // Redimensionamento de boxes
+  let sidebarWidth = 350; // Largura inicial da sidebar em pixels
+  let mapHeightPercent = 60; // Porcentagem de altura do mapa (resto vai para tabela)
+  let isResizingSidebar = false;
+  let isResizingMapTable = false;
+  let resizeStartX = 0;
+  let resizeStartY = 0;
+  let resizeStartSidebarWidth = 0;
+  let resizeStartMapHeight = 0;
   
   // Função para abrir configurações
   function openSettings() {
@@ -635,9 +645,108 @@
     return num.toFixed(1) + '%';
   }
 
+  // Funções de redimensionamento
+  function startResizeSidebar(e) {
+    isResizingSidebar = true;
+    resizeStartX = e.clientX;
+    resizeStartSidebarWidth = sidebarWidth;
+    document.addEventListener('mousemove', handleResizeSidebar);
+    document.addEventListener('mouseup', stopResizeSidebar);
+    e.preventDefault();
+  }
+
+  function handleResizeSidebar(e) {
+    if (!isResizingSidebar) return;
+    const deltaX = e.clientX - resizeStartX;
+    const newWidth = resizeStartSidebarWidth + deltaX;
+    // Limites: mínimo 250px, máximo 600px
+    sidebarWidth = Math.max(250, Math.min(600, newWidth));
+    // Salvar no localStorage
+    try {
+      localStorage.setItem('analiseCobertura_sidebarWidth', sidebarWidth.toString());
+    } catch (err) {
+      console.warn('Erro ao salvar largura da sidebar:', err);
+    }
+  }
+
+  function stopResizeSidebar() {
+    isResizingSidebar = false;
+    document.removeEventListener('mousemove', handleResizeSidebar);
+    document.removeEventListener('mouseup', stopResizeSidebar);
+  }
+
+  function startResizeMapTable(e) {
+    isResizingMapTable = true;
+    resizeStartY = e.clientY;
+    resizeStartMapHeight = mapHeightPercent;
+    document.addEventListener('mousemove', handleResizeMapTable);
+    document.addEventListener('mouseup', stopResizeMapTable);
+    e.preventDefault();
+  }
+
+  function handleResizeMapTable(e) {
+    if (!isResizingMapTable) return;
+    const container = document.querySelector('.main-area');
+    if (!container) return;
+    
+    const containerRect = container.getBoundingClientRect();
+    const deltaY = e.clientY - resizeStartY;
+    const deltaPercent = (deltaY / containerRect.height) * 100;
+    const newHeight = resizeStartMapHeight + deltaPercent;
+    
+    // Limites: mínimo 30%, máximo 85%
+    mapHeightPercent = Math.max(30, Math.min(85, newHeight));
+    
+    // Salvar no localStorage
+    try {
+      localStorage.setItem('analiseCobertura_mapHeightPercent', mapHeightPercent.toString());
+    } catch (err) {
+      console.warn('Erro ao salvar altura do mapa:', err);
+    }
+  }
+
+  function stopResizeMapTable() {
+    isResizingMapTable = false;
+    document.removeEventListener('mousemove', handleResizeMapTable);
+    document.removeEventListener('mouseup', stopResizeMapTable);
+    
+    // Redimensionar o mapa após ajuste
+    if (map) {
+      setTimeout(() => {
+        google.maps.event.trigger(map, 'resize');
+      }, 100);
+    }
+  }
+
+  // Carregar preferências salvas
+  function loadResizePreferences() {
+    try {
+      const savedSidebarWidth = localStorage.getItem('analiseCobertura_sidebarWidth');
+      if (savedSidebarWidth) {
+        sidebarWidth = parseInt(savedSidebarWidth, 10);
+        if (isNaN(sidebarWidth) || sidebarWidth < 250 || sidebarWidth > 600) {
+          sidebarWidth = 350;
+        }
+      }
+      
+      const savedMapHeight = localStorage.getItem('analiseCobertura_mapHeightPercent');
+      if (savedMapHeight) {
+        mapHeightPercent = parseFloat(savedMapHeight);
+        if (isNaN(mapHeightPercent) || mapHeightPercent < 30 || mapHeightPercent > 85) {
+          mapHeightPercent = 60;
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar preferências de redimensionamento:', err);
+    }
+  }
+
   // Inicializar ferramenta
   onMount(async () => {
     try {
+      // Carregar preferências de redimensionamento
+      loadResizePreferences();
+      
       // Registrar função de configurações com o parent
       if (onSettingsRequest && typeof onSettingsRequest === 'function') {
         onSettingsRequest(openSettings);
@@ -675,7 +784,7 @@
   {:else}
     <div class="main-layout">
       <!-- Painel de Busca -->
-      <aside class="search-panel">
+      <aside class="search-panel" style="width: {sidebarWidth}px;">
         <div class="panel-header">
           <h2>📡 Análise de Cobertura</h2>
           <p>Busque CTOs na base de dados</p>
@@ -781,16 +890,36 @@
         </div>
       </aside>
 
+      <!-- Handle de redimensionamento vertical (sidebar) -->
+      <div 
+        class="resize-handle resize-handle-vertical"
+        on:mousedown={startResizeSidebar}
+        class:resizing={isResizingSidebar}
+      >
+        <div class="resize-handle-icon">⋮</div>
+      </div>
+
       <!-- Área Principal (Mapa e Tabela) -->
       <main class="main-area">
         <!-- Mapa -->
-        <div class="map-container">
+        <div class="map-container" style="flex: 0 0 {mapHeightPercent}%;">
           <div id="map" class="map" bind:this={mapElement}></div>
         </div>
 
+        <!-- Handle de redimensionamento horizontal (mapa/tabela) -->
+        {#if ctos.length > 0}
+          <div 
+            class="resize-handle resize-handle-horizontal"
+            on:mousedown={startResizeMapTable}
+            class:resizing={isResizingMapTable}
+          >
+            <div class="resize-handle-icon">⋯</div>
+          </div>
+        {/if}
+
         <!-- Tabela de Resultados -->
         {#if ctos.length > 0}
-          <div class="results-table-container">
+          <div class="results-table-container" style="flex: 0 0 {100 - mapHeightPercent}%;">
             <h3>Resultados ({ctos.length})</h3>
             <div class="table-wrapper">
               <table class="results-table">
@@ -862,7 +991,8 @@
   }
 
   .search-panel {
-    width: 350px;
+    min-width: 250px;
+    max-width: 600px;
     background: white;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -871,6 +1001,7 @@
     flex-direction: column;
     gap: 1.5rem;
     overflow-y: auto;
+    flex-shrink: 0;
   }
 
   .panel-header h2 {
@@ -1023,15 +1154,13 @@
   }
 
   .map-container {
-    flex: 1;
+    min-height: 200px;
+    max-height: 100%;
     position: relative;
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     background: #e5e7eb;
-    min-height: 400px;
-    height: 100%;
-    max-height: 100%;
     display: flex;
     flex-direction: column;
   }
@@ -1052,10 +1181,52 @@
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    flex: 0 1 auto;
-    min-height: 200px;
-    max-height: 45vh;
+    min-height: 150px;
+    max-height: 100%;
     overflow: hidden;
+  }
+
+  /* Handles de redimensionamento */
+  .resize-handle {
+    background: #e5e7eb;
+    cursor: col-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    user-select: none;
+    flex-shrink: 0;
+  }
+
+  .resize-handle:hover {
+    background: #6495ED;
+  }
+
+  .resize-handle.resizing {
+    background: #7B68EE;
+  }
+
+  .resize-handle-vertical {
+    width: 8px;
+    cursor: col-resize;
+  }
+
+  .resize-handle-horizontal {
+    height: 8px;
+    cursor: row-resize;
+    width: 100%;
+  }
+
+  .resize-handle-icon {
+    color: #666;
+    font-size: 1.2rem;
+    font-weight: bold;
+    pointer-events: none;
+  }
+
+  .resize-handle:hover .resize-handle-icon,
+  .resize-handle.resizing .resize-handle-icon {
+    color: white;
   }
 
   .results-table-container h3 {
