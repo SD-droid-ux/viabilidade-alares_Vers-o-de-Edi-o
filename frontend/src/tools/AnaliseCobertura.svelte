@@ -720,14 +720,61 @@
     
     // Aguardar um pouco para garantir que os marcadores foram renderizados
     await tick();
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    // Garantir que o container do mapa tem dimensões válidas
+    const mapElementForZoom = document.getElementById('map');
+    const containerForZoom = mapElementForZoom?.parentElement;
+    if (containerForZoom && containerForZoom.classList.contains('map-container')) {
+      // Garantir altura mínima
+      const containerRect = containerForZoom.getBoundingClientRect();
+      if (containerRect.height < 500) {
+        containerForZoom.style.minHeight = '500px';
+        containerForZoom.style.height = '500px';
+        await tick();
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
     
     // Verificar dimensões antes de ajustar zoom
     const mapDivForZoom = map.getDiv();
     const rectForZoom = mapDivForZoom.getBoundingClientRect();
+    console.log('Dimensões do mapa antes de ajustar zoom:', { width: rectForZoom.width, height: rectForZoom.height });
+    
+    // Se o mapa não tem dimensões válidas, tentar corrigir
+    if (rectForZoom.width === 0 || rectForZoom.height === 0) {
+      console.warn('Mapa sem dimensões válidas, forçando correção...');
+      
+      // Forçar estilo no elemento e container
+      if (mapElementForZoom) {
+        mapElementForZoom.style.display = 'block';
+        mapElementForZoom.style.width = '100%';
+        mapElementForZoom.style.height = '500px';
+        mapElementForZoom.style.minHeight = '500px';
+      }
+      
+      if (containerForZoom) {
+        containerForZoom.style.height = '500px';
+        containerForZoom.style.minHeight = '500px';
+      }
+      
+      await tick();
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Forçar resize
+      google.maps.event.trigger(map, 'resize');
+      
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      const rectAfter = mapDivForZoom.getBoundingClientRect();
+      console.log('Dimensões após correção:', { width: rectAfter.width, height: rectAfter.height });
+    }
+    
+    // Verificar dimensões novamente após correção
+    const finalRect = mapDivForZoom.getBoundingClientRect();
     
     // Se o mapa tem dimensões válidas, ajustar zoom
-    if (rectForZoom.width > 0 && rectForZoom.height > 0) {
+    if (finalRect.width > 0 && finalRect.height > 0) {
       // Forçar redimensionamento do mapa ANTES de ajustar zoom
       google.maps.event.trigger(map, 'resize');
       
@@ -762,13 +809,26 @@
       // Forçar redimensionamento novamente após ajustar zoom
       google.maps.event.trigger(map, 'resize');
     } else {
-      console.warn('Mapa não tem dimensões válidas para ajustar zoom. Marcadores foram criados mas zoom não foi ajustado.');
-      // Tentar forçar resize e tentar novamente após um delay
-      google.maps.event.trigger(map, 'resize');
+      console.warn('Mapa ainda sem dimensões válidas após correção. Tentando ajustar zoom mesmo assim...');
+      // Tentar ajustar zoom mesmo sem dimensões válidas (às vezes funciona)
+      try {
+        if (markers.length > 1) {
+          map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
+        } else if (markers.length === 1 && ctos.length > 0) {
+          map.setCenter({ lat: parseFloat(ctos[0].latitude), lng: parseFloat(ctos[0].longitude) });
+          map.setZoom(16);
+        }
+        google.maps.event.trigger(map, 'resize');
+      } catch (e) {
+        console.warn('Erro ao ajustar zoom sem dimensões válidas:', e);
+      }
+      
+      // Tentar novamente após um delay maior
       setTimeout(() => {
-        const rectAfter = mapDivForZoom.getBoundingClientRect();
-        if (rectAfter.width > 0 && rectAfter.height > 0 && markers.length > 0) {
+        const rectDelayed = mapDivForZoom.getBoundingClientRect();
+        if (rectDelayed.width > 0 && rectDelayed.height > 0 && markers.length > 0) {
           console.log('Tentando ajustar zoom novamente após delay...');
+          google.maps.event.trigger(map, 'resize');
           if (markers.length > 1) {
             try {
               map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
@@ -781,7 +841,7 @@
           }
           google.maps.event.trigger(map, 'resize');
         }
-      }, 500);
+      }, 1000);
     }
     
     console.log('✅ Marcadores exibidos no mapa com sucesso');
@@ -1161,6 +1221,7 @@
     gap: 1rem;
     overflow: hidden;
     min-height: 0;
+    height: 100%;
   }
 
   .map-container {
@@ -1170,12 +1231,19 @@
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     background: #e5e7eb;
-    min-height: 0;
+    min-height: 500px;
+    height: 100%;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
   }
 
   .map {
     width: 100%;
     height: 100%;
+    min-height: 500px;
+    flex: 1;
+    display: block;
   }
   
   .map-loading-overlay {
