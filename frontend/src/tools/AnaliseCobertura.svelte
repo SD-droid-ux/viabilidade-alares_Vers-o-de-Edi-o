@@ -905,10 +905,9 @@
               <textarea 
                 id="nome-cto"
                 bind:value={nomeCTO}
-                placeholder="Ex: CTO123&#10;Ou múltiplas: CTO123, CTO456, CTO789"
+                placeholder="Ex: CTO123 ou múltiplas: CTO123, CTO456, CTO789"
                 rows="3"
                 on:keydown={(e) => e.key === 'Enter' && !e.shiftKey && handleSearch()}
-                style="resize: vertical; min-height: 60px;"
               ></textarea>
               <small style="color: #666; font-size: 0.75rem; margin-top: 0.25rem; display: block;">
                 Digite uma ou múltiplas CTOs separadas por vírgula, ponto e vírgula ou quebra de linha
@@ -1128,15 +1127,26 @@
     font-size: 0.875rem;
   }
 
-  .form-group input {
+  .form-group input,
+  .form-group textarea {
     padding: 0.75rem;
     border: 2px solid #e5e7eb;
     border-radius: 8px;
     font-size: 0.9375rem;
     transition: border-color 0.2s;
+    font-family: inherit;
+    width: 100%;
+    box-sizing: border-box;
   }
 
-  .form-group input:focus {
+  .form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+    line-height: 1.5;
+  }
+
+  .form-group input:focus,
+  .form-group textarea:focus {
     outline: none;
     border-color: #6495ED;
   }
