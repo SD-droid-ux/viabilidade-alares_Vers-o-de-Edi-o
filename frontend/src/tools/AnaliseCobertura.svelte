@@ -52,6 +52,13 @@
 
   // Carregar biblioteca do Google Maps
   async function loadGoogleMaps() {
+    // Verificar se o Google Maps já está carregado globalmente
+    if (typeof google !== 'undefined' && google.maps) {
+      console.log('✅ Google Maps já está carregado globalmente');
+      googleMapsLoaded = true;
+      return;
+    }
+    
     if (googleMapsLoaded) return;
     
     try {
@@ -60,16 +67,26 @@
         return;
       }
       
+      // Usar as mesmas bibliotecas que ViabilidadeAlares para evitar conflitos
       const loader = new Loader({
         apiKey: GOOGLE_MAPS_API_KEY,
         version: 'weekly',
-        libraries: ['places']
+        libraries: ['places', 'geometry'] // Mesmas bibliotecas que ViabilidadeAlares
       });
       
       await loader.load();
       googleMapsLoaded = true;
       console.log('✅ Google Maps carregado');
     } catch (err) {
+      // Se o erro for sobre Loader já chamado, verificar se está disponível globalmente
+      if (err.message && err.message.includes('Loader must not be called again')) {
+        console.warn('Google Maps Loader já foi chamado, verificando disponibilidade global...');
+        if (typeof google !== 'undefined' && google.maps) {
+          console.log('✅ Google Maps disponível globalmente');
+          googleMapsLoaded = true;
+          return;
+        }
+      }
       console.error('Erro ao carregar Google Maps:', err);
       error = 'Erro ao carregar Google Maps. Verifique a chave da API.';
     }
