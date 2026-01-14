@@ -98,40 +98,57 @@
         return;
       }
       
-      // Garantir que o elemento tem estilo definido ANTES de verificar dimensões
+      // Garantir que o elemento e seus containers pais tenham altura definida
       element.style.display = 'block';
       element.style.width = '100%';
       element.style.height = '100%';
-      element.style.minHeight = '400px';
       
       // Garantir que o container também tem altura
       const container = element.parentElement;
       if (container && container.classList.contains('map-container')) {
-        container.style.height = '500px';
-        container.style.minHeight = '500px';
+        container.style.height = '100%';
+        container.style.minHeight = '400px';
+      }
+      
+      // Garantir que o main-area tem altura
+      const mainArea = container?.parentElement;
+      if (mainArea && mainArea.classList.contains('main-area')) {
+        mainArea.style.height = '100%';
+        mainArea.style.minHeight = '500px';
       }
       
       // Aguardar o estilo ser aplicado
       await tick();
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 300));
       
       // Verificar se o elemento tem dimensões válidas
       const rect = element.getBoundingClientRect();
-      console.log('Dimensões do elemento antes de criar mapa:', rect);
+      console.log('Dimensões do elemento antes de criar mapa:', { width: rect.width, height: rect.height });
       
-      // Se ainda não tem dimensões válidas, definir altura fixa diretamente
+      // Se ainda não tem dimensões válidas, tentar definir altura fixa
       if (rect.width === 0 || rect.height === 0) {
-        console.warn('Elemento ainda sem dimensões, definindo altura fixa...');
+        console.warn('Elemento ainda sem dimensões, tentando altura fixa...');
+        
+        // Tentar altura fixa no elemento
         element.style.height = '500px';
         element.style.minHeight = '500px';
         
+        // E no container
+        if (container) {
+          container.style.height = '500px';
+          container.style.minHeight = '500px';
+        }
+        
         // Aguardar novamente
         await tick();
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        const rectAfter = element.getBoundingClientRect();
+        console.log('Dimensões após definir altura fixa:', { width: rectAfter.width, height: rectAfter.height });
       }
       
       const finalRect = element.getBoundingClientRect();
-      console.log('Criando mapa com dimensões:', { width: finalRect.width, height: finalRect.height });
+      console.log('Criando mapa com dimensões finais:', { width: finalRect.width, height: finalRect.height });
       
       // Criar mapa mesmo se dimensões ainda forem 0 (Google Maps pode corrigir)
       map = new google.maps.Map(element, {
@@ -915,7 +932,7 @@
 <style>
   .analise-cobertura-content {
     width: 100%;
-    height: 100%;
+    height: 100vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -924,12 +941,12 @@
 
   .main-layout {
     display: flex;
+    flex: 1;
     height: 100%;
-    min-height: 600px;
+    min-height: 0;
     gap: 1rem;
     padding: 1rem;
     overflow: hidden;
-    flex: 1;
   }
 
   .search-panel {
@@ -1064,29 +1081,22 @@
     flex-direction: column;
     gap: 1rem;
     overflow: hidden;
-    min-height: 0; /* Importante para flex funcionar corretamente */
-    height: 100%;
+    min-height: 0;
   }
 
   .map-container {
     flex: 1;
-    min-height: 500px;
-    height: 500px;
+    position: relative;
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     background: #e5e7eb;
-    position: relative;
-    display: flex;
-    flex-direction: column;
+    min-height: 0;
   }
 
   .map {
-    width: 100% !important;
-    height: 100% !important;
-    min-height: 500px;
-    flex: 1;
-    display: block;
+    width: 100%;
+    height: 100%;
   }
   
   .map-loading-overlay {
