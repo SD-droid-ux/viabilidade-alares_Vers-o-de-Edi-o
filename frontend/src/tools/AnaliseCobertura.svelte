@@ -21,6 +21,7 @@
   let mapElement; // Referência ao elemento DOM do mapa
   let googleMapsLoaded = false;
   let mapInitialized = false;
+  let isDisplayingMarkers = false; // Flag para evitar múltiplas tentativas simultâneas
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
   let markers = []; // Array para armazenar marcadores das CTOs
   let searchMarker = null; // Marcador do ponto de busca (endereço/coordenadas)
@@ -468,9 +469,18 @@
     // Limpar marcadores anteriores
     clearMap();
 
+    // Evitar múltiplas tentativas simultâneas
+    if (isDisplayingMarkers) {
+      console.warn('Já está exibindo marcadores, ignorando chamada duplicada');
+      return;
+    }
+    
+    isDisplayingMarkers = true;
+    
     // Verificar se o mapa está realmente visível
     if (!map.getDiv()) {
       console.error('Mapa não tem elemento DIV');
+      isDisplayingMarkers = false;
       return;
     }
     
@@ -479,13 +489,21 @@
     console.log('Dimensões do mapa:', { width: rect.width, height: rect.height });
     
     if (rect.width === 0 || rect.height === 0) {
-      console.error('Mapa não tem dimensões válidas');
-      // Tentar redimensionar o mapa
-      setTimeout(() => {
-        google.maps.event.trigger(map, 'resize');
-        displayResultsOnMap();
-      }, 500);
-      return;
+      console.error('Mapa não tem dimensões válidas - tentando corrigir...');
+      // Tentar forçar redimensionamento apenas uma vez
+      google.maps.event.trigger(map, 'resize');
+      
+      // Aguardar um pouco e verificar novamente
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await tick();
+      
+      const rectAfter = mapDiv.getBoundingClientRect();
+      if (rectAfter.width === 0 || rectAfter.height === 0) {
+        console.error('Mapa ainda não tem dimensões válidas após tentativa de correção');
+        error = 'O mapa não está visível. Verifique se o elemento do mapa tem altura e largura definidas.';
+        isDisplayingMarkers = false;
+        return;
+      }
     }
 
     const bounds = new google.maps.LatLngBounds();
@@ -608,6 +626,7 @@
     google.maps.event.trigger(map, 'resize');
     
     console.log('✅ Marcadores exibidos no mapa com sucesso');
+    isDisplayingMarkers = false;
   }
 
   // Função para formatar porcentagem
@@ -980,6 +999,7 @@
   .map-container {
     flex: 1;
     min-height: 400px;
+    height: 500px; /* Altura fixa para garantir que o mapa tenha dimensões */
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -988,8 +1008,8 @@
   }
 
   .map {
-    width: 100%;
-    height: 100%;
+    width: 100% !important;
+    height: 100% !important;
     min-height: 400px;
     display: block;
   }
