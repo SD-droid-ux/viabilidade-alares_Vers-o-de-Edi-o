@@ -30,13 +30,11 @@
   let mapObserver = null; // Observer para detectar quando o mapa fica visível
   
   // Modo de busca
-  let searchMode = 'nome'; // 'nome', 'endereco', 'coordenadas'
+  let searchMode = 'nome'; // 'nome', 'endereco'
   
   // Campos de busca
   let nomeCTO = '';
   let enderecoInput = '';
-  let latitudeInput = '';
-  let longitudeInput = '';
   
   // Resultados
   let ctos = [];
@@ -395,103 +393,34 @@
     }
   }
 
-  // Função para buscar CTOs por endereço
-  async function searchByEndereco() {
-    if (!enderecoInput.trim()) {
-      error = 'Por favor, insira um endereço';
-      return;
-    }
-
-    loadingCTOs = true;
-    error = null;
-    ctos = [];
-    clearMap();
-
-    try {
-      // Verificar se o Google Maps está carregado
-      if (!googleMapsLoaded || !google.maps || !google.maps.Geocoder) {
-        error = 'Google Maps não está carregado. Aguarde alguns instantes e tente novamente.';
-        loadingCTOs = false;
-        return;
-      }
-
-      // Verificar se o mapa está inicializado
-      if (!map) {
-        initMap();
-        await tick();
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
+  // Função para detectar se o input é coordenadas (lat, lng) ou endereço
+  function parseCoordinatesOrAddress(input) {
+    const trimmed = input.trim();
+    
+    // Tentar detectar formato de coordenadas: "lat, lng" ou "lat,lng"
+    const coordPattern = /^-?\d+\.?\d*\s*,\s*-?\d+\.?\d*$/;
+    
+    if (coordPattern.test(trimmed)) {
+      const parts = trimmed.split(',').map(p => p.trim());
+      const lat = parseFloat(parts[0]);
+      const lng = parseFloat(parts[1]);
       
-      // Geocodificar endereço
-      const result = await geocodeAddress(enderecoInput);
-      const location = result.geometry.location;
-      const lat = location.lat();
-      const lng = location.lng();
-
-      // Buscar todas as CTOs próximas dentro de 250m
-      const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=250`));
-      const data = await response.json();
-
-      if (data.success && data.ctos) {
-        // Filtrar apenas CTOs dentro de 250m (garantir precisão)
-        ctos = data.ctos.filter(cto => {
-          if (!cto.latitude || !cto.longitude) return false;
-          const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
-          return distance <= 250;
-        });
-        
-        // Limpar marcador anterior se existir
-        if (searchMarker) {
-          searchMarker.setMap(null);
-        }
-        
-        // Adicionar marcador do endereço (azul) antes de exibir CTOs
-        if (map) {
-          searchMarker = new google.maps.Marker({
-            position: { lat, lng },
-            map: map,
-            title: 'Endereço pesquisado',
-            icon: {
-              url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
-              scaledSize: new google.maps.Size(32, 32)
-            },
-            zIndex: 999
-          });
-        }
-        
-        // Aguardar um pouco para garantir que o DOM está atualizado
-        await tick();
-        // Exibir CTOs no mapa (isso vai ajustar o zoom automaticamente)
-        await displayResultsOnMap();
-        
-        // Se não houver CTOs, centralizar no endereço
-        if (ctos.length === 0 && map) {
-          map.setCenter({ lat, lng });
-          map.setZoom(15);
-        }
-      } else {
-        error = data.error || 'Erro ao buscar CTOs';
+      // Validar se são coordenadas válidas
+      if (!isNaN(lat) && !isNaN(lng) && 
+          lat >= -90 && lat <= 90 && 
+          lng >= -180 && lng <= 180) {
+        return { isCoordinates: true, lat, lng };
       }
-    } catch (err) {
-      console.error('Erro ao buscar por endereço:', err);
-      error = err.message || 'Erro ao processar endereço. Verifique se o endereço está correto.';
-    } finally {
-      loadingCTOs = false;
     }
+    
+    // Se não for coordenadas, tratar como endereço
+    return { isCoordinates: false, address: trimmed };
   }
 
-  // Função para buscar CTOs por coordenadas
-  async function searchByCoordenadas() {
-    const lat = parseFloat(latitudeInput);
-    const lng = parseFloat(longitudeInput);
-
-    if (isNaN(lat) || isNaN(lng)) {
-      error = 'Por favor, insira coordenadas válidas';
-      return;
-    }
-
-    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-      error = 'Coordenadas inválidas. Latitude: -90 a 90, Longitude: -180 a 180';
+  // Função para buscar CTOs por endereço ou coordenadas
+  async function searchByEndereco() {
+    if (!enderecoInput.trim()) {
+      error = 'Por favor, insira um endereço ou coordenadas (lat, lng)';
       return;
     }
 
@@ -507,7 +436,29 @@
         await tick();
         await new Promise(resolve => setTimeout(resolve, 200));
       }
-      
+
+      let lat, lng;
+      const parsed = parseCoordinatesOrAddress(enderecoInput);
+
+      if (parsed.isCoordinates) {
+        // É coordenadas - usar diretamente
+        lat = parsed.lat;
+        lng = parsed.lng;
+      } else {
+        // É endereço - verificar se o Google Maps está carregado
+        if (!googleMapsLoaded || !google.maps || !google.maps.Geocoder) {
+          error = 'Google Maps não está carregado. Aguarde alguns instantes e tente novamente.';
+          loadingCTOs = false;
+          return;
+        }
+        
+        // Geocodificar endereço
+        const result = await geocodeAddress(parsed.address);
+        const location = result.geometry.location;
+        lat = location.lat();
+        lng = location.lng();
+      }
+
       // Buscar todas as CTOs próximas dentro de 250m
       const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=250`));
       const data = await response.json();
@@ -525,12 +476,16 @@
           searchMarker.setMap(null);
         }
         
-        // Adicionar marcador das coordenadas (azul) antes de exibir CTOs
+        // Adicionar marcador do ponto pesquisado (azul)
         if (map) {
+          const markerTitle = parsed.isCoordinates 
+            ? `Coordenadas pesquisadas: ${lat}, ${lng}` 
+            : 'Endereço pesquisado';
+          
           searchMarker = new google.maps.Marker({
             position: { lat, lng },
             map: map,
-            title: 'Coordenadas pesquisadas',
+            title: markerTitle,
             icon: {
               url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
               scaledSize: new google.maps.Size(32, 32)
@@ -544,7 +499,7 @@
         // Exibir CTOs no mapa (isso vai ajustar o zoom automaticamente)
         await displayResultsOnMap();
         
-        // Se não houver CTOs, centralizar nas coordenadas
+        // Se não houver CTOs, centralizar no ponto pesquisado
         if (ctos.length === 0 && map) {
           map.setCenter({ lat, lng });
           map.setZoom(15);
@@ -553,8 +508,8 @@
         error = data.error || 'Erro ao buscar CTOs';
       }
     } catch (err) {
-      console.error('Erro ao buscar por coordenadas:', err);
-      error = 'Erro ao buscar CTOs. Tente novamente.';
+      console.error('Erro ao buscar por endereço/coordenadas:', err);
+      error = err.message || 'Erro ao processar endereço ou coordenadas. Verifique se os dados estão corretos.';
     } finally {
       loadingCTOs = false;
     }
@@ -566,8 +521,6 @@
       await searchByNome();
     } else if (searchMode === 'endereco') {
       await searchByEndereco();
-    } else if (searchMode === 'coordenadas') {
-      await searchByCoordenadas();
     }
   }
 
@@ -901,13 +854,6 @@
           >
             Endereço
           </button>
-          <button 
-            class="mode-button" 
-            class:active={searchMode === 'coordenadas'}
-            on:click={() => searchMode = 'coordenadas'}
-          >
-            Coordenadas
-          </button>
         </div>
 
         <div class="search-form">
@@ -924,37 +870,17 @@
             </div>
           {:else if searchMode === 'endereco'}
             <div class="form-group">
-              <label for="endereco">Endereço</label>
+              <label for="endereco">Endereço ou Coordenadas</label>
               <input 
                 id="endereco"
                 type="text" 
                 bind:value={enderecoInput}
-                placeholder="Ex: Rua Exemplo, 123, São Paulo"
+                placeholder="Ex: Rua Exemplo, 123 ou -23.5505, -46.6333"
                 on:keydown={(e) => e.key === 'Enter' && handleSearch()}
               />
-            </div>
-          {:else if searchMode === 'coordenadas'}
-            <div class="form-group">
-              <label for="latitude">Latitude</label>
-              <input 
-                id="latitude"
-                type="number" 
-                step="any"
-                bind:value={latitudeInput}
-                placeholder="Ex: -23.5505"
-                on:keydown={(e) => e.key === 'Enter' && handleSearch()}
-              />
-            </div>
-            <div class="form-group">
-              <label for="longitude">Longitude</label>
-              <input 
-                id="longitude"
-                type="number" 
-                step="any"
-                bind:value={longitudeInput}
-                placeholder="Ex: -46.6333"
-                on:keydown={(e) => e.key === 'Enter' && handleSearch()}
-              />
+              <small style="color: #666; font-size: 0.75rem; margin-top: 0.25rem; display: block;">
+                Digite um endereço ou coordenadas no formato: lat, lng
+              </small>
             </div>
           {/if}
 
