@@ -20,6 +20,8 @@
   let map;
   let googleMapsLoaded = false;
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  let markers = []; // Array para armazenar marcadores das CTOs
+  let searchMarker = null; // Marcador do ponto de busca (endereço/coordenadas)
   
   // Modo de busca
   let searchMode = 'nome'; // 'nome', 'endereco', 'coordenadas'
@@ -72,12 +74,43 @@
     }
   }
 
+  // Função para determinar a cor do marcador baseada na porcentagem de ocupação
+  function getCTOColor(pctOcup) {
+    const porcentagem = parseFloat(pctOcup) || 0;
+    
+    if (porcentagem < 0 || porcentagem > 100) {
+      return '#F44336'; // Vermelho
+    }
+    
+    // 0% - 49,99% = Verde
+    if (porcentagem >= 0 && porcentagem < 50) {
+      return '#4CAF50'; // Verde
+    }
+    // 50,00% - 79,99% = Laranja
+    else if (porcentagem >= 50 && porcentagem < 80) {
+      return '#FF9800'; // Laranja
+    }
+    // 80,00% - 100% = Vermelho
+    else {
+      return '#F44336'; // Vermelho
+    }
+  }
+
   // Limpar marcadores do mapa
   function clearMap() {
-    if (!map) return;
+    // Limpar marcadores das CTOs
+    markers.forEach(marker => {
+      if (marker && marker.setMap) {
+        marker.setMap(null);
+      }
+    });
+    markers = [];
     
-    // Limpar marcadores (se houver algum sistema de gerenciamento)
-    // Por enquanto, apenas resetar o mapa
+    // Limpar marcador de busca
+    if (searchMarker) {
+      searchMarker.setMap(null);
+      searchMarker = null;
+    }
   }
 
   // Função para geocodificar endereço
@@ -125,6 +158,13 @@
 
       if (data.success && data.ctos) {
         ctos = data.ctos;
+        
+        // Limpar marcador de busca se existir (não usado na busca por nome)
+        if (searchMarker) {
+          searchMarker.setMap(null);
+          searchMarker = null;
+        }
+        
         displayResultsOnMap();
       } else {
         error = data.error || 'Erro ao buscar CTOs';
@@ -164,22 +204,33 @@
 
       if (data.success && data.ctos) {
         ctos = data.ctos;
-        displayResultsOnMap();
         
-        // Centralizar mapa no endereço
+        // Limpar marcador anterior se existir
+        if (searchMarker) {
+          searchMarker.setMap(null);
+        }
+        
+        // Adicionar marcador do endereço (azul) antes de exibir CTOs
         if (map) {
-          map.setCenter({ lat, lng });
-          map.setZoom(15);
-          
-          // Adicionar marcador do endereço
-          new google.maps.Marker({
+          searchMarker = new google.maps.Marker({
             position: { lat, lng },
             map: map,
             title: 'Endereço pesquisado',
             icon: {
-              url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png'
-            }
+              url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+              scaledSize: new google.maps.Size(32, 32)
+            },
+            zIndex: 999
           });
+        }
+        
+        // Exibir CTOs no mapa (isso vai ajustar o zoom automaticamente)
+        displayResultsOnMap();
+        
+        // Se não houver CTOs, centralizar no endereço
+        if (ctos.length === 0 && map) {
+          map.setCenter({ lat, lng });
+          map.setZoom(15);
         }
       } else {
         error = data.error || 'Erro ao buscar CTOs';
@@ -219,22 +270,33 @@
 
       if (data.success && data.ctos) {
         ctos = data.ctos;
-        displayResultsOnMap();
         
-        // Centralizar mapa nas coordenadas
+        // Limpar marcador anterior se existir
+        if (searchMarker) {
+          searchMarker.setMap(null);
+        }
+        
+        // Adicionar marcador das coordenadas (azul) antes de exibir CTOs
         if (map) {
-          map.setCenter({ lat, lng });
-          map.setZoom(15);
-          
-          // Adicionar marcador das coordenadas
-          new google.maps.Marker({
+          searchMarker = new google.maps.Marker({
             position: { lat, lng },
             map: map,
             title: 'Coordenadas pesquisadas',
             icon: {
-              url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png'
-            }
+              url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+              scaledSize: new google.maps.Size(32, 32)
+            },
+            zIndex: 999
           });
+        }
+        
+        // Exibir CTOs no mapa (isso vai ajustar o zoom automaticamente)
+        displayResultsOnMap();
+        
+        // Se não houver CTOs, centralizar nas coordenadas
+        if (ctos.length === 0 && map) {
+          map.setCenter({ lat, lng });
+          map.setZoom(15);
         }
       } else {
         error = data.error || 'Erro ao buscar CTOs';
@@ -258,55 +320,82 @@
     }
   }
 
-  // Função para exibir resultados no mapa
+  // Função para exibir resultados no mapa (estilo ViabilidadeAlares)
   function displayResultsOnMap() {
     if (!map || !google.maps || ctos.length === 0) return;
 
-    const bounds = new google.maps.LatLngBounds();
-    const markers = [];
+    // Limpar marcadores anteriores
+    clearMap();
 
-    // Limpar marcadores anteriores (se houver sistema de gerenciamento)
-    
-    ctos.forEach(cto => {
+    const bounds = new google.maps.LatLngBounds();
+    let markerNumber = 1; // Contador para numeração dos marcadores
+
+    ctos.forEach((cto, index) => {
       const position = { lat: cto.latitude, lng: cto.longitude };
       bounds.extend(position);
 
       // Determinar cor baseada na porcentagem de ocupação
+      const ctoColor = getCTOColor(cto.pct_ocup || 0);
       const pctOcup = parseFloat(cto.pct_ocup) || 0;
-      let color = '#4CAF50'; // Verde
-      if (pctOcup >= 80) {
-        color = '#F44336'; // Vermelho
-      } else if (pctOcup >= 50) {
-        color = '#FF9800'; // Laranja
-      }
+      
+      // Verificar se a CTO está ativa
+      const statusCto = cto.status_cto || '';
+      const isAtiva = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
 
+      // Configuração do ícone (círculo colorido com label numérico)
+      const iconConfig = {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 18,
+        fillColor: ctoColor,
+        fillOpacity: 1,
+        strokeColor: '#000000',
+        strokeWeight: 3,
+        anchor: new google.maps.Point(0, 0) // Centro do círculo
+      };
+
+      // Criar marcador
       const marker = new google.maps.Marker({
         position: position,
         map: map,
-        title: `${cto.nome} - ${pctOcup.toFixed(1)}% ocupado`,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: color,
-          fillOpacity: 0.8,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-          scale: 8
-        }
+        title: `${cto.nome} - ${pctOcup.toFixed(1)}% ocupado (${cto.vagas_total - cto.clientes_conectados} portas disponíveis)`,
+        icon: iconConfig,
+        label: {
+          text: `${markerNumber}`,
+          color: '#FFFFFF',
+          fontSize: '14px',
+          fontWeight: 'bold'
+        },
+        zIndex: 1000 + markerNumber,
+        optimized: false
       });
 
-      // InfoWindow
-      const infoWindow = new google.maps.InfoWindow({
-        content: `
-          <div style="padding: 8px;">
-            <strong>${cto.nome}</strong><br>
-            Cidade: ${cto.cidade}<br>
-            Portas: ${cto.vagas_total}<br>
-            Ocupadas: ${cto.clientes_conectados}<br>
-            Disponíveis: ${cto.vagas_total - cto.clientes_conectados}<br>
-            Ocupação: ${pctOcup.toFixed(1)}%<br>
-            POP: ${cto.pop || 'N/A'}
+      // InfoWindow com estilo similar ao ViabilidadeAlares
+      let alertaHTML = '';
+      if (!isAtiva) {
+        alertaHTML = `
+          <div style="background-color: #DC3545; color: white; padding: 12px; margin-bottom: 12px; border-radius: 4px; font-weight: bold; text-align: center;">
+            ⚠️ CTO NÃO ATIVA
           </div>
-        `
+        `;
+      }
+
+      const infoWindowContent = `
+        <div style="padding: 8px; font-family: 'Inter', sans-serif; line-height: 1.6;">
+          ${alertaHTML}
+          <strong>Cidade:</strong> ${String(cto.cidade || 'N/A')}<br>
+          <strong>POP:</strong> ${String(cto.pop || 'N/A')}<br>
+          <strong>Nome:</strong> ${String(cto.nome || 'N/A')}<br>
+          <strong>ID:</strong> ${String(cto.id || 'N/A')}<br>
+          <strong>Status:</strong> <span style="color: ${isAtiva ? '#28A745' : '#DC3545'}; font-weight: bold;">${String(statusCto || 'N/A')}</span><br>
+          <strong>Total de Portas:</strong> ${Number(cto.vagas_total || 0)}<br>
+          <strong>Portas Conectadas:</strong> ${Number(cto.clientes_conectados || 0)}<br>
+          <strong>Portas Disponíveis:</strong> ${Number((cto.vagas_total || 0) - (cto.clientes_conectados || 0))}<br>
+          <strong>Ocupação:</strong> ${pctOcup.toFixed(1)}%
+        </div>
+      `;
+
+      const infoWindow = new google.maps.InfoWindow({
+        content: infoWindowContent
       });
 
       marker.addListener('click', () => {
@@ -314,11 +403,15 @@
       });
 
       markers.push(marker);
+      markerNumber++;
     });
 
     // Ajustar zoom para mostrar todos os marcadores
     if (ctos.length > 1) {
       map.fitBounds(bounds);
+      // Adicionar padding para não cortar marcadores
+      const padding = { top: 50, right: 50, bottom: 50, left: 50 };
+      map.fitBounds(bounds, padding);
     } else if (ctos.length === 1) {
       map.setCenter({ lat: ctos[0].latitude, lng: ctos[0].longitude });
       map.setZoom(16);
