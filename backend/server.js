@@ -828,6 +828,78 @@ app.get('/api/ctos/nearby', async (req, res) => {
   }
 });
 
+// Rota para buscar CTOs por nome
+app.get('/api/ctos/search', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    const nome = req.query.nome;
+    
+    if (!nome || !nome.trim()) {
+      return res.status(400).json({ error: 'Nome da CTO é obrigatório' });
+    }
+    
+    console.log(`🔍 [API] Buscando CTOs com nome: ${nome}`);
+    
+    if (supabase && isSupabaseAvailable()) {
+      try {
+        // Buscar CTOs por nome (case-insensitive, busca parcial)
+        const { data, error } = await supabase
+          .from('ctos')
+          .select('*')
+          .ilike('cto', `%${nome.trim()}%`)
+          .limit(100); // Limitar a 100 resultados
+        
+        if (error) {
+          console.error('❌ [API] Erro ao buscar CTOs:', error);
+          throw error;
+        }
+        
+        // Formatar resultados
+        const ctos = (data || []).map(row => ({
+          nome: row.cto || row.id_cto || '',
+          latitude: parseFloat(row.latitude),
+          longitude: parseFloat(row.longitude),
+          vagas_total: row.portas || 0,
+          clientes_conectados: row.ocupado || 0,
+          pct_ocup: row.pct_ocup || 0,
+          cidade: row.cid_rede || '',
+          pop: row.pop || '',
+          id: row.id_cto || row.id?.toString() || '',
+          is_condominio: false,
+          status_cto: row.status_cto || '',
+          olt: row.olt || '',
+          slot: row.slot || '',
+          pon: row.pon || ''
+        }));
+        
+        console.log(`✅ [API] ${ctos.length} CTOs encontradas com nome "${nome}"`);
+        
+        return res.json({
+          success: true,
+          ctos: ctos,
+          count: ctos.length
+        });
+      } catch (supabaseErr) {
+        console.error('❌ [API] Erro ao buscar CTOs do Supabase:', supabaseErr);
+        return res.status(500).json({ error: 'Erro ao buscar CTOs', details: supabaseErr.message });
+      }
+    } else {
+      return res.status(503).json({ error: 'Supabase não disponível' });
+    }
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/ctos/search:', err);
+    return res.status(500).json({ error: 'Erro interno', details: err.message });
+  }
+});
+
 // Rota OTIMIZADA: Buscar apenas prédios/condomínios dentro de 250m
 app.get('/api/condominios/nearby', async (req, res) => {
   try {
