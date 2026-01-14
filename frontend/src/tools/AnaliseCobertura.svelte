@@ -896,7 +896,6 @@
         on:mousedown={startResizeSidebar}
         class:resizing={isResizingSidebar}
       >
-        <div class="resize-handle-icon">⋮</div>
       </div>
 
       <!-- Área Principal (Mapa e Tabela) -->
@@ -907,15 +906,12 @@
         </div>
 
         <!-- Handle de redimensionamento horizontal (mapa/tabela) -->
-        {#if ctos.length > 0}
-          <div 
-            class="resize-handle resize-handle-horizontal"
-            on:mousedown={startResizeMapTable}
-            class:resizing={isResizingMapTable}
-          >
-            <div class="resize-handle-icon">⋯</div>
-          </div>
-        {/if}
+        <div 
+          class="resize-handle resize-handle-horizontal"
+          on:mousedown={startResizeMapTable}
+          class:resizing={isResizingMapTable}
+        >
+        </div>
 
         <!-- Tabela de Resultados -->
         {#if ctos.length > 0}
@@ -961,7 +957,7 @@
             </div>
           </div>
         {:else if !isLoading && !error}
-          <div class="empty-state">
+          <div class="empty-state" style="flex: 0 0 {100 - mapHeightPercent}%; min-height: 0;">
             <p>🔍 Realize uma busca para ver os resultados aqui</p>
           </div>
         {/if}
@@ -1186,9 +1182,9 @@
     overflow: hidden;
   }
 
-  /* Handles de redimensionamento */
+  /* Handles de redimensionamento - estilo discreto */
   .resize-handle {
-    background: #e5e7eb;
+    background: transparent;
     cursor: col-resize;
     display: flex;
     align-items: center;
@@ -1196,37 +1192,55 @@
     transition: background 0.2s;
     user-select: none;
     flex-shrink: 0;
+    position: relative;
+  }
+
+  .resize-handle::before {
+    content: '';
+    position: absolute;
+    background: transparent;
+    transition: background 0.2s;
   }
 
   .resize-handle:hover {
-    background: #6495ED;
+    background: rgba(100, 149, 237, 0.1);
+  }
+
+  .resize-handle:hover::before {
+    background: rgba(100, 149, 237, 0.3);
   }
 
   .resize-handle.resizing {
-    background: #7B68EE;
+    background: rgba(123, 104, 238, 0.2);
+  }
+
+  .resize-handle.resizing::before {
+    background: rgba(123, 104, 238, 0.4);
   }
 
   .resize-handle-vertical {
-    width: 8px;
+    width: 4px;
     cursor: col-resize;
   }
 
+  .resize-handle-vertical::before {
+    width: 2px;
+    height: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
   .resize-handle-horizontal {
-    height: 8px;
+    height: 4px;
     cursor: row-resize;
     width: 100%;
   }
 
-  .resize-handle-icon {
-    color: #666;
-    font-size: 1.2rem;
-    font-weight: bold;
-    pointer-events: none;
-  }
-
-  .resize-handle:hover .resize-handle-icon,
-  .resize-handle.resizing .resize-handle-icon {
-    color: white;
+  .resize-handle-horizontal::before {
+    height: 2px;
+    width: 100%;
+    top: 50%;
+    transform: translateY(-50%);
   }
 
   .results-table-container h3 {
