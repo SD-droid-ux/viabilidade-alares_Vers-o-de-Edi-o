@@ -264,6 +264,19 @@
     });
   }
 
+  // Função para calcular distância geodésica (Haversine)
+  function calculateDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371000; // Raio da Terra em metros
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distância em metros
+  }
+
   // Função para buscar CTOs por nome
   async function searchByNome() {
     if (!nomeCTO.trim()) {
@@ -284,23 +297,95 @@
         await new Promise(resolve => setTimeout(resolve, 200));
       }
       
-      const response = await fetch(getApiUrl(`/api/ctos/search?nome=${encodeURIComponent(nomeCTO.trim())}`));
-      const data = await response.json();
+      // Primeiro, buscar a CTO pelo nome
+      const searchResponse = await fetch(getApiUrl(`/api/ctos/search?nome=${encodeURIComponent(nomeCTO.trim())}`));
+      const searchData = await searchResponse.json();
 
-      if (data.success && data.ctos) {
-        ctos = data.ctos;
+      if (!searchData.success || !searchData.ctos || searchData.ctos.length === 0) {
+        error = searchData.error || 'CTO não encontrada';
+        loadingCTOs = false;
+        return;
+      }
+
+      // Pegar a primeira CTO encontrada (ou a mais relevante)
+      const foundCTO = searchData.ctos[0];
+      
+      if (!foundCTO.latitude || !foundCTO.longitude) {
+        error = 'CTO encontrada mas sem coordenadas válidas';
+        loadingCTOs = false;
+        return;
+      }
+
+      // Agora buscar todas as CTOs próximas dentro de 250m
+      const lat = parseFloat(foundCTO.latitude);
+      const lng = parseFloat(foundCTO.longitude);
+      
+      const nearbyResponse = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=250`));
+      const nearbyData = await nearbyResponse.json();
+
+      if (nearbyData.success && nearbyData.ctos) {
+        // Filtrar apenas CTOs dentro de 250m (garantir precisão)
+        const allCTOs = nearbyData.ctos.filter(cto => {
+          if (!cto.latitude || !cto.longitude) return false;
+          const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
+          return distance <= 250;
+        });
+
+        // Adicionar a CTO pesquisada se não estiver na lista
+        const foundCTOInList = allCTOs.find(cto => 
+          cto.nome === foundCTO.nome || 
+          cto.id === foundCTO.id ||
+          (Math.abs(parseFloat(cto.latitude) - lat) < 0.0001 && Math.abs(parseFloat(cto.longitude) - lng) < 0.0001)
+        );
+
+        if (!foundCTOInList) {
+          allCTOs.unshift(foundCTO); // Adicionar no início
+        }
+
+        ctos = allCTOs;
         
-        // Limpar marcador de busca se existir (não usado na busca por nome)
+        // Limpar marcador de busca se existir
         if (searchMarker) {
           searchMarker.setMap(null);
           searchMarker = null;
+        }
+        
+        // Adicionar marcador da CTO pesquisada (azul)
+        if (map) {
+          searchMarker = new google.maps.Marker({
+            position: { lat, lng },
+            map: map,
+            title: `CTO pesquisada: ${foundCTO.nome}`,
+            icon: {
+              url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+              scaledSize: new google.maps.Size(32, 32)
+            },
+            zIndex: 999
+          });
         }
         
         // Aguardar um pouco para garantir que o DOM está atualizado
         await tick();
         await displayResultsOnMap();
       } else {
-        error = data.error || 'Erro ao buscar CTOs';
+        // Se não encontrar CTOs próximas, mostrar pelo menos a CTO pesquisada
+        ctos = [foundCTO];
+        
+        if (map) {
+          searchMarker = new google.maps.Marker({
+            position: { lat, lng },
+            map: map,
+            title: `CTO pesquisada: ${foundCTO.nome}`,
+            icon: {
+              url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+              scaledSize: new google.maps.Size(32, 32)
+            },
+            zIndex: 999
+          });
+        }
+        
+        await tick();
+        await displayResultsOnMap();
       }
     } catch (err) {
       console.error('Erro ao buscar CTOs:', err);
@@ -343,12 +428,17 @@
       const lat = location.lat();
       const lng = location.lng();
 
-      // Buscar CTOs próximas
-      const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=350`));
+      // Buscar todas as CTOs próximas dentro de 250m
+      const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=250`));
       const data = await response.json();
 
       if (data.success && data.ctos) {
-        ctos = data.ctos;
+        // Filtrar apenas CTOs dentro de 250m (garantir precisão)
+        ctos = data.ctos.filter(cto => {
+          if (!cto.latitude || !cto.longitude) return false;
+          const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
+          return distance <= 250;
+        });
         
         // Limpar marcador anterior se existir
         if (searchMarker) {
@@ -418,11 +508,17 @@
         await new Promise(resolve => setTimeout(resolve, 200));
       }
       
-      const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=350`));
+      // Buscar todas as CTOs próximas dentro de 250m
+      const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=250`));
       const data = await response.json();
 
       if (data.success && data.ctos) {
-        ctos = data.ctos;
+        // Filtrar apenas CTOs dentro de 250m (garantir precisão)
+        ctos = data.ctos.filter(cto => {
+          if (!cto.latitude || !cto.longitude) return false;
+          const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
+          return distance <= 250;
+        });
         
         // Limpar marcador anterior se existir
         if (searchMarker) {
