@@ -99,6 +99,34 @@
         return;
       }
       
+      // Função auxiliar para aguardar dimensões válidas
+      async function waitForValidDimensions(maxAttempts = 20) {
+        for (let i = 0; i < maxAttempts; i++) {
+          await tick();
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          
+          const rect = element.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            console.log(`Dimensões válidas encontradas na tentativa ${i + 1}:`, { width: rect.width, height: rect.height });
+            return true;
+          }
+          
+          // A cada 5 tentativas, tentar definir altura fixa
+          if (i % 5 === 4) {
+            const container = element.parentElement;
+            if (container && container.classList.contains('map-container')) {
+              container.style.height = '500px';
+              container.style.minHeight = '500px';
+            }
+            element.style.height = '500px';
+            element.style.minHeight = '500px';
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        return false;
+      }
+      
       // Garantir que o elemento e seus containers pais tenham altura definida
       element.style.display = 'block';
       element.style.width = '100%';
@@ -108,7 +136,7 @@
       const container = element.parentElement;
       if (container && container.classList.contains('map-container')) {
         container.style.height = '100%';
-        container.style.minHeight = '400px';
+        container.style.minHeight = '500px';
       }
       
       // Garantir que o main-area tem altura
@@ -118,40 +146,26 @@
         mainArea.style.minHeight = '500px';
       }
       
-      // Aguardar o estilo ser aplicado
-      await tick();
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Aguardar dimensões válidas antes de criar o mapa
+      const hasValidDimensions = await waitForValidDimensions();
       
-      // Verificar se o elemento tem dimensões válidas
-      const rect = element.getBoundingClientRect();
-      console.log('Dimensões do elemento antes de criar mapa:', { width: rect.width, height: rect.height });
-      
-      // Se ainda não tem dimensões válidas, tentar definir altura fixa
-      if (rect.width === 0 || rect.height === 0) {
-        console.warn('Elemento ainda sem dimensões, tentando altura fixa...');
-        
-        // Tentar altura fixa no elemento
+      if (!hasValidDimensions) {
+        console.warn('Não foi possível obter dimensões válidas após múltiplas tentativas, criando mapa mesmo assim...');
+        // Definir altura fixa como último recurso
         element.style.height = '500px';
         element.style.minHeight = '500px';
-        
-        // E no container
         if (container) {
           container.style.height = '500px';
           container.style.minHeight = '500px';
         }
-        
-        // Aguardar novamente
         await tick();
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
-        const rectAfter = element.getBoundingClientRect();
-        console.log('Dimensões após definir altura fixa:', { width: rectAfter.width, height: rectAfter.height });
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
       
       const finalRect = element.getBoundingClientRect();
       console.log('Criando mapa com dimensões finais:', { width: finalRect.width, height: finalRect.height });
       
-      // Criar mapa mesmo se dimensões ainda forem 0 (Google Maps pode corrigir)
+      // Criar mapa
       map = new google.maps.Map(element, {
         center: { lat: -23.5505, lng: -46.6333 }, // São Paulo
         zoom: 13,
