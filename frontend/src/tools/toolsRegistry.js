@@ -9,6 +9,7 @@
 
 import ViabilidadeAlares from './ViabilidadeAlares.svelte';
 import AnaliseCobertura from './AnaliseCobertura.svelte';
+import CalculadoraOrcamento from './CalculadoraOrcamento.svelte';
 
 /**
  * Registry de todas as ferramentas disponíveis no portal
@@ -38,6 +39,15 @@ export const toolsRegistry = [
     icon: '📡',
     color: '#6495ED',
     component: AnaliseCobertura,
+    available: true
+  },
+  {
+    id: 'calculadora-orcamento',
+    title: 'Calculadora de Orçamento',
+    description: 'Cálculo de orçamentos para projetos de engenharia',
+    icon: '💰',
+    color: '#10B981',
+    component: CalculadoraOrcamento,
     available: true
   }
 ];
