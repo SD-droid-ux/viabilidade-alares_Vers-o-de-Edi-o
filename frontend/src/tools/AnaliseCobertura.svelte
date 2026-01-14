@@ -1017,6 +1017,11 @@
     height: 100%;
   }
 
+  /* Garantir que a tabela não cresça além do necessário */
+  .main-area > .results-table-container {
+    flex-shrink: 1;
+  }
+
   .map-container {
     flex: 1;
     position: relative;
@@ -1024,7 +1029,7 @@
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     background: #e5e7eb;
-    min-height: 500px;
+    min-height: 400px;
     height: 100%;
     max-height: 100%;
     display: flex;
@@ -1045,9 +1050,12 @@
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     padding: 1.5rem;
-    max-height: 400px;
     display: flex;
     flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 200px;
+    max-height: 45vh;
+    overflow: hidden;
   }
 
   .results-table-container h3 {
@@ -1055,11 +1063,35 @@
     color: #4c1d95;
     font-size: 1.125rem;
     font-weight: 600;
+    flex-shrink: 0;
   }
 
   .table-wrapper {
     overflow-y: auto;
+    overflow-x: auto;
     flex: 1;
+    min-height: 0;
+    max-height: 100%;
+  }
+
+  /* Estilizar scrollbar para melhor visualização */
+  .table-wrapper::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .table-wrapper::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+  }
+
+  .table-wrapper::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+  }
+
+  .table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #555;
   }
 
   .results-table {
