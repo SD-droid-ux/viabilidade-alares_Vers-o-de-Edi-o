@@ -18,7 +18,9 @@
   
   // Google Maps
   let map;
+  let mapElement; // Referência ao elemento DOM do mapa
   let googleMapsLoaded = false;
+  let mapInitialized = false;
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
   let markers = []; // Array para armazenar marcadores das CTOs
   let searchMarker = null; // Marcador do ponto de busca (endereço/coordenadas)
@@ -72,35 +74,43 @@
   }
 
   // Inicializar o mapa (criar instância)
-  function initMap() {
-    if (!googleMapsLoaded || map) return;
+  async function initMap() {
+    if (!googleMapsLoaded) {
+      console.warn('Google Maps não carregado ainda');
+      return;
+    }
+    
+    if (map) {
+      console.log('Mapa já existe');
+      return;
+    }
     
     try {
-      const mapElement = document.getElementById('map');
-      if (!mapElement) {
-        console.warn('Elemento #map não encontrado, tentando novamente...');
+      // Usar a referência do elemento se disponível, senão buscar por ID
+      const element = mapElement || document.getElementById('map');
+      if (!element) {
+        console.warn('Elemento #map não encontrado');
         // Tentar novamente após um pequeno delay
         setTimeout(() => {
-          const retryElement = document.getElementById('map');
-          if (retryElement) {
-            map = new google.maps.Map(retryElement, {
-              center: { lat: -23.5505, lng: -46.6333 },
-              zoom: 13,
-              mapTypeControl: true,
-              streetViewControl: true,
-              fullscreenControl: true,
-              zoomControl: true,
-              scaleControl: true,
-              scrollwheel: true,
-              gestureHandling: 'greedy'
-            });
-            console.log('✅ Mapa inicializado com sucesso (retry)');
-          }
-        }, 500);
+          initMap();
+        }, 300);
         return;
       }
       
-      map = new google.maps.Map(mapElement, {
+      // Verificar se o elemento tem dimensões válidas
+      const rect = element.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) {
+        console.warn('Elemento #map não tem dimensões válidas', rect);
+        // Tentar novamente após um pequeno delay
+        setTimeout(() => {
+          initMap();
+        }, 300);
+        return;
+      }
+      
+      console.log('Criando mapa...', { width: rect.width, height: rect.height });
+      
+      map = new google.maps.Map(element, {
         center: { lat: -23.5505, lng: -46.6333 }, // São Paulo
         zoom: 13,
         mapTypeControl: true,
@@ -112,11 +122,25 @@
         gestureHandling: 'greedy'
       });
       
-      console.log('✅ Mapa inicializado com sucesso');
+      mapInitialized = true;
+      console.log('✅ Mapa inicializado com sucesso', map);
+      
+      // Aguardar o mapa estar completamente carregado
+      google.maps.event.addListenerOnce(map, 'idle', () => {
+        console.log('✅ Mapa completamente carregado');
+      });
     } catch (err) {
       console.error('Erro ao criar mapa:', err);
-      error = 'Erro ao criar mapa.';
+      error = 'Erro ao criar mapa: ' + err.message;
     }
+  }
+  
+  // Observar quando o elemento do mapa estiver disponível
+  $: if (mapElement && googleMapsLoaded && !map) {
+    console.log('Elemento do mapa disponível, inicializando...');
+    tick().then(() => {
+      initMap();
+    });
   }
 
   // Função combinada para garantir que o mapa está pronto
@@ -126,9 +150,31 @@
     }
     
     if (!map) {
-      await tick(); // Aguardar DOM estar pronto
+      // Aguardar múltiplos ticks para garantir DOM está pronto
+      await tick();
+      await tick();
+      
+      // Tentar inicializar o mapa
       initMap();
-      await tick(); // Aguardar mapa ser criado
+      
+      // Se ainda não existe, aguardar mais um pouco e tentar novamente
+      if (!map) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await tick();
+        initMap();
+      }
+      
+      // Se ainda não existe após todas as tentativas, aguardar mais
+      if (!map) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await tick();
+        initMap();
+      }
+    }
+    
+    if (!map) {
+      console.error('Não foi possível inicializar o mapa após múltiplas tentativas');
+      throw new Error('Mapa não disponível');
     }
     
     return map;
@@ -398,12 +444,26 @@
   // Função para exibir resultados no mapa (estilo ViabilidadeAlares)
   async function displayResultsOnMap() {
     // Garantir que o mapa está inicializado
-    await ensureMapReady();
-    
-    if (!map || !google.maps || ctos.length === 0) {
-      console.warn('Mapa não disponível ou sem CTOs para exibir', { map: !!map, googleMaps: !!google.maps, ctosCount: ctos.length });
+    try {
+      await ensureMapReady();
+    } catch (err) {
+      console.error('Erro ao garantir mapa pronto:', err);
+      error = 'Erro ao inicializar mapa. Tente recarregar a página.';
       return;
     }
+    
+    if (!map || !google.maps) {
+      console.error('Mapa não disponível', { map: !!map, googleMaps: !!google.maps });
+      error = 'Mapa não disponível. Tente recarregar a página.';
+      return;
+    }
+    
+    if (ctos.length === 0) {
+      console.warn('Nenhuma CTO para exibir');
+      return;
+    }
+    
+    console.log(`Exibindo ${ctos.length} CTOs no mapa`);
 
     // Limpar marcadores anteriores
     clearMap();
@@ -521,9 +581,19 @@
       // Carregar Google Maps
       await loadGoogleMaps();
       
-      // Aguardar DOM estar pronto e inicializar mapa
+      // Aguardar múltiplos ticks para garantir que o DOM está completamente renderizado
       await tick();
+      await tick();
+      
+      // Tentar inicializar o mapa
       initMap();
+      
+      // Se não conseguiu inicializar, tentar novamente após um delay
+      if (!map) {
+        setTimeout(() => {
+          initMap();
+        }, 500);
+      }
     } catch (err) {
       console.error('Erro ao inicializar ferramenta:', err);
       isLoading = false;
@@ -643,7 +713,12 @@
       <main class="main-area">
         <!-- Mapa -->
         <div class="map-container">
-          <div id="map" class="map"></div>
+          <div id="map" class="map" bind:this={mapElement}></div>
+          {#if !mapInitialized && googleMapsLoaded}
+            <div class="map-loading-overlay">
+              <p>Carregando mapa...</p>
+            </div>
+          {/if}
         </div>
 
         <!-- Tabela de Resultados -->
@@ -858,12 +933,32 @@
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     background: #e5e7eb;
+    position: relative;
   }
 
   .map {
     width: 100%;
     height: 100%;
     min-height: 400px;
+    display: block;
+  }
+  
+  .map-loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(229, 231, 235, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  
+  .map-loading-overlay p {
+    color: #6b7280;
+    font-size: 1rem;
   }
 
   .results-table-container {
