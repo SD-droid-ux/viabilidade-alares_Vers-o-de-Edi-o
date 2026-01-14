@@ -219,6 +219,9 @@
     }
   }
 
+  // Array para armazenar múltiplos marcadores de busca
+  let searchMarkers = [];
+
   // Limpar marcadores do mapa
   function clearMap() {
     // Limpar marcadores das CTOs
@@ -229,7 +232,15 @@
     });
     markers = [];
     
-    // Limpar marcador de busca
+    // Limpar marcadores de busca (múltiplos)
+    searchMarkers.forEach(marker => {
+      if (marker && marker.setMap) {
+        marker.setMap(null);
+      }
+    });
+    searchMarkers = [];
+    
+    // Limpar marcador único anterior (compatibilidade)
     if (searchMarker) {
       searchMarker.setMap(null);
       searchMarker = null;
@@ -275,10 +286,21 @@
     return R * c; // Distância em metros
   }
 
-  // Função para buscar CTOs por nome
+  // Função para verificar se uma CTO já está na lista (evitar duplicatas)
+  function isCTODuplicate(cto, existingList) {
+    return existingList.some(existing => 
+      existing.nome === cto.nome || 
+      existing.id === cto.id ||
+      (existing.latitude && existing.longitude && cto.latitude && cto.longitude &&
+       Math.abs(parseFloat(existing.latitude) - parseFloat(cto.latitude)) < 0.0001 &&
+       Math.abs(parseFloat(existing.longitude) - parseFloat(cto.longitude)) < 0.0001)
+    );
+  }
+
+  // Função para buscar CTOs por nome (suporta múltiplas CTOs)
   async function searchByNome() {
     if (!nomeCTO.trim()) {
-      error = 'Por favor, insira o nome da CTO';
+      error = 'Por favor, insira o nome da(s) CTO(s)';
       return;
     }
 
@@ -295,96 +317,116 @@
         await new Promise(resolve => setTimeout(resolve, 200));
       }
       
-      // Primeiro, buscar a CTO pelo nome
-      const searchResponse = await fetch(getApiUrl(`/api/ctos/search?nome=${encodeURIComponent(nomeCTO.trim())}`));
-      const searchData = await searchResponse.json();
+      // Separar múltiplas CTOs (aceita vírgula, ponto e vírgula, ou quebra de linha)
+      const ctoNames = nomeCTO
+        .split(/[,;\n]/)
+        .map(name => name.trim())
+        .filter(name => name.length > 0);
 
-      if (!searchData.success || !searchData.ctos || searchData.ctos.length === 0) {
-        error = searchData.error || 'CTO não encontrada';
+      if (ctoNames.length === 0) {
+        error = 'Por favor, insira pelo menos um nome de CTO';
         loadingCTOs = false;
         return;
       }
 
-      // Pegar a primeira CTO encontrada (ou a mais relevante)
-      const foundCTO = searchData.ctos[0];
-      
-      if (!foundCTO.latitude || !foundCTO.longitude) {
-        error = 'CTO encontrada mas sem coordenadas válidas';
+      console.log(`🔍 Buscando ${ctoNames.length} CTO(s):`, ctoNames);
+
+      const allFoundCTOs = [];
+      const searchMarkers = [];
+      const foundCTOsMap = new Map(); // Para evitar duplicatas
+
+      // Buscar cada CTO e suas próximas
+      for (const ctoName of ctoNames) {
+        try {
+          // Buscar a CTO pelo nome
+          const searchResponse = await fetch(getApiUrl(`/api/ctos/search?nome=${encodeURIComponent(ctoName)}`));
+          const searchData = await searchResponse.json();
+
+          if (!searchData.success || !searchData.ctos || searchData.ctos.length === 0) {
+            console.warn(`⚠️ CTO "${ctoName}" não encontrada`);
+            continue;
+          }
+
+          // Para cada CTO encontrada com esse nome, buscar próximas
+          for (const foundCTO of searchData.ctos) {
+            if (!foundCTO.latitude || !foundCTO.longitude) {
+              console.warn(`⚠️ CTO "${foundCTO.nome}" sem coordenadas válidas`);
+              continue;
+            }
+
+            const lat = parseFloat(foundCTO.latitude);
+            const lng = parseFloat(foundCTO.longitude);
+            const ctoKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+
+            // Se já processamos esta CTO, pular
+            if (foundCTOsMap.has(ctoKey)) {
+              continue;
+            }
+
+            // Adicionar CTO pesquisada ao mapa de controle
+            foundCTOsMap.set(ctoKey, foundCTO);
+
+            // Buscar todas as CTOs próximas dentro de 250m
+            const nearbyResponse = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=250`));
+            const nearbyData = await nearbyResponse.json();
+
+            if (nearbyData.success && nearbyData.ctos) {
+              // Filtrar apenas CTOs dentro de 250m e adicionar à lista
+              const nearbyCTOs = nearbyData.ctos.filter(cto => {
+                if (!cto.latitude || !cto.longitude) return false;
+                const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
+                return distance <= 250;
+              });
+
+              // Adicionar CTOs próximas (evitando duplicatas)
+              for (const cto of nearbyCTOs) {
+                const ctoNearbyKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
+                if (!foundCTOsMap.has(ctoNearbyKey)) {
+                  foundCTOsMap.set(ctoNearbyKey, cto);
+                }
+              }
+            }
+
+            // Criar marcador azul para a CTO pesquisada
+            if (map) {
+              const marker = new google.maps.Marker({
+                position: { lat, lng },
+                map: map,
+                title: `CTO pesquisada: ${foundCTO.nome}`,
+                icon: {
+                  url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+                  scaledSize: new google.maps.Size(32, 32)
+                },
+                zIndex: 999
+              });
+              searchMarkers.push(marker);
+            }
+          }
+        } catch (err) {
+          console.error(`Erro ao buscar CTO "${ctoName}":`, err);
+          // Continuar com as outras CTOs mesmo se uma falhar
+        }
+      }
+
+      // Converter Map para array
+      ctos = Array.from(foundCTOsMap.values());
+
+      if (ctos.length === 0) {
+        error = 'Nenhuma CTO encontrada. Verifique os nomes digitados.';
         loadingCTOs = false;
         return;
       }
 
-      // Agora buscar todas as CTOs próximas dentro de 250m
-      const lat = parseFloat(foundCTO.latitude);
-      const lng = parseFloat(foundCTO.longitude);
-      
-      const nearbyResponse = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=250`));
-      const nearbyData = await nearbyResponse.json();
-
-      if (nearbyData.success && nearbyData.ctos) {
-        // Filtrar apenas CTOs dentro de 250m (garantir precisão)
-        const allCTOs = nearbyData.ctos.filter(cto => {
-          if (!cto.latitude || !cto.longitude) return false;
-          const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
-          return distance <= 250;
-        });
-
-        // Adicionar a CTO pesquisada se não estiver na lista
-        const foundCTOInList = allCTOs.find(cto => 
-          cto.nome === foundCTO.nome || 
-          cto.id === foundCTO.id ||
-          (Math.abs(parseFloat(cto.latitude) - lat) < 0.0001 && Math.abs(parseFloat(cto.longitude) - lng) < 0.0001)
-        );
-
-        if (!foundCTOInList) {
-          allCTOs.unshift(foundCTO); // Adicionar no início
-        }
-
-        ctos = allCTOs;
-        
-        // Limpar marcador de busca se existir
-        if (searchMarker) {
-          searchMarker.setMap(null);
-          searchMarker = null;
-        }
-        
-        // Adicionar marcador da CTO pesquisada (azul)
-        if (map) {
-          searchMarker = new google.maps.Marker({
-            position: { lat, lng },
-            map: map,
-            title: `CTO pesquisada: ${foundCTO.nome}`,
-            icon: {
-              url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
-              scaledSize: new google.maps.Size(32, 32)
-            },
-            zIndex: 999
-          });
-        }
-        
-        // Aguardar um pouco para garantir que o DOM está atualizado
-        await tick();
-        await displayResultsOnMap();
-      } else {
-        // Se não encontrar CTOs próximas, mostrar pelo menos a CTO pesquisada
-        ctos = [foundCTO];
-        
-        if (map) {
-          searchMarker = new google.maps.Marker({
-            position: { lat, lng },
-            map: map,
-            title: `CTO pesquisada: ${foundCTO.nome}`,
-            icon: {
-              url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
-              scaledSize: new google.maps.Size(32, 32)
-            },
-            zIndex: 999
-          });
-        }
-        
-        await tick();
-        await displayResultsOnMap();
+      // Os marcadores já foram criados e adicionados ao array searchMarkers
+      // Limpar marcador único anterior se existir (compatibilidade)
+      if (searchMarker) {
+        searchMarker.setMap(null);
+        searchMarker = null;
       }
+      
+      // Aguardar um pouco para garantir que o DOM está atualizado
+      await tick();
+      await displayResultsOnMap();
     } catch (err) {
       console.error('Erro ao buscar CTOs:', err);
       error = 'Erro ao buscar CTOs. Tente novamente.';
@@ -859,14 +901,18 @@
         <div class="search-form">
           {#if searchMode === 'nome'}
             <div class="form-group">
-              <label for="nome-cto">Nome da CTO</label>
-              <input 
+              <label for="nome-cto">Nome da(s) CTO(s)</label>
+              <textarea 
                 id="nome-cto"
-                type="text" 
                 bind:value={nomeCTO}
-                placeholder="Ex: CTO123"
-                on:keydown={(e) => e.key === 'Enter' && handleSearch()}
-              />
+                placeholder="Ex: CTO123&#10;Ou múltiplas: CTO123, CTO456, CTO789"
+                rows="3"
+                on:keydown={(e) => e.key === 'Enter' && !e.shiftKey && handleSearch()}
+                style="resize: vertical; min-height: 60px;"
+              ></textarea>
+              <small style="color: #666; font-size: 0.75rem; margin-top: 0.25rem; display: block;">
+                Digite uma ou múltiplas CTOs separadas por vírgula, ponto e vírgula ou quebra de linha
+              </small>
             </div>
           {:else if searchMode === 'endereco'}
             <div class="form-group">
