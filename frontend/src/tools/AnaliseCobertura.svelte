@@ -25,6 +25,7 @@
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
   let markers = []; // Array para armazenar marcadores das CTOs
   let searchMarker = null; // Marcador do ponto de busca (endereço/coordenadas)
+  let mapObserver = null; // Observer para detectar quando o mapa fica visível
   
   // Modo de busca
   let searchMode = 'nome'; // 'nome', 'endereco', 'coordenadas'
@@ -173,8 +174,40 @@
         setTimeout(() => {
           google.maps.event.trigger(map, 'resize');
           console.log('Resize do mapa disparado após idle');
+          
+          // Verificar dimensões após resize
+          const rect = element.getBoundingClientRect();
+          console.log('Dimensões após resize:', { width: rect.width, height: rect.height });
+          
+          // Se ainda não tem dimensões válidas, tentar novamente após um delay maior
+          if (rect.width === 0 || rect.height === 0) {
+            console.warn('Mapa ainda sem dimensões após resize, tentando novamente...');
+            setTimeout(() => {
+              google.maps.event.trigger(map, 'resize');
+              const rect2 = element.getBoundingClientRect();
+              console.log('Dimensões após segundo resize:', { width: rect2.width, height: rect2.height });
+            }, 500);
+          }
         }, 100);
       });
+      
+      // Adicionar listener para quando o elemento ficar visível usando IntersectionObserver
+      if (typeof IntersectionObserver !== 'undefined') {
+        mapObserver = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting && map) {
+              console.log('Elemento do mapa ficou visível, forçando resize...');
+              setTimeout(() => {
+                google.maps.event.trigger(map, 'resize');
+                const rect = element.getBoundingClientRect();
+                console.log('Dimensões após resize por IntersectionObserver:', { width: rect.width, height: rect.height });
+              }, 100);
+            }
+          });
+        }, { threshold: 0.1 });
+        
+        mapObserver.observe(element);
+      }
     } catch (err) {
       console.error('Erro ao criar mapa:', err);
       error = 'Erro ao criar mapa: ' + err.message;
@@ -757,6 +790,11 @@
 
   // Cleanup ao desmontar
   onDestroy(() => {
+    // Limpar observer do mapa se existir
+    if (mapObserver) {
+      mapObserver.disconnect();
+      mapObserver = null;
+    }
     // Limpar recursos
   });
 </script>
