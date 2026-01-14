@@ -8,6 +8,7 @@
 // ============================================
 
 import ViabilidadeAlares from './ViabilidadeAlares.svelte';
+import AnaliseCobertura from './AnaliseCobertura.svelte';
 
 /**
  * Registry de todas as ferramentas disponíveis no portal
@@ -29,17 +30,16 @@ export const toolsRegistry = [
     color: '#7B68EE',
     component: ViabilidadeAlares,
     available: true
+  },
+  {
+    id: 'analise-cobertura',
+    title: 'Análise de Cobertura',
+    description: 'Análise de cobertura de rede e infraestrutura',
+    icon: '📡',
+    color: '#6495ED',
+    component: AnaliseCobertura,
+    available: true
   }
-  // Adicione novas ferramentas aqui:
-  // {
-  //   id: 'nova-ferramenta',
-  //   title: 'Nova Ferramenta',
-  //   description: 'Descrição da nova ferramenta',
-  //   icon: '🔧',
-  //   color: '#FF5733',
-  //   component: NovaFerramenta,
-  //   available: true
-  // }
 ];
 
 /**
@@ -68,5 +68,4 @@ export function isToolAvailable(toolId) {
   const tool = getToolById(toolId);
   return tool && tool.available;
 }
-
 
