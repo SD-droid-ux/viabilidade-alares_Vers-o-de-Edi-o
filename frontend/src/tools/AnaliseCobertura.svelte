@@ -569,8 +569,8 @@
     
     isDisplayingMarkers = true;
     
-    // Verificar se o mapa está realmente visível
-    if (!map.getDiv()) {
+    // Verificar se o mapa está realmente disponível
+    if (!map || !map.getDiv()) {
       console.error('Mapa não tem elemento DIV');
       isDisplayingMarkers = false;
       return;
@@ -578,30 +578,30 @@
     
     const mapDiv = map.getDiv();
     const rect = mapDiv.getBoundingClientRect();
-    console.log('Dimensões do mapa:', { width: rect.width, height: rect.height });
+    console.log('Dimensões do mapa antes de exibir marcadores:', { width: rect.width, height: rect.height });
     
+    // Se o mapa não tem dimensões válidas, tentar corrigir MAS não bloquear a criação dos marcadores
     if (rect.width === 0 || rect.height === 0) {
       console.warn('Mapa não tem dimensões válidas - tentando corrigir...', rect);
       
-      // Forçar estilo no elemento do mapa
+      // Forçar estilo no elemento do mapa (usar altura relativa, não fixa)
       const mapElement = document.getElementById('map');
       if (mapElement) {
         mapElement.style.display = 'block';
         mapElement.style.width = '100%';
-        mapElement.style.height = '500px';
-        mapElement.style.minHeight = '500px';
+        mapElement.style.height = '100%';
       }
       
-      // Forçar estilo no container
+      // Forçar estilo no container (usar altura relativa)
       const container = mapDiv.parentElement;
-      if (container) {
-        container.style.height = '500px';
+      if (container && container.classList.contains('map-container')) {
+        container.style.height = '100%';
         container.style.minHeight = '500px';
       }
       
       // Aguardar estilo ser aplicado
       await tick();
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       // Forçar redimensionamento do mapa
       google.maps.event.trigger(map, 'resize');
@@ -610,12 +610,11 @@
       await new Promise(resolve => setTimeout(resolve, 200));
       
       const rectAfter = mapDiv.getBoundingClientRect();
-      console.log('Dimensões após correção:', rectAfter);
+      console.log('Dimensões após correção:', { width: rectAfter.width, height: rectAfter.height });
       
-      // Mesmo sem dimensões válidas, continuar - Google Maps pode corrigir automaticamente
+      // Se ainda não tem dimensões válidas, continuar mesmo assim - os marcadores podem aparecer depois
       if (rectAfter.width === 0 || rectAfter.height === 0) {
-        console.warn('Mapa ainda sem dimensões válidas, mas continuando - Google Maps pode corrigir automaticamente');
-        // Não retornar - continuar criando marcadores mesmo assim
+        console.warn('Mapa ainda sem dimensões válidas, mas continuando - marcadores serão criados e mapa pode aparecer depois');
       }
     }
 
@@ -723,39 +722,67 @@
     await tick();
     await new Promise(resolve => setTimeout(resolve, 200));
     
-    // Forçar redimensionamento do mapa ANTES de ajustar zoom
-    google.maps.event.trigger(map, 'resize');
+    // Verificar dimensões antes de ajustar zoom
+    const mapDivForZoom = map.getDiv();
+    const rectForZoom = mapDivForZoom.getBoundingClientRect();
     
-    // Aguardar resize ser processado
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    if (markers.length > 1) {
-      // Usar fitBounds com padding
-      try {
-        map.fitBounds(bounds, {
-          top: 50,
-          right: 50,
-          bottom: 50,
-          left: 50
-        });
-        console.log('Ajustando zoom para múltiplos marcadores');
-      } catch (boundsErr) {
-        console.warn('Erro ao ajustar bounds:', boundsErr);
-        // Se falhar, centralizar no primeiro marcador
-        if (ctos.length > 0) {
-          map.setCenter({ lat: parseFloat(ctos[0].latitude), lng: parseFloat(ctos[0].longitude) });
-          map.setZoom(14);
+    // Se o mapa tem dimensões válidas, ajustar zoom
+    if (rectForZoom.width > 0 && rectForZoom.height > 0) {
+      // Forçar redimensionamento do mapa ANTES de ajustar zoom
+      google.maps.event.trigger(map, 'resize');
+      
+      // Aguardar resize ser processado
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      if (markers.length > 1) {
+        // Usar fitBounds com padding
+        try {
+          map.fitBounds(bounds, {
+            top: 50,
+            right: 50,
+            bottom: 50,
+            left: 50
+          });
+          console.log('Ajustando zoom para múltiplos marcadores');
+        } catch (boundsErr) {
+          console.warn('Erro ao ajustar bounds:', boundsErr);
+          // Se falhar, centralizar no primeiro marcador
+          if (ctos.length > 0) {
+            map.setCenter({ lat: parseFloat(ctos[0].latitude), lng: parseFloat(ctos[0].longitude) });
+            map.setZoom(14);
+          }
         }
+      } else if (markers.length === 1) {
+        const singleCto = ctos[0];
+        map.setCenter({ lat: parseFloat(singleCto.latitude), lng: parseFloat(singleCto.longitude) });
+        map.setZoom(16);
+        console.log('Centralizando em CTO única:', singleCto.nome);
       }
-    } else if (markers.length === 1) {
-      const singleCto = ctos[0];
-      map.setCenter({ lat: parseFloat(singleCto.latitude), lng: parseFloat(singleCto.longitude) });
-      map.setZoom(16);
-      console.log('Centralizando em CTO única:', singleCto.nome);
+      
+      // Forçar redimensionamento novamente após ajustar zoom
+      google.maps.event.trigger(map, 'resize');
+    } else {
+      console.warn('Mapa não tem dimensões válidas para ajustar zoom. Marcadores foram criados mas zoom não foi ajustado.');
+      // Tentar forçar resize e tentar novamente após um delay
+      google.maps.event.trigger(map, 'resize');
+      setTimeout(() => {
+        const rectAfter = mapDivForZoom.getBoundingClientRect();
+        if (rectAfter.width > 0 && rectAfter.height > 0 && markers.length > 0) {
+          console.log('Tentando ajustar zoom novamente após delay...');
+          if (markers.length > 1) {
+            try {
+              map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
+            } catch (e) {
+              console.warn('Erro ao ajustar bounds após delay:', e);
+            }
+          } else if (markers.length === 1 && ctos.length > 0) {
+            map.setCenter({ lat: parseFloat(ctos[0].latitude), lng: parseFloat(ctos[0].longitude) });
+            map.setZoom(16);
+          }
+          google.maps.event.trigger(map, 'resize');
+        }
+      }, 500);
     }
-    
-    // Forçar redimensionamento novamente após ajustar zoom
-    google.maps.event.trigger(map, 'resize');
     
     console.log('✅ Marcadores exibidos no mapa com sucesso');
     isDisplayingMarkers = false;
