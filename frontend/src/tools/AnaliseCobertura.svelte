@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { Loader } from '@googlemaps/js-api-loader';
   import Loading from '../Loading.svelte';
   import { getApiUrl } from '../config.js';
@@ -46,11 +46,16 @@
     // Pré-carregar dados se necessário
   }
 
-  // Inicializar Google Maps
-  async function initializeGoogleMaps() {
-    if (googleMapsLoaded || !GOOGLE_MAPS_API_KEY) return;
+  // Carregar biblioteca do Google Maps
+  async function loadGoogleMaps() {
+    if (googleMapsLoaded) return;
     
     try {
+      if (!GOOGLE_MAPS_API_KEY) {
+        error = 'Chave da API do Google Maps não configurada';
+        return;
+      }
+      
       const loader = new Loader({
         apiKey: GOOGLE_MAPS_API_KEY,
         version: 'weekly',
@@ -59,19 +64,74 @@
       
       await loader.load();
       googleMapsLoaded = true;
-      
-      // Criar mapa
-      map = new google.maps.Map(document.getElementById('map'), {
-        center: { lat: -23.5505, lng: -46.6333 }, // São Paulo
-        zoom: 13,
-        mapTypeControl: true,
-        streetViewControl: true,
-        fullscreenControl: true
-      });
+      console.log('✅ Google Maps carregado');
     } catch (err) {
       console.error('Erro ao carregar Google Maps:', err);
       error = 'Erro ao carregar Google Maps. Verifique a chave da API.';
     }
+  }
+
+  // Inicializar o mapa (criar instância)
+  function initMap() {
+    if (!googleMapsLoaded || map) return;
+    
+    try {
+      const mapElement = document.getElementById('map');
+      if (!mapElement) {
+        console.warn('Elemento #map não encontrado, tentando novamente...');
+        // Tentar novamente após um pequeno delay
+        setTimeout(() => {
+          const retryElement = document.getElementById('map');
+          if (retryElement) {
+            map = new google.maps.Map(retryElement, {
+              center: { lat: -23.5505, lng: -46.6333 },
+              zoom: 13,
+              mapTypeControl: true,
+              streetViewControl: true,
+              fullscreenControl: true,
+              zoomControl: true,
+              scaleControl: true,
+              scrollwheel: true,
+              gestureHandling: 'greedy'
+            });
+            console.log('✅ Mapa inicializado com sucesso (retry)');
+          }
+        }, 500);
+        return;
+      }
+      
+      map = new google.maps.Map(mapElement, {
+        center: { lat: -23.5505, lng: -46.6333 }, // São Paulo
+        zoom: 13,
+        mapTypeControl: true,
+        streetViewControl: true,
+        fullscreenControl: true,
+        zoomControl: true,
+        scaleControl: true,
+        scrollwheel: true,
+        gestureHandling: 'greedy'
+      });
+      
+      console.log('✅ Mapa inicializado com sucesso');
+    } catch (err) {
+      console.error('Erro ao criar mapa:', err);
+      error = 'Erro ao criar mapa.';
+    }
+  }
+
+  // Função combinada para garantir que o mapa está pronto
+  async function ensureMapReady() {
+    if (!googleMapsLoaded) {
+      await loadGoogleMaps();
+    }
+    
+    if (!map) {
+      await tick(); // Aguardar DOM estar pronto
+      initMap();
+      await tick(); // Aguardar mapa ser criado
+    }
+    
+    return map;
   }
 
   // Função para determinar a cor do marcador baseada na porcentagem de ocupação
@@ -153,6 +213,9 @@
     clearMap();
 
     try {
+      // Garantir que o mapa está inicializado antes de buscar
+      await ensureMapReady();
+      
       const response = await fetch(getApiUrl(`/api/ctos/search?nome=${encodeURIComponent(nomeCTO.trim())}`));
       const data = await response.json();
 
@@ -165,7 +228,9 @@
           searchMarker = null;
         }
         
-        displayResultsOnMap();
+        // Aguardar um pouco para garantir que o DOM está atualizado
+        await tick();
+        await displayResultsOnMap();
       } else {
         error = data.error || 'Erro ao buscar CTOs';
       }
@@ -191,6 +256,9 @@
     clearMap();
 
     try {
+      // Garantir que o mapa está inicializado
+      await ensureMapReady();
+      
       // Geocodificar endereço
       const result = await geocodeAddress(enderecoInput);
       const location = result.geometry.location;
@@ -224,8 +292,10 @@
           });
         }
         
+        // Aguardar um pouco para garantir que o DOM está atualizado
+        await tick();
         // Exibir CTOs no mapa (isso vai ajustar o zoom automaticamente)
-        displayResultsOnMap();
+        await displayResultsOnMap();
         
         // Se não houver CTOs, centralizar no endereço
         if (ctos.length === 0 && map) {
@@ -265,6 +335,9 @@
     clearMap();
 
     try {
+      // Garantir que o mapa está inicializado
+      await ensureMapReady();
+      
       const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=350`));
       const data = await response.json();
 
@@ -290,8 +363,10 @@
           });
         }
         
+        // Aguardar um pouco para garantir que o DOM está atualizado
+        await tick();
         // Exibir CTOs no mapa (isso vai ajustar o zoom automaticamente)
-        displayResultsOnMap();
+        await displayResultsOnMap();
         
         // Se não houver CTOs, centralizar nas coordenadas
         if (ctos.length === 0 && map) {
@@ -321,8 +396,14 @@
   }
 
   // Função para exibir resultados no mapa (estilo ViabilidadeAlares)
-  function displayResultsOnMap() {
-    if (!map || !google.maps || ctos.length === 0) return;
+  async function displayResultsOnMap() {
+    // Garantir que o mapa está inicializado
+    await ensureMapReady();
+    
+    if (!map || !google.maps || ctos.length === 0) {
+      console.warn('Mapa não disponível ou sem CTOs para exibir', { map: !!map, googleMaps: !!google.maps, ctosCount: ctos.length });
+      return;
+    }
 
     // Limpar marcadores anteriores
     clearMap();
@@ -437,8 +518,12 @@
         onSettingsHover(preloadSettingsData);
       }
       
-      // Inicializar Google Maps
-      await initializeGoogleMaps();
+      // Carregar Google Maps
+      await loadGoogleMaps();
+      
+      // Aguardar DOM estar pronto e inicializar mapa
+      await tick();
+      initMap();
     } catch (err) {
       console.error('Erro ao inicializar ferramenta:', err);
       isLoading = false;
