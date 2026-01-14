@@ -468,11 +468,37 @@
     // Limpar marcadores anteriores
     clearMap();
 
+    // Verificar se o mapa está realmente visível
+    if (!map.getDiv()) {
+      console.error('Mapa não tem elemento DIV');
+      return;
+    }
+    
+    const mapDiv = map.getDiv();
+    const rect = mapDiv.getBoundingClientRect();
+    console.log('Dimensões do mapa:', { width: rect.width, height: rect.height });
+    
+    if (rect.width === 0 || rect.height === 0) {
+      console.error('Mapa não tem dimensões válidas');
+      // Tentar redimensionar o mapa
+      setTimeout(() => {
+        google.maps.event.trigger(map, 'resize');
+        displayResultsOnMap();
+      }, 500);
+      return;
+    }
+
     const bounds = new google.maps.LatLngBounds();
     let markerNumber = 1; // Contador para numeração dos marcadores
 
     ctos.forEach((cto, index) => {
-      const position = { lat: cto.latitude, lng: cto.longitude };
+      // Validar coordenadas
+      if (!cto.latitude || !cto.longitude || isNaN(cto.latitude) || isNaN(cto.longitude)) {
+        console.warn(`CTO ${cto.nome} tem coordenadas inválidas:`, cto.latitude, cto.longitude);
+        return;
+      }
+      
+      const position = { lat: parseFloat(cto.latitude), lng: parseFloat(cto.longitude) };
       bounds.extend(position);
 
       // Determinar cor baseada na porcentagem de ocupação
@@ -494,69 +520,94 @@
         anchor: new google.maps.Point(0, 0) // Centro do círculo
       };
 
-      // Criar marcador
-      const marker = new google.maps.Marker({
-        position: position,
-        map: map,
-        title: `${cto.nome} - ${pctOcup.toFixed(1)}% ocupado (${cto.vagas_total - cto.clientes_conectados} portas disponíveis)`,
-        icon: iconConfig,
-        label: {
-          text: `${markerNumber}`,
-          color: '#FFFFFF',
-          fontSize: '14px',
-          fontWeight: 'bold'
-        },
-        zIndex: 1000 + markerNumber,
-        optimized: false
-      });
+      try {
+        // Criar marcador
+        const marker = new google.maps.Marker({
+          position: position,
+          map: map,
+          title: `${cto.nome} - ${pctOcup.toFixed(1)}% ocupado (${cto.vagas_total - cto.clientes_conectados} portas disponíveis)`,
+          icon: iconConfig,
+          label: {
+            text: `${markerNumber}`,
+            color: '#FFFFFF',
+            fontSize: '14px',
+            fontWeight: 'bold'
+          },
+          zIndex: 1000 + markerNumber,
+          optimized: false
+        });
+        
+        console.log(`Marcador ${markerNumber} criado para CTO ${cto.nome} em`, position);
 
-      // InfoWindow com estilo similar ao ViabilidadeAlares
-      let alertaHTML = '';
-      if (!isAtiva) {
-        alertaHTML = `
-          <div style="background-color: #DC3545; color: white; padding: 12px; margin-bottom: 12px; border-radius: 4px; font-weight: bold; text-align: center;">
-            ⚠️ CTO NÃO ATIVA
+        // InfoWindow com estilo similar ao ViabilidadeAlares
+        let alertaHTML = '';
+        if (!isAtiva) {
+          alertaHTML = `
+            <div style="background-color: #DC3545; color: white; padding: 12px; margin-bottom: 12px; border-radius: 4px; font-weight: bold; text-align: center;">
+              ⚠️ CTO NÃO ATIVA
+            </div>
+          `;
+        }
+
+        const infoWindowContent = `
+          <div style="padding: 8px; font-family: 'Inter', sans-serif; line-height: 1.6;">
+            ${alertaHTML}
+            <strong>Cidade:</strong> ${String(cto.cidade || 'N/A')}<br>
+            <strong>POP:</strong> ${String(cto.pop || 'N/A')}<br>
+            <strong>Nome:</strong> ${String(cto.nome || 'N/A')}<br>
+            <strong>ID:</strong> ${String(cto.id || 'N/A')}<br>
+            <strong>Status:</strong> <span style="color: ${isAtiva ? '#28A745' : '#DC3545'}; font-weight: bold;">${String(statusCto || 'N/A')}</span><br>
+            <strong>Total de Portas:</strong> ${Number(cto.vagas_total || 0)}<br>
+            <strong>Portas Conectadas:</strong> ${Number(cto.clientes_conectados || 0)}<br>
+            <strong>Portas Disponíveis:</strong> ${Number((cto.vagas_total || 0) - (cto.clientes_conectados || 0))}<br>
+            <strong>Ocupação:</strong> ${pctOcup.toFixed(1)}%
           </div>
         `;
+
+        const infoWindow = new google.maps.InfoWindow({
+          content: infoWindowContent
+        });
+
+        marker.addListener('click', () => {
+          infoWindow.open(map, marker);
+        });
+
+        markers.push(marker);
+        markerNumber++;
+      } catch (markerErr) {
+        console.error(`Erro ao criar marcador para CTO ${cto.nome}:`, markerErr);
       }
-
-      const infoWindowContent = `
-        <div style="padding: 8px; font-family: 'Inter', sans-serif; line-height: 1.6;">
-          ${alertaHTML}
-          <strong>Cidade:</strong> ${String(cto.cidade || 'N/A')}<br>
-          <strong>POP:</strong> ${String(cto.pop || 'N/A')}<br>
-          <strong>Nome:</strong> ${String(cto.nome || 'N/A')}<br>
-          <strong>ID:</strong> ${String(cto.id || 'N/A')}<br>
-          <strong>Status:</strong> <span style="color: ${isAtiva ? '#28A745' : '#DC3545'}; font-weight: bold;">${String(statusCto || 'N/A')}</span><br>
-          <strong>Total de Portas:</strong> ${Number(cto.vagas_total || 0)}<br>
-          <strong>Portas Conectadas:</strong> ${Number(cto.clientes_conectados || 0)}<br>
-          <strong>Portas Disponíveis:</strong> ${Number((cto.vagas_total || 0) - (cto.clientes_conectados || 0))}<br>
-          <strong>Ocupação:</strong> ${pctOcup.toFixed(1)}%
-        </div>
-      `;
-
-      const infoWindow = new google.maps.InfoWindow({
-        content: infoWindowContent
-      });
-
-      marker.addListener('click', () => {
-        infoWindow.open(map, marker);
-      });
-
-      markers.push(marker);
-      markerNumber++;
     });
 
     // Ajustar zoom para mostrar todos os marcadores
-    if (ctos.length > 1) {
-      map.fitBounds(bounds);
-      // Adicionar padding para não cortar marcadores
-      const padding = { top: 50, right: 50, bottom: 50, left: 50 };
-      map.fitBounds(bounds, padding);
-    } else if (ctos.length === 1) {
-      map.setCenter({ lat: ctos[0].latitude, lng: ctos[0].longitude });
-      map.setZoom(16);
+    if (markers.length === 0) {
+      console.warn('Nenhum marcador foi criado');
+      return;
     }
+    
+    // Aguardar um pouco para garantir que os marcadores foram renderizados
+    await tick();
+    
+    if (markers.length > 1) {
+      // Usar fitBounds com padding
+      map.fitBounds(bounds, {
+        top: 50,
+        right: 50,
+        bottom: 50,
+        left: 50
+      });
+      console.log('Ajustando zoom para múltiplos marcadores');
+    } else if (markers.length === 1) {
+      const singleCto = ctos[0];
+      map.setCenter({ lat: parseFloat(singleCto.latitude), lng: parseFloat(singleCto.longitude) });
+      map.setZoom(16);
+      console.log('Centralizando em CTO única:', singleCto.nome);
+    }
+    
+    // Forçar redimensionamento do mapa para garantir que está visível
+    google.maps.event.trigger(map, 'resize');
+    
+    console.log('✅ Marcadores exibidos no mapa com sucesso');
   }
 
   // Função para formatar porcentagem
