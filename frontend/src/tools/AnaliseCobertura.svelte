@@ -12,9 +12,11 @@
   export let onSettingsHover = null;
 
   // Estados da ferramenta
-  let isLoading = false;
+  let isLoading = false; // Loading inicial da ferramenta (tela completa)
   let loadingMessage = '';
   let showSettingsModal = false;
+  let loadingCTOs = false; // Loading específico para busca de CTOs (inline)
+  let baseDataExists = true; // Indica se a base de dados foi carregada com sucesso
   
   // Google Maps
   let map;
@@ -50,6 +52,26 @@
     // Pré-carregar dados se necessário
   }
 
+  // Verificar se a base de dados está disponível
+  async function checkBaseAvailable() {
+    try {
+      // Verificar se o Supabase está disponível fazendo uma busca simples
+      const testLat = -23.5505; // Coordenada de teste (São Paulo)
+      const testLng = -46.6333;
+      const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${testLat}&lng=${testLng}&radius=1000`));
+      if (response.ok) {
+        baseDataExists = true;
+        return true;
+      }
+      baseDataExists = false;
+      return false;
+    } catch (err) {
+      console.warn('Aviso: Não foi possível verificar base de dados:', err.message);
+      baseDataExists = false;
+      return false;
+    }
+  }
+
   // Carregar biblioteca do Google Maps
   async function loadGoogleMaps() {
     // Verificar se o Google Maps já está carregado globalmente
@@ -63,8 +85,7 @@
     
     try {
       if (!GOOGLE_MAPS_API_KEY) {
-        error = 'Chave da API do Google Maps não configurada';
-        return;
+        throw new Error('Chave da API do Google Maps não configurada');
       }
       
       // Usar as mesmas bibliotecas que ViabilidadeAlares para evitar conflitos
@@ -88,206 +109,84 @@
         }
       }
       console.error('Erro ao carregar Google Maps:', err);
-      error = 'Erro ao carregar Google Maps. Verifique a chave da API.';
+      throw err; // Re-throw para ser capturado por initializeTool
     }
   }
 
-  // Inicializar o mapa (criar instância)
-  async function initMap() {
-    if (!googleMapsLoaded) {
-      console.warn('Google Maps não carregado ainda');
-      return;
-    }
+  // Inicializar o mapa (criar instância) - simplificado similar ao ViabilidadeAlares
+  function initMap() {
+    if (!googleMapsLoaded) return;
+
+    const mapElement = document.getElementById('map');
+    if (!mapElement) return;
+
+    map = new google.maps.Map(mapElement, {
+      center: { lat: -23.5505, lng: -46.6333 }, // São Paulo como padrão
+      zoom: 13,
+      mapTypeControl: true,
+      streetViewControl: true,
+      fullscreenControl: true,
+      scrollwheel: true,
+      gestureHandling: 'greedy'
+    });
     
-    if (map) {
-      console.log('Mapa já existe');
-      return;
-    }
+    mapInitialized = true;
+    console.log('✅ Mapa inicializado com sucesso');
+  }
+
+  // Função de inicialização da ferramenta (chamada quando o componente é montado)
+  async function initializeTool() {
+    // Mostrar loading enquanto carrega a ferramenta
+    isLoading = true;
     
     try {
-      // Usar a referência do elemento se disponível, senão buscar por ID
-      const element = mapElement || document.getElementById('map');
-      if (!element) {
-        console.warn('Elemento #map não encontrado');
-        // Tentar novamente após um pequeno delay
-        setTimeout(() => {
-          initMap();
-        }, 300);
-        return;
-      }
-      
-      // Função auxiliar para aguardar dimensões válidas
-      async function waitForValidDimensions(maxAttempts = 20) {
-        for (let i = 0; i < maxAttempts; i++) {
-          await tick();
-          await new Promise(resolve => requestAnimationFrame(resolve));
-          
-          const rect = element.getBoundingClientRect();
-          if (rect.width > 0 && rect.height > 0) {
-            console.log(`Dimensões válidas encontradas na tentativa ${i + 1}:`, { width: rect.width, height: rect.height });
-            return true;
-          }
-          
-          // A cada 5 tentativas, tentar definir altura fixa
-          if (i % 5 === 4) {
-            const container = element.parentElement;
-            if (container && container.classList.contains('map-container')) {
-              container.style.height = '500px';
-              container.style.minHeight = '500px';
-            }
-            element.style.height = '500px';
-            element.style.minHeight = '500px';
-          }
-          
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        return false;
-      }
-      
-      // Garantir que o elemento e seus containers pais tenham altura definida
-      element.style.display = 'block';
-      element.style.width = '100%';
-      element.style.height = '100%';
-      
-      // Garantir que o container também tem altura
-      const container = element.parentElement;
-      if (container && container.classList.contains('map-container')) {
-        container.style.height = '100%';
-        container.style.minHeight = '500px';
-      }
-      
-      // Garantir que o main-area tem altura
-      const mainArea = container?.parentElement;
-      if (mainArea && mainArea.classList.contains('main-area')) {
-        mainArea.style.height = '100%';
-        mainArea.style.minHeight = '500px';
-      }
-      
-      // Aguardar dimensões válidas antes de criar o mapa
-      const hasValidDimensions = await waitForValidDimensions();
-      
-      if (!hasValidDimensions) {
-        console.warn('Não foi possível obter dimensões válidas após múltiplas tentativas, criando mapa mesmo assim...');
-        // Definir altura fixa como último recurso
-        element.style.height = '500px';
-        element.style.minHeight = '500px';
-        if (container) {
-          container.style.height = '500px';
-          container.style.minHeight = '500px';
-        }
-        await tick();
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-      
-      const finalRect = element.getBoundingClientRect();
-      console.log('Criando mapa com dimensões finais:', { width: finalRect.width, height: finalRect.height });
-      
-      // Criar mapa
-      map = new google.maps.Map(element, {
-        center: { lat: -23.5505, lng: -46.6333 }, // São Paulo
-        zoom: 13,
-        mapTypeControl: true,
-        streetViewControl: true,
-        fullscreenControl: true,
-        zoomControl: true,
-        scaleControl: true,
-        scrollwheel: true,
-        gestureHandling: 'greedy'
-      });
-      
-      mapInitialized = true;
-      console.log('✅ Mapa inicializado com sucesso', map);
-      
-      // Aguardar o mapa estar completamente carregado e então forçar resize
-      google.maps.event.addListenerOnce(map, 'idle', () => {
-        console.log('✅ Mapa completamente carregado');
-        // Forçar resize após carregar para garantir dimensões corretas
-        setTimeout(() => {
-          google.maps.event.trigger(map, 'resize');
-          console.log('Resize do mapa disparado após idle');
-          
-          // Verificar dimensões após resize
-          const rect = element.getBoundingClientRect();
-          console.log('Dimensões após resize:', { width: rect.width, height: rect.height });
-          
-          // Se ainda não tem dimensões válidas, tentar novamente após um delay maior
-          if (rect.width === 0 || rect.height === 0) {
-            console.warn('Mapa ainda sem dimensões após resize, tentando novamente...');
-            setTimeout(() => {
-              google.maps.event.trigger(map, 'resize');
-              const rect2 = element.getBoundingClientRect();
-              console.log('Dimensões após segundo resize:', { width: rect2.width, height: rect2.height });
-            }, 500);
-          }
-        }, 100);
-      });
-      
-      // Adicionar listener para quando o elemento ficar visível usando IntersectionObserver
-      if (typeof IntersectionObserver !== 'undefined') {
-        mapObserver = new IntersectionObserver((entries) => {
-          entries.forEach(entry => {
-            if (entry.isIntersecting && map) {
-              console.log('Elemento do mapa ficou visível, forçando resize...');
-              setTimeout(() => {
-                google.maps.event.trigger(map, 'resize');
-                const rect = element.getBoundingClientRect();
-                console.log('Dimensões após resize por IntersectionObserver:', { width: rect.width, height: rect.height });
-              }, 100);
-            }
-          });
-        }, { threshold: 0.1 });
-        
-        mapObserver.observe(element);
-      }
-    } catch (err) {
-      console.error('Erro ao criar mapa:', err);
-      error = 'Erro ao criar mapa: ' + err.message;
-    }
-  }
-  
-  // Observar quando o elemento do mapa estiver disponível
-  $: if (mapElement && googleMapsLoaded && !map) {
-    console.log('Elemento do mapa disponível, inicializando...');
-    tick().then(() => {
-      initMap();
-    });
-  }
-
-  // Função combinada para garantir que o mapa está pronto
-  async function ensureMapReady() {
-    if (!googleMapsLoaded) {
+      // Etapa 1: Carregando Mapa
+      loadingMessage = 'Carregando Mapa';
       await loadGoogleMaps();
-    }
-    
-    if (!map) {
-      // Aguardar múltiplos ticks para garantir DOM está pronto
-      await tick();
-      await tick();
       
-      // Tentar inicializar o mapa
+      // Pequeno delay para visualização
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Etapa 2: Verificando Base de dados
+      loadingMessage = 'Verificando Base de dados';
+      baseDataExists = true; // Resetar estado
+      try {
+        await checkBaseAvailable();
+      } catch (err) {
+        console.warn('Aviso: Não foi possível verificar base de dados:', err.message);
+        baseDataExists = false;
+      }
+      
+      // Pequeno delay para visualização
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Etapa 3: Ajuste Finais
+      loadingMessage = 'Ajuste Finais';
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Etapa 4: Abrindo Ferramenta
+      loadingMessage = 'Abrindo Ferramenta';
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Tudo carregado
+      isLoading = false;
+      
+      // Aguardar o DOM atualizar antes de inicializar o mapa
+      await tick();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Agora inicializar o mapa após o elemento estar no DOM
       initMap();
+    } catch (err) {
+      console.error('Erro ao inicializar ferramenta:', err);
+      error = 'Erro ao inicializar ferramenta: ' + err.message;
+      isLoading = false;
       
-      // Se ainda não existe, aguardar mais um pouco e tentar novamente
-      if (!map) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        await tick();
-        initMap();
-      }
-      
-      // Se ainda não existe após todas as tentativas, aguardar mais
-      if (!map) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        await tick();
-        initMap();
-      }
+      // Tentar inicializar o mapa mesmo com erro
+      await tick();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      initMap();
     }
-    
-    if (!map) {
-      console.error('Não foi possível inicializar o mapa após múltiplas tentativas');
-      throw new Error('Mapa não disponível');
-    }
-    
-    return map;
   }
 
   // Função para determinar a cor do marcador baseada na porcentagem de ocupação
@@ -362,15 +261,18 @@
       return;
     }
 
-    isLoading = true;
-    loadingMessage = 'Buscando CTOs...';
+    loadingCTOs = true;
     error = null;
     ctos = [];
     clearMap();
 
     try {
-      // Garantir que o mapa está inicializado antes de buscar
-      await ensureMapReady();
+      // Verificar se o mapa está inicializado
+      if (!map) {
+        initMap();
+        await tick();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
       
       const response = await fetch(getApiUrl(`/api/ctos/search?nome=${encodeURIComponent(nomeCTO.trim())}`));
       const data = await response.json();
@@ -394,7 +296,7 @@
       console.error('Erro ao buscar CTOs:', err);
       error = 'Erro ao buscar CTOs. Tente novamente.';
     } finally {
-      isLoading = false;
+      loadingCTOs = false;
     }
   }
 
@@ -405,15 +307,25 @@
       return;
     }
 
-    isLoading = true;
-    loadingMessage = 'Geocodificando endereço...';
+    loadingCTOs = true;
     error = null;
     ctos = [];
     clearMap();
 
     try {
-      // Garantir que o mapa está inicializado
-      await ensureMapReady();
+      // Verificar se o Google Maps está carregado
+      if (!googleMapsLoaded || !google.maps || !google.maps.Geocoder) {
+        error = 'Google Maps não está carregado. Aguarde alguns instantes e tente novamente.';
+        loadingCTOs = false;
+        return;
+      }
+
+      // Verificar se o mapa está inicializado
+      if (!map) {
+        initMap();
+        await tick();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
       
       // Geocodificar endereço
       const result = await geocodeAddress(enderecoInput);
@@ -422,7 +334,6 @@
       const lng = location.lng();
 
       // Buscar CTOs próximas
-      loadingMessage = 'Buscando CTOs próximas...';
       const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=350`));
       const data = await response.json();
 
@@ -465,7 +376,7 @@
       console.error('Erro ao buscar por endereço:', err);
       error = err.message || 'Erro ao processar endereço. Verifique se o endereço está correto.';
     } finally {
-      isLoading = false;
+      loadingCTOs = false;
     }
   }
 
@@ -484,15 +395,18 @@
       return;
     }
 
-    isLoading = true;
-    loadingMessage = 'Buscando CTOs próximas...';
+    loadingCTOs = true;
     error = null;
     ctos = [];
     clearMap();
 
     try {
-      // Garantir que o mapa está inicializado
-      await ensureMapReady();
+      // Verificar se o mapa está inicializado
+      if (!map) {
+        initMap();
+        await tick();
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
       
       const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=350`));
       const data = await response.json();
@@ -536,7 +450,7 @@
       console.error('Erro ao buscar por coordenadas:', err);
       error = 'Erro ao buscar CTOs. Tente novamente.';
     } finally {
-      isLoading = false;
+      loadingCTOs = false;
     }
   }
 
@@ -553,18 +467,8 @@
 
   // Função para exibir resultados no mapa (estilo ViabilidadeAlares)
   async function displayResultsOnMap() {
-    // Garantir que o mapa está inicializado
-    try {
-      await ensureMapReady();
-    } catch (err) {
-      console.error('Erro ao garantir mapa pronto:', err);
-      error = 'Erro ao inicializar mapa. Tente recarregar a página.';
-      return;
-    }
-    
     if (!map || !google.maps) {
       console.error('Mapa não disponível', { map: !!map, googleMaps: !!google.maps });
-      error = 'Mapa não disponível. Tente recarregar a página.';
       return;
     }
     
@@ -585,55 +489,6 @@
     }
     
     isDisplayingMarkers = true;
-    
-    // Verificar se o mapa está realmente disponível
-    if (!map || !map.getDiv()) {
-      console.error('Mapa não tem elemento DIV');
-      isDisplayingMarkers = false;
-      return;
-    }
-    
-    const mapDiv = map.getDiv();
-    const rect = mapDiv.getBoundingClientRect();
-    console.log('Dimensões do mapa antes de exibir marcadores:', { width: rect.width, height: rect.height });
-    
-    // Se o mapa não tem dimensões válidas, tentar corrigir MAS não bloquear a criação dos marcadores
-    if (rect.width === 0 || rect.height === 0) {
-      console.warn('Mapa não tem dimensões válidas - tentando corrigir...', rect);
-      
-      // Forçar estilo no elemento do mapa (usar altura relativa, não fixa)
-      const mapElement = document.getElementById('map');
-      if (mapElement) {
-        mapElement.style.display = 'block';
-        mapElement.style.width = '100%';
-        mapElement.style.height = '100%';
-      }
-      
-      // Forçar estilo no container (usar altura relativa)
-      const container = mapDiv.parentElement;
-      if (container && container.classList.contains('map-container')) {
-        container.style.height = '100%';
-        container.style.minHeight = '500px';
-      }
-      
-      // Aguardar estilo ser aplicado
-      await tick();
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Forçar redimensionamento do mapa
-      google.maps.event.trigger(map, 'resize');
-      
-      // Aguardar mais um pouco
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      const rectAfter = mapDiv.getBoundingClientRect();
-      console.log('Dimensões após correção:', { width: rectAfter.width, height: rectAfter.height });
-      
-      // Se ainda não tem dimensões válidas, continuar mesmo assim - os marcadores podem aparecer depois
-      if (rectAfter.width === 0 || rectAfter.height === 0) {
-        console.warn('Mapa ainda sem dimensões válidas, mas continuando - marcadores serão criados e mapa pode aparecer depois');
-      }
-    }
 
     const bounds = new google.maps.LatLngBounds();
     let markerNumber = 1; // Contador para numeração dos marcadores
@@ -739,126 +594,35 @@
     await tick();
     await new Promise(resolve => setTimeout(resolve, 300));
     
-    // Garantir que o container do mapa tem dimensões válidas
-    const mapElementForZoom = document.getElementById('map');
-    const containerForZoom = mapElementForZoom?.parentElement;
-    if (containerForZoom && containerForZoom.classList.contains('map-container')) {
-      // Garantir altura mínima
-      const containerRect = containerForZoom.getBoundingClientRect();
-      if (containerRect.height < 500) {
-        containerForZoom.style.minHeight = '500px';
-        containerForZoom.style.height = '500px';
-        await tick();
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-    
-    // Verificar dimensões antes de ajustar zoom
-    const mapDivForZoom = map.getDiv();
-    const rectForZoom = mapDivForZoom.getBoundingClientRect();
-    console.log('Dimensões do mapa antes de ajustar zoom:', { width: rectForZoom.width, height: rectForZoom.height });
-    
-    // Se o mapa não tem dimensões válidas, tentar corrigir
-    if (rectForZoom.width === 0 || rectForZoom.height === 0) {
-      console.warn('Mapa sem dimensões válidas, forçando correção...');
-      
-      // Forçar estilo no elemento e container
-      if (mapElementForZoom) {
-        mapElementForZoom.style.display = 'block';
-        mapElementForZoom.style.width = '100%';
-        mapElementForZoom.style.height = '500px';
-        mapElementForZoom.style.minHeight = '500px';
-      }
-      
-      if (containerForZoom) {
-        containerForZoom.style.height = '500px';
-        containerForZoom.style.minHeight = '500px';
-      }
-      
-      await tick();
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Forçar resize
+    // Ajustar zoom para mostrar todos os marcadores
+    try {
+      // Forçar redimensionamento do mapa antes de ajustar zoom
       google.maps.event.trigger(map, 'resize');
-      
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      const rectAfter = mapDivForZoom.getBoundingClientRect();
-      console.log('Dimensões após correção:', { width: rectAfter.width, height: rectAfter.height });
-    }
-    
-    // Verificar dimensões novamente após correção
-    const finalRect = mapDivForZoom.getBoundingClientRect();
-    
-    // Se o mapa tem dimensões válidas, ajustar zoom
-    if (finalRect.width > 0 && finalRect.height > 0) {
-      // Forçar redimensionamento do mapa ANTES de ajustar zoom
-      google.maps.event.trigger(map, 'resize');
-      
-      // Aguardar resize ser processado
       await new Promise(resolve => setTimeout(resolve, 200));
       
       if (markers.length > 1) {
-        // Usar fitBounds com padding
-        try {
-          map.fitBounds(bounds, {
-            top: 50,
-            right: 50,
-            bottom: 50,
-            left: 50
-          });
-          console.log('Ajustando zoom para múltiplos marcadores');
-        } catch (boundsErr) {
-          console.warn('Erro ao ajustar bounds:', boundsErr);
-          // Se falhar, centralizar no primeiro marcador
-          if (ctos.length > 0) {
-            map.setCenter({ lat: parseFloat(ctos[0].latitude), lng: parseFloat(ctos[0].longitude) });
-            map.setZoom(14);
-          }
-        }
+        // Usar fitBounds com padding para múltiplos marcadores
+        map.fitBounds(bounds, {
+          top: 50,
+          right: 50,
+          bottom: 50,
+          left: 50
+        });
+        console.log('Ajustando zoom para múltiplos marcadores');
       } else if (markers.length === 1) {
+        // Centralizar em CTO única
         const singleCto = ctos[0];
         map.setCenter({ lat: parseFloat(singleCto.latitude), lng: parseFloat(singleCto.longitude) });
         map.setZoom(16);
         console.log('Centralizando em CTO única:', singleCto.nome);
       }
-      
-      // Forçar redimensionamento novamente após ajustar zoom
-      google.maps.event.trigger(map, 'resize');
-    } else {
-      console.warn('Mapa ainda sem dimensões válidas após correção. Tentando ajustar zoom mesmo assim...');
-      // Tentar ajustar zoom mesmo sem dimensões válidas (às vezes funciona)
-      try {
-        if (markers.length > 1) {
-          map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
-        } else if (markers.length === 1 && ctos.length > 0) {
-          map.setCenter({ lat: parseFloat(ctos[0].latitude), lng: parseFloat(ctos[0].longitude) });
-          map.setZoom(16);
-        }
-        google.maps.event.trigger(map, 'resize');
-      } catch (e) {
-        console.warn('Erro ao ajustar zoom sem dimensões válidas:', e);
+    } catch (err) {
+      console.warn('Erro ao ajustar zoom:', err);
+      // Se falhar, centralizar no primeiro marcador
+      if (ctos.length > 0) {
+        map.setCenter({ lat: parseFloat(ctos[0].latitude), lng: parseFloat(ctos[0].longitude) });
+        map.setZoom(14);
       }
-      
-      // Tentar novamente após um delay maior
-      setTimeout(() => {
-        const rectDelayed = mapDivForZoom.getBoundingClientRect();
-        if (rectDelayed.width > 0 && rectDelayed.height > 0 && markers.length > 0) {
-          console.log('Tentando ajustar zoom novamente após delay...');
-          google.maps.event.trigger(map, 'resize');
-          if (markers.length > 1) {
-            try {
-              map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
-            } catch (e) {
-              console.warn('Erro ao ajustar bounds após delay:', e);
-            }
-          } else if (markers.length === 1 && ctos.length > 0) {
-            map.setCenter({ lat: parseFloat(ctos[0].latitude), lng: parseFloat(ctos[0].longitude) });
-            map.setZoom(16);
-          }
-          google.maps.event.trigger(map, 'resize');
-        }
-      }, 1000);
     }
     
     console.log('✅ Marcadores exibidos no mapa com sucesso');
@@ -884,24 +648,11 @@
         onSettingsHover(preloadSettingsData);
       }
       
-      // Carregar Google Maps
-      await loadGoogleMaps();
-      
-      // Aguardar múltiplos ticks para garantir que o DOM está completamente renderizado
-      await tick();
-      await tick();
-      
-      // Tentar inicializar o mapa
-      initMap();
-      
-      // Se não conseguiu inicializar, tentar novamente após um delay
-      if (!map) {
-        setTimeout(() => {
-          initMap();
-        }, 500);
-      }
+      // Inicializar a ferramenta (carrega Google Maps, verifica base, inicializa mapa)
+      await initializeTool();
     } catch (err) {
       console.error('Erro ao inicializar ferramenta:', err);
+      error = 'Erro ao inicializar ferramenta: ' + err.message;
       isLoading = false;
     }
   });
@@ -1002,9 +753,19 @@
             </div>
           {/if}
 
-          <button class="search-button" on:click={handleSearch}>
-            🔍 Buscar
+          <button class="search-button" on:click={handleSearch} disabled={loadingCTOs}>
+            {#if loadingCTOs}
+              ⏳ Buscando...
+            {:else}
+              🔍 Buscar
+            {/if}
           </button>
+
+          {#if loadingCTOs}
+            <div class="loading-inline">
+              <p>Buscando CTOs...</p>
+            </div>
+          {/if}
 
           {#if error}
             <div class="error-message">
@@ -1025,11 +786,6 @@
         <!-- Mapa -->
         <div class="map-container">
           <div id="map" class="map" bind:this={mapElement}></div>
-          {#if !mapInitialized && googleMapsLoaded}
-            <div class="map-loading-overlay">
-              <p>Carregando mapa...</p>
-            </div>
-          {/if}
         </div>
 
         <!-- Tabela de Resultados -->
@@ -1211,6 +967,26 @@
     transform: translateY(0);
   }
 
+  .search-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .loading-inline {
+    padding: 0.75rem;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    color: #1e40af;
+    font-size: 0.875rem;
+    text-align: center;
+  }
+
+  .loading-inline p {
+    margin: 0;
+  }
+
   .error-message {
     padding: 0.75rem;
     background: #fee2e2;
@@ -1263,23 +1039,6 @@
     display: block;
   }
   
-  .map-loading-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(229, 231, 235, 0.9);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-  }
-  
-  .map-loading-overlay p {
-    color: #6b7280;
-    font-size: 1rem;
-  }
 
   .results-table-container {
     background: white;
