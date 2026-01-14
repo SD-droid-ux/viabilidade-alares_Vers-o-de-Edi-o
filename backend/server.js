@@ -800,9 +800,9 @@ app.get('/api/ctos/nearby', async (req, res) => {
           });
         }
         
-        // Ordenar por distância e limitar a 5
+        // Ordenar por distância (sem limite - retornar todas dentro do raio)
         nearbyCTOs.sort((a, b) => a.distancia_metros - b.distancia_metros);
-        const finalCTOs = nearbyCTOs.slice(0, 5);
+        const finalCTOs = nearbyCTOs; // Retornar todas as CTOs dentro do raio
         
         const condominiosCount = finalCTOs.filter(cto => cto.is_condominio).length;
         console.log(`✅ [API] ${finalCTOs.length} CTOs encontradas próximas (de ${data?.length || 0} na bounding box)`);
