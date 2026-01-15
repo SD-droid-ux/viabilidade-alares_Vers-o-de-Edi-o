@@ -1280,9 +1280,11 @@
     height: 100%;
     gap: 0.75rem; /* Espaçamento entre sidebar e área principal */
     padding: 1rem;
+    padding-bottom: 1rem; /* Espaço na parte inferior para ver as bordas */
     overflow: hidden;
     align-items: stretch; /* Esticar para ocupar toda a altura */
     position: relative;
+    box-sizing: border-box; /* Incluir padding no cálculo de altura */
   }
 
   .search-panel {
@@ -1298,10 +1300,10 @@
     gap: 1.5rem;
     overflow-y: auto;
     overflow-x: hidden;
-    flex-shrink: 0;
-    flex-grow: 0;
-    height: 100%; /* Ocupar toda a altura disponível */
-    max-height: 100%;
+    flex: 0 0 auto; /* Largura fixa, não cresce/encolhe */
+    align-self: stretch; /* Estica para altura do container pai */
+    box-sizing: border-box;
+    /* Flexbox automaticamente calcula altura, bordas sempre visíveis */
   }
 
   .panel-header h2 {
@@ -1450,15 +1452,17 @@
   }
 
   .main-area {
-    flex: 1 1 auto;
+    flex: 1 1 auto; /* Cresce para preencher espaço disponível */
     display: flex;
     flex-direction: column;
     gap: 0.75rem; /* Espaçamento entre mapa e tabela */
     overflow: hidden;
-    height: 100%; /* Altura completa do container pai */
     width: 100%;
     position: relative;
     min-height: 0;
+    box-sizing: border-box;
+    align-self: stretch; /* Estica para altura do container pai */
+    /* Flexbox automaticamente calcula altura, bordas sempre visíveis */
   }
 
   /* Garantir que a tabela possa crescer e rolar corretamente */
@@ -1500,11 +1504,12 @@
     display: flex;
     flex-direction: column;
     min-height: 200px;
-    overflow: hidden;
+    overflow: visible; /* Remove scroll do container externo */
     flex: 1 1 auto; /* Ocupar o espaço restante */
     width: 100%;
     max-width: 100%;
-    max-height: 100%;
+    box-sizing: border-box;
+    /* Scroll apenas no .table-wrapper interno */
   }
 
   /* Handles de redimensionamento - estilo discreto */
@@ -1559,6 +1564,8 @@
     background: rgba(100, 149, 237, 0.05); /* Levemente visível para indicar que é clicável */
     position: relative;
     flex-shrink: 0;
+    flex-grow: 0;
+    align-self: stretch; /* Esticar na altura para funcionar com flexbox */
   }
 
   .resize-handle-vertical::before {
@@ -1580,6 +1587,8 @@
     margin: -4px 0; /* Expandir área de hover sem mudar layout */
     background: rgba(100, 149, 237, 0.05); /* Levemente visível para indicar que é clicável */
     flex-shrink: 0;
+    flex-grow: 0;
+    align-self: stretch; /* Esticar na largura para funcionar com flexbox */
   }
 
   .resize-handle-horizontal::before {
@@ -1702,6 +1711,8 @@
     overflow: hidden;
     width: 100%;
     max-height: 100%;
+    box-sizing: border-box;
+    margin-bottom: 0;
   }
 
   /* Responsividade */
