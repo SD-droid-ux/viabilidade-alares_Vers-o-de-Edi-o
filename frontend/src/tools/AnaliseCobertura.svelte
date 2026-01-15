@@ -1540,19 +1540,19 @@
   }
 
   .resize-handle:hover {
-    background: rgba(100, 149, 237, 0.1);
+    background: rgba(100, 149, 237, 0.05);
   }
 
   .resize-handle:hover::before {
-    background: rgba(100, 149, 237, 0.3);
+    background: rgba(100, 149, 237, 0.15);
   }
 
   .resize-handle.resizing {
-    background: rgba(123, 104, 238, 0.2);
+    background: rgba(123, 104, 238, 0.1);
   }
 
   .resize-handle.resizing::before {
-    background: rgba(123, 104, 238, 0.4);
+    background: rgba(123, 104, 238, 0.2);
   }
 
   .resize-handle-vertical {
@@ -1561,7 +1561,7 @@
     z-index: 10000 !important; /* Z-index muito alto para ficar acima de tudo */
     pointer-events: auto !important;
     margin: 0 -8px; /* Expandir área de hover sem mudar layout */
-    background: rgba(100, 149, 237, 0.05); /* Levemente visível para indicar que é clicável */
+    background: transparent; /* Mais discreto */
     position: relative;
     flex-shrink: 0;
     flex-grow: 0;
@@ -1569,12 +1569,12 @@
   }
 
   .resize-handle-vertical::before {
-    width: 3px;
+    width: 2px;
     height: 100%;
     left: 50%;
     transform: translateX(-50%);
     pointer-events: none; /* Não bloquear eventos no pseudo-elemento */
-    background: rgba(100, 149, 237, 0.2); /* Mais visível */
+    background: rgba(100, 149, 237, 0.08); /* Mais discreto */
   }
 
   .resize-handle-horizontal {
@@ -1585,19 +1585,19 @@
     pointer-events: auto !important;
     position: relative;
     margin: -4px 0; /* Expandir área de hover sem mudar layout */
-    background: rgba(100, 149, 237, 0.05); /* Levemente visível para indicar que é clicável */
+    background: transparent; /* Mais discreto */
     flex-shrink: 0;
     flex-grow: 0;
     align-self: stretch; /* Esticar na largura para funcionar com flexbox */
   }
 
   .resize-handle-horizontal::before {
-    height: 3px;
+    height: 2px;
     width: 100%;
     top: 50%;
     transform: translateY(-50%);
     pointer-events: none; /* Não bloquear eventos no pseudo-elemento */
-    background: rgba(100, 149, 237, 0.2); /* Mais visível */
+    background: rgba(100, 149, 237, 0.08); /* Mais discreto */
   }
 
   .results-table-container h3 {
