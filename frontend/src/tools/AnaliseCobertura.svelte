@@ -1255,7 +1255,7 @@
             </div>
           </div>
         {:else if !isLoading && !error}
-          <div class="empty-state" style="flex: 1 1 auto; min-height: 200px;">
+          <div class="empty-state">
             <p>🔍 Realize uma busca para ver os resultados aqui</p>
           </div>
         {/if}
@@ -1267,29 +1267,28 @@
 <style>
   .analise-cobertura-content {
     width: 100%;
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: hidden;
     background: #f5f7fa;
   }
 
   .main-layout {
     display: flex;
     flex: 1;
-    min-height: calc(100vh - 60px); /* Altura mínima considerando o header */
-    gap: 0; /* Remover gap para permitir que o handle fique exatamente entre os elementos */
+    height: 100%;
+    gap: 0.75rem; /* Espaçamento entre sidebar e área principal */
     padding: 1rem;
-    padding-bottom: 2rem; /* Espaço extra no final para permitir rolar até a borda */
-    overflow: visible;
-    align-items: flex-start; /* Alinhar no topo para permitir crescimento */
+    overflow: hidden;
+    align-items: stretch; /* Esticar para ocupar toda a altura */
     position: relative;
   }
 
   .search-panel {
-    min-width: 300px !important; /* Aumentado para melhor visibilidade */
-    max-width: 700px !important; /* Aumentado para permitir mais espaço */
+    min-width: 300px !important;
+    max-width: 700px !important;
+    width: 400px;
     background: white;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -1298,8 +1297,11 @@
     flex-direction: column;
     gap: 1.5rem;
     overflow-y: auto;
+    overflow-x: hidden;
     flex-shrink: 0;
-    flex-grow: 0; /* Não crescer automaticamente */
+    flex-grow: 0;
+    height: 100%; /* Ocupar toda a altura disponível */
+    max-height: 100%;
   }
 
   .panel-header h2 {
@@ -1448,16 +1450,15 @@
   }
 
   .main-area {
-    flex: 1 1 auto; /* Permitir crescimento e encolhimento */
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    gap: 0; /* Remover gap para permitir que o handle fique exatamente entre os elementos */
-    overflow: visible;
-    min-height: 500px; /* Altura mínima para garantir espaço */
+    gap: 0.75rem; /* Espaçamento entre mapa e tabela */
+    overflow: hidden;
     height: 100%; /* Altura completa do container pai */
     width: 100%;
     position: relative;
-    flex-shrink: 1; /* Permitir encolhimento */
+    min-height: 0;
   }
 
   /* Garantir que a tabela possa crescer e rolar corretamente */
@@ -1470,8 +1471,7 @@
   }
 
   .map-container {
-    min-height: 300px; /* Aumentado para melhor visibilidade */
-    max-height: 100%;
+    min-height: 300px;
     position: relative;
     border-radius: 12px;
     overflow: hidden;
@@ -1479,8 +1479,8 @@
     background: #e5e7eb;
     display: flex;
     flex-direction: column;
-    flex-shrink: 0; /* Não encolher */
-    flex-grow: 0; /* Não crescer automaticamente */
+    flex: 0 0 auto; /* Não crescer nem encolher automaticamente */
+    width: 100%;
   }
 
   .map {
@@ -1499,12 +1499,12 @@
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    min-height: 200px; /* Aumentado para melhor visibilidade */
+    min-height: 200px;
     overflow: hidden;
-    flex-shrink: 0; /* Não encolher */
-    flex-grow: 0; /* Não crescer automaticamente */
+    flex: 1 1 auto; /* Ocupar o espaço restante */
     width: 100%;
     max-width: 100%;
+    max-height: 100%;
   }
 
   /* Handles de redimensionamento - estilo discreto */
@@ -1577,7 +1577,7 @@
     z-index: 10000 !important; /* Z-index muito alto para ficar acima de tudo */
     pointer-events: auto !important;
     position: relative;
-    margin: -8px 0; /* Expandir área de hover sem mudar layout */
+    margin: -4px 0; /* Expandir área de hover sem mudar layout */
     background: rgba(100, 149, 237, 0.05); /* Levemente visível para indicar que é clicável */
     flex-shrink: 0;
   }
@@ -1694,6 +1694,14 @@
     padding: 3rem;
     text-align: center;
     color: #6b7280;
+    flex: 1 1 auto; /* Ocupar o espaço restante */
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    width: 100%;
+    max-height: 100%;
   }
 
   /* Responsividade */
