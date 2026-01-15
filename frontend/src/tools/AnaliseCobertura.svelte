@@ -703,8 +703,13 @@
     let markersCreated = 0;
     let markersSkipped = 0;
 
-    // Processar TODAS as CTOs sem limite
-    for (const cto of ctos) {
+    // ETAPA 1: Agrupar CTOs por coordenadas (lat/lng idênticas)
+    const ctosByPosition = new Map(); // Chave: "lat,lng", Valor: Array de CTOs + números
+    const ctoToNumber = new Map(); // Mapear CTO para seu número no array
+    
+    for (let i = 0; i < ctos.length; i++) {
+      const cto = ctos[i];
+      
       // Validar coordenadas
       if (!cto.latitude || !cto.longitude || isNaN(cto.latitude) || isNaN(cto.longitude)) {
         console.warn(`⚠️ CTO ${cto.nome} tem coordenadas inválidas:`, cto.latitude, cto.longitude);
@@ -712,16 +717,36 @@
         continue;
       }
       
-      const position = { lat: parseFloat(cto.latitude), lng: parseFloat(cto.longitude) };
-      bounds.extend(position);
-
-      // Determinar cor baseada na porcentagem de ocupação
-      const ctoColor = getCTOColor(cto.pct_ocup || 0);
-      const pctOcup = parseFloat(cto.pct_ocup) || 0;
+      const lat = parseFloat(cto.latitude).toFixed(6);
+      const lng = parseFloat(cto.longitude).toFixed(6);
+      const positionKey = `${lat},${lng}`;
       
-      // Verificar se a CTO está ativa
-      const statusCto = cto.status_cto || '';
-      const isAtiva = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
+      // Agrupar CTOs por posição
+      if (!ctosByPosition.has(positionKey)) {
+        ctosByPosition.set(positionKey, { position: { lat: parseFloat(lat), lng: parseFloat(lng) }, ctos: [], numbers: [] });
+      }
+      
+      const group = ctosByPosition.get(positionKey);
+      group.ctos.push(cto);
+      group.numbers.push(markerNumber);
+      ctoToNumber.set(cto, markerNumber);
+      markerNumber++;
+    }
+    
+    console.log(`📊 Agrupamento: ${ctosByPosition.size} posições únicas, ${ctos.length - markersSkipped} CTOs totais`);
+
+    // ETAPA 2: Criar marcadores (um por grupo de coordenadas)
+    for (const [positionKey, group] of ctosByPosition) {
+      const { position, ctos: groupCTOs, numbers } = group;
+      
+      bounds.extend(position);
+      
+      // Determinar cor baseada na primeira CTO do grupo (ou média, pode ajustar depois)
+      const firstCTO = groupCTOs[0];
+      const ctoColor = getCTOColor(firstCTO.pct_ocup || 0);
+      
+      // Criar label com todos os números (ex: "1/9" ou "1/9/15")
+      const labelText = numbers.join('/');
 
       // Configuração do ícone (círculo colorido com label numérico)
       const iconConfig = {
@@ -735,48 +760,64 @@
       };
 
       try {
-        // Criar marcador
+        // Criar marcador único para este grupo
         const marker = new google.maps.Marker({
           position: position,
           map: map,
-          title: `${cto.nome} - ${pctOcup.toFixed(1)}% ocupado (${cto.vagas_total - cto.clientes_conectados} portas disponíveis)`,
+          title: `${groupCTOs.length} CTO(s) neste ponto: ${groupCTOs.map(cto => cto.nome).join(', ')}`,
           icon: iconConfig,
           label: {
-            text: `${markerNumber}`,
+            text: labelText,
             color: '#FFFFFF',
             fontSize: '14px',
             fontWeight: 'bold'
           },
-          zIndex: 1000 + markerNumber,
+          zIndex: 1000 + numbers[0],
           optimized: false
         });
         
-        console.log(`Marcador ${markerNumber} criado para CTO ${cto.nome} em`, position);
+        console.log(`Marcador ${labelText} criado para ${groupCTOs.length} CTO(s) em`, position);
 
-        // InfoWindow com estilo similar ao ViabilidadeAlares
-        let alertaHTML = '';
-        if (!isAtiva) {
-          alertaHTML = `
-            <div style="background-color: #DC3545; color: white; padding: 12px; margin-bottom: 12px; border-radius: 4px; font-weight: bold; text-align: center;">
-              ⚠️ CTO NÃO ATIVA
+        // InfoWindow com informações de TODAS as CTOs do grupo
+        let infoWindowContent = '<div style="padding: 8px; font-family: \'Inter\', sans-serif; line-height: 1.6; max-width: 400px;">';
+        
+        for (let i = 0; i < groupCTOs.length; i++) {
+          const cto = groupCTOs[i];
+          const pctOcup = parseFloat(cto.pct_ocup) || 0;
+          const statusCto = cto.status_cto || '';
+          const isAtiva = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
+          
+          // Separador entre múltiplas CTOs
+          if (i > 0) {
+            infoWindowContent += '<hr style="margin: 16px 0; border: none; border-top: 2px solid #e5e7eb;">';
+          }
+          
+          // Alerta se não está ativa
+          if (!isAtiva) {
+            infoWindowContent += `
+              <div style="background-color: #DC3545; color: white; padding: 12px; margin-bottom: 12px; border-radius: 4px; font-weight: bold; text-align: center;">
+                ⚠️ CTO NÃO ATIVA
+              </div>
+            `;
+          }
+          
+          // Informações da CTO
+          infoWindowContent += `
+            <div style="margin-bottom: ${i < groupCTOs.length - 1 ? '16px' : '0'};">
+              <h4 style="margin: 0 0 8px 0; color: #1e40af; font-size: 16px;">CTO #${numbers[i]}: ${String(cto.nome || 'N/A')}</h4>
+              <strong>Cidade:</strong> ${String(cto.cidade || 'N/A')}<br>
+              <strong>POP:</strong> ${String(cto.pop || 'N/A')}<br>
+              <strong>ID:</strong> ${String(cto.id || 'N/A')}<br>
+              <strong>Status:</strong> <span style="color: ${isAtiva ? '#28A745' : '#DC3545'}; font-weight: bold;">${String(statusCto || 'N/A')}</span><br>
+              <strong>Total de Portas:</strong> ${Number(cto.vagas_total || 0)}<br>
+              <strong>Portas Conectadas:</strong> ${Number(cto.clientes_conectados || 0)}<br>
+              <strong>Portas Disponíveis:</strong> ${Number((cto.vagas_total || 0) - (cto.clientes_conectados || 0))}<br>
+              <strong>Ocupação:</strong> ${pctOcup.toFixed(1)}%
             </div>
           `;
         }
-
-        const infoWindowContent = `
-          <div style="padding: 8px; font-family: 'Inter', sans-serif; line-height: 1.6;">
-            ${alertaHTML}
-            <strong>Cidade:</strong> ${String(cto.cidade || 'N/A')}<br>
-            <strong>POP:</strong> ${String(cto.pop || 'N/A')}<br>
-            <strong>Nome:</strong> ${String(cto.nome || 'N/A')}<br>
-            <strong>ID:</strong> ${String(cto.id || 'N/A')}<br>
-            <strong>Status:</strong> <span style="color: ${isAtiva ? '#28A745' : '#DC3545'}; font-weight: bold;">${String(statusCto || 'N/A')}</span><br>
-            <strong>Total de Portas:</strong> ${Number(cto.vagas_total || 0)}<br>
-            <strong>Portas Conectadas:</strong> ${Number(cto.clientes_conectados || 0)}<br>
-            <strong>Portas Disponíveis:</strong> ${Number((cto.vagas_total || 0) - (cto.clientes_conectados || 0))}<br>
-            <strong>Ocupação:</strong> ${pctOcup.toFixed(1)}%
-          </div>
-        `;
+        
+        infoWindowContent += '</div>';
 
         const infoWindow = new google.maps.InfoWindow({
           content: infoWindowContent
@@ -788,9 +829,8 @@
 
         markers.push(marker);
         markersCreated++;
-        markerNumber++;
       } catch (markerErr) {
-        console.error(`❌ Erro ao criar marcador para CTO ${cto.nome}:`, markerErr);
+        console.error(`❌ Erro ao criar marcador para posição ${positionKey}:`, markerErr);
         markersSkipped++;
       }
     }
