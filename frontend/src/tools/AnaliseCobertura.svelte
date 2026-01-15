@@ -1280,7 +1280,7 @@
     height: 100%;
     gap: 0.75rem; /* Espaçamento entre sidebar e área principal */
     padding: 1rem;
-    padding-bottom: 1.5rem; /* Espaço extra na parte inferior para garantir bordas visíveis */
+    padding-bottom: 1.75rem; /* Espaço na parte inferior: borda do box + pequena distância até o final */
     overflow: hidden;
     align-items: flex-start; /* Alinhar no topo, não esticar */
     position: relative;
@@ -1301,9 +1301,9 @@
     overflow-y: auto;
     overflow-x: hidden;
     flex: 0 0 auto; /* Largura fixa, não cresce/encolhe */
-    height: calc(100% - 2.5rem); /* Altura = 100% do pai - padding top (1rem) - padding bottom (1.5rem) */
+    height: calc(100% - 2.75rem); /* Altura = 100% do pai - padding top (1rem) - padding bottom (1.75rem) */
     box-sizing: border-box;
-    /* Bordas sempre visíveis: altura calculada respeita o padding do pai */
+    /* Bordas sempre visíveis + pequena distância até o final da página */
   }
 
   .panel-header h2 {
@@ -1461,8 +1461,8 @@
     position: relative;
     min-height: 0;
     box-sizing: border-box;
-    height: calc(100% - 2.5rem); /* Altura = 100% do pai - padding top (1rem) - padding bottom (1.5rem) */
-    /* Bordas sempre visíveis: altura calculada respeita o padding do pai */
+    height: calc(100% - 2.75rem); /* Altura = 100% do pai - padding top (1rem) - padding bottom (1.75rem) */
+    /* Bordas sempre visíveis + pequena distância até o final da página */
   }
 
   /* Garantir que a tabela possa crescer e rolar corretamente */
