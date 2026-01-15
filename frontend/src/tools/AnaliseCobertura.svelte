@@ -893,16 +893,19 @@
 
   // Funções de redimensionamento
   function startResizeSidebar(e) {
+    e.preventDefault();
+    e.stopPropagation();
     isResizingSidebar = true;
     resizeStartX = e.clientX;
     resizeStartSidebarWidth = sidebarWidth;
-    document.addEventListener('mousemove', handleResizeSidebar);
-    document.addEventListener('mouseup', stopResizeSidebar);
-    e.preventDefault();
+    document.addEventListener('mousemove', handleResizeSidebar, { passive: false });
+    document.addEventListener('mouseup', stopResizeSidebar, { passive: false });
   }
 
   function handleResizeSidebar(e) {
     if (!isResizingSidebar) return;
+    e.preventDefault();
+    e.stopPropagation();
     const deltaX = e.clientX - resizeStartX;
     const newWidth = resizeStartSidebarWidth + deltaX;
     // Limites: mínimo 250px, máximo 600px
@@ -922,16 +925,19 @@
   }
 
   function startResizeMapTable(e) {
+    e.preventDefault();
+    e.stopPropagation();
     isResizingMapTable = true;
     resizeStartY = e.clientY;
     resizeStartMapHeight = mapHeightPercent;
-    document.addEventListener('mousemove', handleResizeMapTable);
-    document.addEventListener('mouseup', stopResizeMapTable);
-    e.preventDefault();
+    document.addEventListener('mousemove', handleResizeMapTable, { passive: false });
+    document.addEventListener('mouseup', stopResizeMapTable, { passive: false });
   }
 
   function handleResizeMapTable(e) {
     if (!isResizingMapTable) return;
+    e.preventDefault();
+    e.stopPropagation();
     const container = document.querySelector('.main-area');
     if (!container) return;
     
@@ -1464,10 +1470,11 @@
   }
 
   .resize-handle-vertical {
-    width: 4px;
+    width: 8px; /* Aumentar área clicável */
     cursor: col-resize;
-    z-index: 100;
+    z-index: 1000; /* Aumentar z-index para ficar acima de tudo */
     pointer-events: auto;
+    margin: 0 -2px; /* Expandir área de hover sem mudar layout */
   }
 
   .resize-handle-vertical::before {
@@ -1478,12 +1485,13 @@
   }
 
   .resize-handle-horizontal {
-    height: 4px;
+    height: 8px; /* Aumentar área clicável */
     cursor: row-resize;
     width: 100%;
-    z-index: 100;
+    z-index: 1000; /* Aumentar z-index para ficar acima de tudo */
     pointer-events: auto;
     position: relative;
+    margin: -2px 0; /* Expandir área de hover sem mudar layout */
   }
 
   .resize-handle-horizontal::before {
