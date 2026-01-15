@@ -413,39 +413,76 @@
       const nearbyResults = await Promise.all(nearbyPromises);
 
       // ETAPA 3: Processar resultados e adicionar CTOs próximas (evitando duplicatas)
-      for (const { nearbyData, lat, lng } of nearbyResults) {
+      let totalNearbyFound = 0;
+      let totalAddedToMap = 0;
+      for (const { nearbyData, lat, lng, cto: searchedCto } of nearbyResults) {
         if (nearbyData?.success && nearbyData.ctos) {
-          // Filtrar apenas CTOs dentro de 250m
+          // Filtrar apenas CTOs dentro de 250m (garantir precisão)
           const nearbyCTOs = nearbyData.ctos.filter(cto => {
             if (!cto.latitude || !cto.longitude) return false;
             const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
             return distance <= 250;
           });
 
+          totalNearbyFound += nearbyCTOs.length;
+          console.log(`📍 Para CTO "${searchedCto?.nome || 'N/A'}": ${nearbyCTOs.length} CTOs próximas encontradas`);
+
           // Adicionar CTOs próximas (evitando duplicatas com as pesquisadas)
           for (const cto of nearbyCTOs) {
             const ctoNearbyKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
             if (!allCTOsMap.has(ctoNearbyKey)) {
               allCTOsMap.set(ctoNearbyKey, cto);
+              totalAddedToMap++;
             }
           }
+        } else {
+          console.warn(`⚠️ Erro ao buscar CTOs próximas para "${searchedCto?.nome || 'N/A'}":`, nearbyData);
+        }
+      }
+      
+      console.log(`📊 Total de CTOs próximas encontradas: ${totalNearbyFound}, adicionadas ao Map: ${totalAddedToMap}, Map size: ${allCTOsMap.size}`);
+
+      // ETAPA 4: Organizar resultado final - CTOs pesquisadas primeiro, depois próximas
+      // Criar Set de chaves das CTOs pesquisadas para busca rápida
+      const searchedKeysSet = new Set();
+      searchedCTOsList.forEach(({ cto }) => {
+        const key = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
+        searchedKeysSet.add(key);
+      });
+
+      // Separar CTOs pesquisadas e próximas
+      const searchedCTOs = searchedCTOsList.map(({ cto }) => cto);
+      const nearbyCTOs = [];
+      
+      // Processar todas as CTOs do Map e separar
+      for (const cto of allCTOsMap.values()) {
+        const ctoKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
+        if (!searchedKeysSet.has(ctoKey)) {
+          nearbyCTOs.push(cto);
         }
       }
 
-      // ETAPA 4: Organizar resultado final - CTOs pesquisadas primeiro, depois próximas
-      const searchedCTOs = searchedCTOsList.map(({ cto }) => cto);
-      const nearbyCTOs = Array.from(allCTOsMap.values()).filter(cto => {
-        const ctoKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
-        return !searchedCTOsList.some(({ cto: searched }) => {
-          const searchedKey = `${parseFloat(searched.latitude).toFixed(6)},${parseFloat(searched.longitude).toFixed(6)}`;
-          return searchedKey === ctoKey;
-        });
-      });
-
-      // Resultado final: CTOs pesquisadas primeiro, depois próximas
+      // Resultado final: CTOs pesquisadas primeiro, depois próximas (TODAS, sem limite)
       ctos = [...searchedCTOs, ...nearbyCTOs];
 
-      console.log(`✅ Total: ${searchedCTOs.length} CTO(s) pesquisada(s) + ${nearbyCTOs.length} CTO(s) próxima(s) = ${ctos.length} CTO(s)`);
+      console.log(`✅ Total final: ${searchedCTOs.length} CTO(s) pesquisada(s) + ${nearbyCTOs.length} CTO(s) próxima(s) = ${ctos.length} CTO(s) no total`);
+      console.log(`📋 CTOs no Map: ${allCTOsMap.size}, CTOs pesquisadas: ${searchedCTOs.length}, CTOs próximas: ${nearbyCTOs.length}`);
+      console.log(`🔍 Verificação: Array ctos tem ${ctos.length} elementos`);
+      
+      // Verificar se há duplicatas
+      const uniqueKeys = new Set();
+      let duplicates = 0;
+      for (const cto of ctos) {
+        const key = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
+        if (uniqueKeys.has(key)) {
+          duplicates++;
+        } else {
+          uniqueKeys.add(key);
+        }
+      }
+      if (duplicates > 0) {
+        console.warn(`⚠️ Encontradas ${duplicates} CTOs duplicadas no resultado final`);
+      }
 
       if (ctos.length === 0) {
         error = 'Nenhuma CTO encontrada. Verifique os nomes digitados.';
@@ -542,12 +579,15 @@
       const data = await response.json();
 
       if (data.success && data.ctos) {
-        // Filtrar apenas CTOs dentro de 250m (garantir precisão)
-        ctos = data.ctos.filter(cto => {
+        // Filtrar apenas CTOs dentro de 250m (garantir precisão) - SEM LIMITE
+        const allNearbyCTOs = data.ctos.filter(cto => {
           if (!cto.latitude || !cto.longitude) return false;
           const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
           return distance <= 250;
         });
+        
+        console.log(`📍 Busca por endereço: ${allNearbyCTOs.length} CTOs encontradas dentro de 250m (sem limite)`);
+        ctos = allNearbyCTOs; // Todas as CTOs, sem limite
         
         // Limpar marcador anterior se existir
         if (searchMarker) {
@@ -614,7 +654,7 @@
       return;
     }
     
-    console.log(`Exibindo ${ctos.length} CTOs no mapa`);
+    console.log(`🗺️ Exibindo ${ctos.length} CTOs no mapa (sem limite)`);
 
     // Limpar marcadores anteriores
     clearMap();
@@ -629,12 +669,16 @@
 
     const bounds = new google.maps.LatLngBounds();
     let markerNumber = 1; // Contador para numeração dos marcadores
+    let markersCreated = 0;
+    let markersSkipped = 0;
 
-    ctos.forEach((cto, index) => {
+    // Processar TODAS as CTOs sem limite
+    for (const cto of ctos) {
       // Validar coordenadas
       if (!cto.latitude || !cto.longitude || isNaN(cto.latitude) || isNaN(cto.longitude)) {
-        console.warn(`CTO ${cto.nome} tem coordenadas inválidas:`, cto.latitude, cto.longitude);
-        return;
+        console.warn(`⚠️ CTO ${cto.nome} tem coordenadas inválidas:`, cto.latitude, cto.longitude);
+        markersSkipped++;
+        continue;
       }
       
       const position = { lat: parseFloat(cto.latitude), lng: parseFloat(cto.longitude) };
@@ -712,11 +756,15 @@
         });
 
         markers.push(marker);
+        markersCreated++;
         markerNumber++;
       } catch (markerErr) {
-        console.error(`Erro ao criar marcador para CTO ${cto.nome}:`, markerErr);
+        console.error(`❌ Erro ao criar marcador para CTO ${cto.nome}:`, markerErr);
+        markersSkipped++;
       }
-    });
+    }
+    
+    console.log(`📊 Resumo: ${markersCreated} marcadores criados, ${markersSkipped} ignorados de ${ctos.length} CTOs totais`);
 
     // Ajustar zoom para mostrar todos os marcadores
     if (markers.length === 0) {
