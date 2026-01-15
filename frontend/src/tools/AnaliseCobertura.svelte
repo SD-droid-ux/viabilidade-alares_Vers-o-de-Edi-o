@@ -1191,21 +1191,21 @@
 <style>
   .analise-cobertura-content {
     width: 100%;
-    height: 100vh;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     background: #f5f7fa;
   }
 
   .main-layout {
     display: flex;
     flex: 1;
-    height: 100%;
-    min-height: 0;
+    min-height: calc(100vh - 60px); /* Altura mínima considerando o header */
     gap: 1rem;
     padding: 1rem;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .search-panel {
@@ -1372,9 +1372,8 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    overflow: hidden;
+    overflow: visible;
     min-height: 0;
-    height: 100%;
   }
 
   /* Garantir que a tabela possa crescer e rolar corretamente */
@@ -1414,7 +1413,6 @@
     display: flex;
     flex-direction: column;
     min-height: 150px;
-    height: 100%;
     overflow: hidden;
     flex: 1 1 auto;
   }
