@@ -893,6 +893,7 @@
 
   // Funções de redimensionamento
   function startResizeSidebar(e) {
+    console.log('🖱️ Iniciando redimensionamento da sidebar');
     e.preventDefault();
     e.stopPropagation();
     isResizingSidebar = true;
@@ -900,6 +901,8 @@
     resizeStartSidebarWidth = sidebarWidth;
     document.addEventListener('mousemove', handleResizeSidebar, { passive: false });
     document.addEventListener('mouseup', stopResizeSidebar, { passive: false });
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
   }
 
   function handleResizeSidebar(e) {
@@ -919,12 +922,16 @@
   }
 
   function stopResizeSidebar() {
+    console.log('✅ Parando redimensionamento da sidebar');
     isResizingSidebar = false;
     document.removeEventListener('mousemove', handleResizeSidebar);
     document.removeEventListener('mouseup', stopResizeSidebar);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
   }
 
   function startResizeMapTable(e) {
+    console.log('🖱️ Iniciando redimensionamento mapa/tabela');
     e.preventDefault();
     e.stopPropagation();
     isResizingMapTable = true;
@@ -932,6 +939,8 @@
     resizeStartMapHeight = mapHeightPercent;
     document.addEventListener('mousemove', handleResizeMapTable, { passive: false });
     document.addEventListener('mouseup', stopResizeMapTable, { passive: false });
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
   }
 
   function handleResizeMapTable(e) {
@@ -958,9 +967,12 @@
   }
 
   function stopResizeMapTable() {
+    console.log('✅ Parando redimensionamento mapa/tabela');
     isResizingMapTable = false;
     document.removeEventListener('mousemove', handleResizeMapTable);
     document.removeEventListener('mouseup', stopResizeMapTable);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
     
     // Redimensionar o mapa após ajuste
     if (map) {
@@ -1440,10 +1452,14 @@
     justify-content: center;
     transition: background 0.2s;
     user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
     flex-shrink: 0;
     position: relative;
-    z-index: 100;
-    pointer-events: auto;
+    z-index: 1000;
+    pointer-events: auto !important;
+    touch-action: none;
   }
 
   .resize-handle::before {
