@@ -909,11 +909,17 @@
     if (!isResizingSidebar) return;
     e.preventDefault();
     e.stopPropagation();
-    const deltaX = e.clientX - resizeStartX;
+    
+    const clientX = e.clientX || e.touches?.[0]?.clientX || resizeStartX;
+    const deltaX = clientX - resizeStartX;
     const newWidth = resizeStartSidebarWidth + deltaX;
     // Limites: mínimo 250px, máximo 600px
-    sidebarWidth = Math.max(250, Math.min(600, newWidth));
-    // Salvar no localStorage
+    const clampedWidth = Math.max(250, Math.min(600, newWidth));
+    
+    // Atualizar variável reativa diretamente
+    sidebarWidth = clampedWidth;
+    
+    // Salvar no localStorage (sem await para não bloquear)
     try {
       localStorage.setItem('analiseCobertura_sidebarWidth', sidebarWidth.toString());
     } catch (err) {
@@ -924,41 +930,52 @@
   function stopResizeSidebar() {
     console.log('✅ Parando redimensionamento da sidebar');
     isResizingSidebar = false;
-    document.removeEventListener('mousemove', handleResizeSidebar);
-    document.removeEventListener('mouseup', stopResizeSidebar);
+    document.removeEventListener('mousemove', handleResizeSidebar, { capture: true });
+    document.removeEventListener('mouseup', stopResizeSidebar, { capture: true });
+    document.removeEventListener('touchmove', handleResizeSidebar, { capture: true });
+    document.removeEventListener('touchend', stopResizeSidebar, { capture: true });
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
   }
 
   function startResizeMapTable(e) {
-    console.log('🖱️ Iniciando redimensionamento mapa/tabela');
+    console.log('🖱️ Iniciando redimensionamento mapa/tabela', e);
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
     isResizingMapTable = true;
-    resizeStartY = e.clientY;
+    resizeStartY = e.clientY || e.touches?.[0]?.clientY || 0;
     resizeStartMapHeight = mapHeightPercent;
-    document.addEventListener('mousemove', handleResizeMapTable, { passive: false });
-    document.addEventListener('mouseup', stopResizeMapTable, { passive: false });
+    document.addEventListener('mousemove', handleResizeMapTable, { passive: false, capture: true });
+    document.addEventListener('mouseup', stopResizeMapTable, { passive: false, capture: true });
+    document.addEventListener('touchmove', handleResizeMapTable, { passive: false, capture: true });
+    document.addEventListener('touchend', stopResizeMapTable, { passive: false, capture: true });
     document.body.style.cursor = 'row-resize';
     document.body.style.userSelect = 'none';
+    return false;
   }
 
   function handleResizeMapTable(e) {
     if (!isResizingMapTable) return;
     e.preventDefault();
     e.stopPropagation();
+    
     const container = document.querySelector('.main-area');
     if (!container) return;
     
     const containerRect = container.getBoundingClientRect();
-    const deltaY = e.clientY - resizeStartY;
+    const clientY = e.clientY || e.touches?.[0]?.clientY || resizeStartY;
+    const deltaY = clientY - resizeStartY;
     const deltaPercent = (deltaY / containerRect.height) * 100;
     const newHeight = resizeStartMapHeight + deltaPercent;
     
     // Limites: mínimo 30%, máximo 85%
-    mapHeightPercent = Math.max(30, Math.min(85, newHeight));
+    const clampedHeight = Math.max(30, Math.min(85, newHeight));
     
-    // Salvar no localStorage
+    // Atualizar variável reativa diretamente
+    mapHeightPercent = clampedHeight;
+    
+    // Salvar no localStorage (sem await para não bloquear)
     try {
       localStorage.setItem('analiseCobertura_mapHeightPercent', mapHeightPercent.toString());
     } catch (err) {
@@ -969,8 +986,10 @@
   function stopResizeMapTable() {
     console.log('✅ Parando redimensionamento mapa/tabela');
     isResizingMapTable = false;
-    document.removeEventListener('mousemove', handleResizeMapTable);
-    document.removeEventListener('mouseup', stopResizeMapTable);
+    document.removeEventListener('mousemove', handleResizeMapTable, { capture: true });
+    document.removeEventListener('mouseup', stopResizeMapTable, { capture: true });
+    document.removeEventListener('touchmove', handleResizeMapTable, { capture: true });
+    document.removeEventListener('touchend', stopResizeMapTable, { capture: true });
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
     
@@ -1133,8 +1152,12 @@
       <!-- Handle de redimensionamento vertical (sidebar) -->
       <div 
         class="resize-handle resize-handle-vertical"
-        on:mousedown={startResizeSidebar}
+        on:mousedown|stopPropagation={startResizeSidebar}
+        on:touchstart|stopPropagation={startResizeSidebar}
         class:resizing={isResizingSidebar}
+        role="separator"
+        aria-label="Ajustar largura da barra lateral"
+        tabindex="0"
       >
       </div>
 
@@ -1148,8 +1171,12 @@
         <!-- Handle de redimensionamento horizontal (mapa/tabela) -->
         <div 
           class="resize-handle resize-handle-horizontal"
-          on:mousedown={startResizeMapTable}
+          on:mousedown|stopPropagation={startResizeMapTable}
+          on:touchstart|stopPropagation={startResizeMapTable}
           class:resizing={isResizingMapTable}
+          role="separator"
+          aria-label="Ajustar altura do mapa e tabela"
+          tabindex="0"
         >
         </div>
 
@@ -1457,7 +1484,7 @@
     -ms-user-select: none;
     flex-shrink: 0;
     position: relative;
-    z-index: 1000;
+    z-index: 10000 !important;
     pointer-events: auto !important;
     touch-action: none;
   }
@@ -1467,6 +1494,7 @@
     position: absolute;
     background: transparent;
     transition: background 0.2s;
+    pointer-events: none; /* Não bloquear eventos no pseudo-elemento */
   }
 
   .resize-handle:hover {
@@ -1486,11 +1514,13 @@
   }
 
   .resize-handle-vertical {
-    width: 8px; /* Aumentar área clicável */
-    cursor: col-resize;
-    z-index: 1000; /* Aumentar z-index para ficar acima de tudo */
-    pointer-events: auto;
-    margin: 0 -2px; /* Expandir área de hover sem mudar layout */
+    width: 12px; /* Área clicável maior */
+    cursor: col-resize !important;
+    z-index: 10000; /* Z-index muito alto para ficar acima de tudo */
+    pointer-events: auto !important;
+    margin: 0 -4px; /* Expandir área de hover sem mudar layout */
+    background: transparent;
+    position: relative;
   }
 
   .resize-handle-vertical::before {
@@ -1498,16 +1528,19 @@
     height: 100%;
     left: 50%;
     transform: translateX(-50%);
+    pointer-events: none; /* Não bloquear eventos no pseudo-elemento */
   }
 
   .resize-handle-horizontal {
-    height: 8px; /* Aumentar área clicável */
-    cursor: row-resize;
+    height: 12px; /* Área clicável maior */
+    cursor: row-resize !important;
     width: 100%;
-    z-index: 1000; /* Aumentar z-index para ficar acima de tudo */
-    pointer-events: auto;
+    z-index: 10000; /* Z-index muito alto para ficar acima de tudo */
+    pointer-events: auto !important;
     position: relative;
-    margin: -2px 0; /* Expandir área de hover sem mudar layout */
+    margin: -4px 0; /* Expandir área de hover sem mudar layout */
+    background: transparent;
+    flex-shrink: 0;
   }
 
   .resize-handle-horizontal::before {
@@ -1515,6 +1548,7 @@
     width: 100%;
     top: 50%;
     transform: translateY(-50%);
+    pointer-events: none; /* Não bloquear eventos no pseudo-elemento */
   }
 
   .results-table-container h3 {
