@@ -41,8 +41,8 @@
   let error = null;
 
   // Redimensionamento de boxes - usar variáveis que o Svelte detecta como reativas
-  let sidebarWidth = 350; // Largura inicial da sidebar em pixels
-  let mapHeightPercent = 60; // Porcentagem de altura do mapa (resto vai para tabela)
+  let sidebarWidth = 400; // Largura inicial da sidebar em pixels (aumentada para melhor visibilidade)
+  let mapHeightPercent = 50; // Porcentagem de altura do mapa (resto vai para tabela) - 50/50 inicial
   let isResizingSidebar = false;
   let isResizingMapTable = false;
   let resizeStartX = 0;
@@ -922,8 +922,8 @@
     const clientX = e.clientX || e.touches?.[0]?.clientX || resizeStartX;
     const deltaX = clientX - resizeStartX;
     const newWidth = resizeStartSidebarWidth + deltaX;
-    // Limites: mínimo 250px, máximo 600px
-    const clampedWidth = Math.max(250, Math.min(600, newWidth));
+    // Limites: mínimo 300px, máximo 700px (ajustado para corresponder ao CSS)
+    const clampedWidth = Math.max(300, Math.min(700, newWidth));
     
     // Atualizar diretamente - Svelte detecta automaticamente
     sidebarWidth = clampedWidth;
@@ -1266,8 +1266,8 @@
   }
 
   .search-panel {
-    min-width: 250px;
-    max-width: 600px;
+    min-width: 300px; /* Aumentado para melhor visibilidade */
+    max-width: 700px; /* Aumentado para permitir mais espaço */
     background: white;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -1445,7 +1445,7 @@
   }
 
   .map-container {
-    min-height: 200px;
+    min-height: 300px; /* Aumentado para melhor visibilidade */
     max-height: 100%;
     position: relative;
     border-radius: 12px;
@@ -1472,7 +1472,7 @@
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    min-height: 150px;
+    min-height: 200px; /* Aumentado para melhor visibilidade */
     overflow: hidden;
     flex: 0 1 auto; /* Não crescer além do necessário, mas permitir scroll */
     width: 100%;
@@ -1523,41 +1523,44 @@
   }
 
   .resize-handle-vertical {
-    width: 12px; /* Área clicável maior */
+    width: 20px; /* Área clicável maior para facilitar o arraste */
     cursor: col-resize !important;
-    z-index: 10000; /* Z-index muito alto para ficar acima de tudo */
+    z-index: 10000 !important; /* Z-index muito alto para ficar acima de tudo */
     pointer-events: auto !important;
-    margin: 0 -4px; /* Expandir área de hover sem mudar layout */
-    background: transparent;
+    margin: 0 -8px; /* Expandir área de hover sem mudar layout */
+    background: rgba(100, 149, 237, 0.05); /* Levemente visível para indicar que é clicável */
     position: relative;
+    flex-shrink: 0;
   }
 
   .resize-handle-vertical::before {
-    width: 2px;
+    width: 3px;
     height: 100%;
     left: 50%;
     transform: translateX(-50%);
     pointer-events: none; /* Não bloquear eventos no pseudo-elemento */
+    background: rgba(100, 149, 237, 0.2); /* Mais visível */
   }
 
   .resize-handle-horizontal {
-    height: 12px; /* Área clicável maior */
+    height: 20px; /* Área clicável maior para facilitar o arraste */
     cursor: row-resize !important;
     width: 100%;
-    z-index: 10000; /* Z-index muito alto para ficar acima de tudo */
+    z-index: 10000 !important; /* Z-index muito alto para ficar acima de tudo */
     pointer-events: auto !important;
     position: relative;
-    margin: -4px 0; /* Expandir área de hover sem mudar layout */
-    background: transparent;
+    margin: -8px 0; /* Expandir área de hover sem mudar layout */
+    background: rgba(100, 149, 237, 0.05); /* Levemente visível para indicar que é clicável */
     flex-shrink: 0;
   }
 
   .resize-handle-horizontal::before {
-    height: 2px;
+    height: 3px;
     width: 100%;
     top: 50%;
     transform: translateY(-50%);
     pointer-events: none; /* Não bloquear eventos no pseudo-elemento */
+    background: rgba(100, 149, 237, 0.2); /* Mais visível */
   }
 
   .results-table-container h3 {
