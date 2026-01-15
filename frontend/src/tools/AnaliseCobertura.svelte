@@ -42,7 +42,7 @@
 
   // Redimensionamento de boxes - usar variáveis que o Svelte detecta como reativas
   let sidebarWidth = 400; // Largura inicial da sidebar em pixels (aumentada para melhor visibilidade)
-  let mapHeightPercent = 50; // Porcentagem de altura do mapa (resto vai para tabela) - 50/50 inicial
+  let mapHeightPixels = 400; // Altura inicial do mapa em pixels
   let isResizingSidebar = false;
   let isResizingMapTable = false;
   let resizeStartX = 0;
@@ -52,8 +52,7 @@
   
   // Reactive statements para calcular estilos automaticamente
   $: sidebarWidthStyle = `${sidebarWidth}px`;
-  $: mapHeightPercentStyle = `${mapHeightPercent}%`;
-  $: tableHeightPercentStyle = `${100 - mapHeightPercent}%`;
+  $: mapHeightStyle = `${mapHeightPixels}px`;
   
   // Função para abrir configurações
   function openSettings() {
@@ -963,7 +962,7 @@
     e.stopImmediatePropagation();
     isResizingMapTable = true;
     resizeStartY = e.clientY || e.touches?.[0]?.clientY || 0;
-    resizeStartMapHeight = mapHeightPercent;
+    resizeStartMapHeight = mapHeightPixels; // Usar pixels ao invés de percent
     document.addEventListener('mousemove', handleResizeMapTable, { passive: false, capture: true });
     document.addEventListener('mouseup', stopResizeMapTable, { passive: false, capture: true });
     document.addEventListener('touchmove', handleResizeMapTable, { passive: false, capture: true });
@@ -978,41 +977,38 @@
     e.preventDefault();
     e.stopPropagation();
     
-    const container = document.querySelector('.main-area');
-    if (!container) {
-      console.warn('⚠️ Container .main-area não encontrado');
-      return;
-    }
-    
-    const containerRect = container.getBoundingClientRect();
     const clientY = e.clientY || e.touches?.[0]?.clientY || resizeStartY;
     const deltaY = clientY - resizeStartY;
-    const deltaPercent = (deltaY / containerRect.height) * 100;
-    const newHeight = resizeStartMapHeight + deltaPercent;
+    const newHeight = resizeStartMapHeight + deltaY; // Usar pixels diretamente
     
-    // Limites: mínimo 30%, máximo 85%
-    const clampedHeight = Math.max(30, Math.min(85, newHeight));
+    // Limites: mínimo 300px, máximo baseado no container
+    const container = document.querySelector('.main-area');
+    const containerHeight = container ? container.getBoundingClientRect().height : 800;
+    const maxHeight = Math.max(containerHeight - 200, 300); // Deixar pelo menos 200px para tabela
+    const clampedHeight = Math.max(300, Math.min(maxHeight, newHeight));
     
     // Atualizar diretamente - Svelte detecta automaticamente
-    mapHeightPercent = clampedHeight;
+    mapHeightPixels = clampedHeight;
     
     // Forçar atualização do DOM diretamente também
     const mapElement = document.querySelector('.map-container');
     const tableElement = document.querySelector('.results-table-container, .empty-state');
     if (mapElement) {
-      mapElement.style.height = `${clampedHeight}%`;
+      mapElement.style.height = `${clampedHeight}px`;
       mapElement.style.flex = '0 0 auto';
+      mapElement.style.minHeight = `${clampedHeight}px`;
     }
     if (tableElement) {
-      tableElement.style.height = `${100 - clampedHeight}%`;
-      tableElement.style.flex = '0 0 auto';
+      // Tabela ocupa o resto do espaço
+      tableElement.style.flex = '1 1 auto';
+      tableElement.style.minHeight = '200px';
     }
     
-    console.log(`📏 Arrastando mapa/tabela: Mapa ${clampedHeight}%, Tabela ${100 - clampedHeight}%`);
+    console.log(`📏 Arrastando mapa/tabela: Mapa ${clampedHeight}px`);
     
     // Salvar no localStorage (sem await para não bloquear)
     try {
-      localStorage.setItem('analiseCobertura_mapHeightPercent', clampedHeight.toString());
+      localStorage.setItem('analiseCobertura_mapHeightPixels', clampedHeight.toString());
     } catch (err) {
       console.warn('Erro ao salvar altura do mapa:', err);
     }
@@ -1047,11 +1043,11 @@
         }
       }
       
-      const savedMapHeight = localStorage.getItem('analiseCobertura_mapHeightPercent');
+      const savedMapHeight = localStorage.getItem('analiseCobertura_mapHeightPixels');
       if (savedMapHeight) {
-        mapHeightPercent = parseFloat(savedMapHeight);
-        if (isNaN(mapHeightPercent) || mapHeightPercent < 30 || mapHeightPercent > 85) {
-          mapHeightPercent = 60;
+        mapHeightPixels = parseInt(savedMapHeight, 10);
+        if (isNaN(mapHeightPixels) || mapHeightPixels < 300 || mapHeightPixels > 1000) {
+          mapHeightPixels = 400; // Valor padrão em pixels
         }
       }
     } catch (err) {
@@ -1199,7 +1195,7 @@
       <!-- Área Principal (Mapa e Tabela) -->
       <main class="main-area">
         <!-- Mapa -->
-        <div class="map-container" style="height: {mapHeightPercentStyle}; flex: 0 0 auto;">
+        <div class="map-container" style="height: {mapHeightStyle}; flex: 0 0 auto; min-height: {mapHeightStyle};">
           <div id="map" class="map" bind:this={mapElement}></div>
         </div>
 
@@ -1217,7 +1213,7 @@
 
         <!-- Tabela de Resultados -->
         {#if ctos.length > 0}
-          <div class="results-table-container" style="height: {tableHeightPercentStyle}; flex: 0 0 auto;">
+          <div class="results-table-container" style="flex: 1 1 auto; min-height: 200px;">
             <h3>Resultados ({ctos.length})</h3>
             <div class="table-wrapper">
               <table class="results-table">
@@ -1259,7 +1255,7 @@
             </div>
           </div>
         {:else if !isLoading && !error}
-          <div class="empty-state" style="height: {tableHeightPercentStyle}; flex: 0 0 auto; min-height: 0;">
+          <div class="empty-state" style="flex: 1 1 auto; min-height: 200px;">
             <p>🔍 Realize uma busca para ver os resultados aqui</p>
           </div>
         {/if}
@@ -1457,7 +1453,8 @@
     flex-direction: column;
     gap: 0; /* Remover gap para permitir que o handle fique exatamente entre os elementos */
     overflow: visible;
-    min-height: 0;
+    min-height: 500px; /* Altura mínima para garantir espaço */
+    height: 100%; /* Altura completa do container pai */
     width: 100%;
     position: relative;
     flex-shrink: 1; /* Permitir encolhimento */
