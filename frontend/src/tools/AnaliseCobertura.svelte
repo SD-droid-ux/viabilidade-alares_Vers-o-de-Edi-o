@@ -1375,21 +1375,33 @@
   }
 
   .minimize-button {
-    background: transparent;
+    background: linear-gradient(135deg, #6495ED 0%, #7B68EE 100%);
     border: none;
     cursor: pointer;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 1rem;
-    transition: background 0.2s;
+    padding: 0.375rem 0.625rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: white;
+    font-weight: 500;
+    transition: all 0.2s;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    min-width: 32px;
+    height: 28px;
+    box-shadow: 0 2px 4px rgba(100, 149, 237, 0.2);
   }
 
   .minimize-button:hover {
-    background: rgba(0, 0, 0, 0.05);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(100, 149, 237, 0.3);
+    background: linear-gradient(135deg, #7B68EE 0%, #8B6FE8 100%);
+  }
+
+  .minimize-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(100, 149, 237, 0.2);
   }
 
   .search-panel.minimized {
