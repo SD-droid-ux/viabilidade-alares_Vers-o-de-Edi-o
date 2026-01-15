@@ -1280,11 +1280,11 @@
     height: 100%;
     gap: 0.75rem; /* Espaçamento entre sidebar e área principal */
     padding: 1rem;
-    padding-bottom: 1rem; /* Espaço na parte inferior para ver as bordas */
+    padding-bottom: 1.5rem; /* Espaço extra na parte inferior para garantir bordas visíveis */
     overflow: hidden;
-    align-items: stretch; /* Esticar para ocupar toda a altura */
+    align-items: flex-start; /* Alinhar no topo, não esticar */
     position: relative;
-    box-sizing: border-box; /* Incluir padding no cálculo de altura */
+    box-sizing: border-box;
   }
 
   .search-panel {
@@ -1301,10 +1301,9 @@
     overflow-y: auto;
     overflow-x: hidden;
     flex: 0 0 auto; /* Largura fixa, não cresce/encolhe */
-    align-self: stretch; /* Estica para altura do container pai */
-    max-height: calc(100% - 2rem); /* Respeita padding top (1rem) + bottom (1rem) do pai */
+    height: calc(100% - 2.5rem); /* Altura = 100% do pai - padding top (1rem) - padding bottom (1.5rem) */
     box-sizing: border-box;
-    /* Bordas sempre visíveis graças ao max-height que respeita o padding */
+    /* Bordas sempre visíveis: altura calculada respeita o padding do pai */
   }
 
   .panel-header h2 {
@@ -1462,9 +1461,8 @@
     position: relative;
     min-height: 0;
     box-sizing: border-box;
-    align-self: stretch; /* Estica para altura do container pai */
-    max-height: calc(100% - 2rem); /* Respeita padding top (1rem) + bottom (1rem) do pai */
-    /* Bordas sempre visíveis graças ao max-height que respeita o padding */
+    height: calc(100% - 2.5rem); /* Altura = 100% do pai - padding top (1rem) - padding bottom (1.5rem) */
+    /* Bordas sempre visíveis: altura calculada respeita o padding do pai */
   }
 
   /* Garantir que a tabela possa crescer e rolar corretamente */
