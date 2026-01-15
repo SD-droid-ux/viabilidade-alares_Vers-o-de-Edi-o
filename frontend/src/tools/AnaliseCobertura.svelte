@@ -1302,8 +1302,9 @@
     overflow-x: hidden;
     flex: 0 0 auto; /* Largura fixa, não cresce/encolhe */
     align-self: stretch; /* Estica para altura do container pai */
+    max-height: calc(100% - 2rem); /* Respeita padding top (1rem) + bottom (1rem) do pai */
     box-sizing: border-box;
-    /* Flexbox automaticamente calcula altura, bordas sempre visíveis */
+    /* Bordas sempre visíveis graças ao max-height que respeita o padding */
   }
 
   .panel-header h2 {
@@ -1462,7 +1463,8 @@
     min-height: 0;
     box-sizing: border-box;
     align-self: stretch; /* Estica para altura do container pai */
-    /* Flexbox automaticamente calcula altura, bordas sempre visíveis */
+    max-height: calc(100% - 2rem); /* Respeita padding top (1rem) + bottom (1rem) do pai */
+    /* Bordas sempre visíveis graças ao max-height que respeita o padding */
   }
 
   /* Garantir que a tabela possa crescer e rolar corretamente */
