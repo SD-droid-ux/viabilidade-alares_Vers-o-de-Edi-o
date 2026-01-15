@@ -1205,7 +1205,9 @@
     min-height: calc(100vh - 60px); /* Altura mínima considerando o header */
     gap: 1rem;
     padding: 1rem;
+    padding-bottom: 2rem; /* Espaço extra no final para permitir rolar até a borda */
     overflow: visible;
+    align-items: flex-start; /* Alinhar no topo para permitir crescimento */
   }
 
   .search-panel {
@@ -1374,14 +1376,16 @@
     gap: 1rem;
     overflow: visible;
     min-height: 0;
+    width: 100%;
   }
 
   /* Garantir que a tabela possa crescer e rolar corretamente */
   .main-area > .results-table-container {
-    flex: 1 1 auto;
+    flex: 0 1 auto; /* Não forçar crescimento, permitir tamanho natural */
     min-height: 0;
     display: flex;
     flex-direction: column;
+    align-self: stretch; /* Esticar na largura mas permitir altura natural */
   }
 
   .map-container {
@@ -1414,7 +1418,9 @@
     flex-direction: column;
     min-height: 150px;
     overflow: hidden;
-    flex: 1 1 auto;
+    flex: 0 1 auto; /* Não crescer além do necessário, mas permitir scroll */
+    width: 100%;
+    max-width: 100%;
   }
 
   /* Handles de redimensionamento - estilo discreto */
