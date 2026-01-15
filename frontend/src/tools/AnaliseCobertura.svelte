@@ -1377,9 +1377,12 @@
     height: 100%;
   }
 
-  /* Garantir que a tabela não cresça além do necessário */
+  /* Garantir que a tabela possa crescer e rolar corretamente */
   .main-area > .results-table-container {
-    flex-shrink: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .map-container {
@@ -1411,8 +1414,9 @@
     display: flex;
     flex-direction: column;
     min-height: 150px;
-    max-height: 100%;
+    height: 100%;
     overflow: hidden;
+    flex: 1 1 auto;
   }
 
   /* Handles de redimensionamento - estilo discreto */
@@ -1487,9 +1491,10 @@
   .table-wrapper {
     overflow-y: auto;
     overflow-x: auto;
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
-    max-height: 100%;
+    position: relative;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* Estilizar scrollbar para melhor visualização */
@@ -1516,6 +1521,12 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 0.875rem;
+    table-layout: auto;
+  }
+  
+  /* Garantir que o tbody não tenha restrições de altura */
+  .results-table tbody {
+    display: table-row-group;
   }
 
   .results-table thead {
