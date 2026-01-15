@@ -1203,11 +1203,12 @@
     display: flex;
     flex: 1;
     min-height: calc(100vh - 60px); /* Altura mínima considerando o header */
-    gap: 1rem;
+    gap: 0; /* Remover gap para permitir que o handle fique exatamente entre os elementos */
     padding: 1rem;
     padding-bottom: 2rem; /* Espaço extra no final para permitir rolar até a borda */
     overflow: visible;
     align-items: flex-start; /* Alinhar no topo para permitir crescimento */
+    position: relative;
   }
 
   .search-panel {
@@ -1373,10 +1374,11 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0; /* Remover gap para permitir que o handle fique exatamente entre os elementos */
     overflow: visible;
     min-height: 0;
     width: 100%;
+    position: relative;
   }
 
   /* Garantir que a tabela possa crescer e rolar corretamente */
@@ -1434,6 +1436,8 @@
     user-select: none;
     flex-shrink: 0;
     position: relative;
+    z-index: 100;
+    pointer-events: auto;
   }
 
   .resize-handle::before {
@@ -1462,6 +1466,8 @@
   .resize-handle-vertical {
     width: 4px;
     cursor: col-resize;
+    z-index: 100;
+    pointer-events: auto;
   }
 
   .resize-handle-vertical::before {
@@ -1475,6 +1481,9 @@
     height: 4px;
     cursor: row-resize;
     width: 100%;
+    z-index: 100;
+    pointer-events: auto;
+    position: relative;
   }
 
   .resize-handle-horizontal::before {
