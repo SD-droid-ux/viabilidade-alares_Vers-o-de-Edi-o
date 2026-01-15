@@ -928,6 +928,15 @@
     // Atualizar diretamente - Svelte detecta automaticamente
     sidebarWidth = clampedWidth;
     
+    // Forçar atualização do DOM diretamente também
+    const sidebarElement = document.querySelector('.search-panel');
+    if (sidebarElement) {
+      sidebarElement.style.width = `${clampedWidth}px`;
+      sidebarElement.style.flex = '0 0 auto';
+    }
+    
+    console.log(`📏 Arrastando sidebar: ${clampedWidth}px`);
+    
     // Salvar no localStorage (sem await para não bloquear)
     try {
       localStorage.setItem('analiseCobertura_sidebarWidth', clampedWidth.toString());
@@ -970,7 +979,10 @@
     e.stopPropagation();
     
     const container = document.querySelector('.main-area');
-    if (!container) return;
+    if (!container) {
+      console.warn('⚠️ Container .main-area não encontrado');
+      return;
+    }
     
     const containerRect = container.getBoundingClientRect();
     const clientY = e.clientY || e.touches?.[0]?.clientY || resizeStartY;
@@ -983,6 +995,20 @@
     
     // Atualizar diretamente - Svelte detecta automaticamente
     mapHeightPercent = clampedHeight;
+    
+    // Forçar atualização do DOM diretamente também
+    const mapElement = document.querySelector('.map-container');
+    const tableElement = document.querySelector('.results-table-container, .empty-state');
+    if (mapElement) {
+      mapElement.style.height = `${clampedHeight}%`;
+      mapElement.style.flex = '0 0 auto';
+    }
+    if (tableElement) {
+      tableElement.style.height = `${100 - clampedHeight}%`;
+      tableElement.style.flex = '0 0 auto';
+    }
+    
+    console.log(`📏 Arrastando mapa/tabela: Mapa ${clampedHeight}%, Tabela ${100 - clampedHeight}%`);
     
     // Salvar no localStorage (sem await para não bloquear)
     try {
@@ -1076,7 +1102,7 @@
   {:else}
     <div class="main-layout">
       <!-- Painel de Busca -->
-      <aside class="search-panel" style="width: {sidebarWidthStyle};">
+      <aside class="search-panel" style="width: {sidebarWidthStyle} !important; flex: 0 0 auto;">
         <div class="panel-header">
           <h2>📡 Análise de Cobertura</h2>
           <p>Busque CTOs na base de dados</p>
@@ -1173,7 +1199,7 @@
       <!-- Área Principal (Mapa e Tabela) -->
       <main class="main-area">
         <!-- Mapa -->
-        <div class="map-container" style="flex: 0 0 {mapHeightPercentStyle};">
+        <div class="map-container" style="height: {mapHeightPercentStyle}; flex: 0 0 auto;">
           <div id="map" class="map" bind:this={mapElement}></div>
         </div>
 
@@ -1191,7 +1217,7 @@
 
         <!-- Tabela de Resultados -->
         {#if ctos.length > 0}
-          <div class="results-table-container" style="flex: 0 0 {tableHeightPercentStyle};">
+          <div class="results-table-container" style="height: {tableHeightPercentStyle}; flex: 0 0 auto;">
             <h3>Resultados ({ctos.length})</h3>
             <div class="table-wrapper">
               <table class="results-table">
@@ -1233,7 +1259,7 @@
             </div>
           </div>
         {:else if !isLoading && !error}
-          <div class="empty-state" style="flex: 0 0 {tableHeightPercentStyle}; min-height: 0;">
+          <div class="empty-state" style="height: {tableHeightPercentStyle}; flex: 0 0 auto; min-height: 0;">
             <p>🔍 Realize uma busca para ver os resultados aqui</p>
           </div>
         {/if}
@@ -1266,8 +1292,8 @@
   }
 
   .search-panel {
-    min-width: 300px; /* Aumentado para melhor visibilidade */
-    max-width: 700px; /* Aumentado para permitir mais espaço */
+    min-width: 300px !important; /* Aumentado para melhor visibilidade */
+    max-width: 700px !important; /* Aumentado para permitir mais espaço */
     background: white;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -1277,6 +1303,7 @@
     gap: 1.5rem;
     overflow-y: auto;
     flex-shrink: 0;
+    flex-grow: 0; /* Não crescer automaticamente */
   }
 
   .panel-header h2 {
@@ -1425,7 +1452,7 @@
   }
 
   .main-area {
-    flex: 1;
+    flex: 1 1 auto; /* Permitir crescimento e encolhimento */
     display: flex;
     flex-direction: column;
     gap: 0; /* Remover gap para permitir que o handle fique exatamente entre os elementos */
@@ -1433,6 +1460,7 @@
     min-height: 0;
     width: 100%;
     position: relative;
+    flex-shrink: 1; /* Permitir encolhimento */
   }
 
   /* Garantir que a tabela possa crescer e rolar corretamente */
@@ -1454,6 +1482,8 @@
     background: #e5e7eb;
     display: flex;
     flex-direction: column;
+    flex-shrink: 0; /* Não encolher */
+    flex-grow: 0; /* Não crescer automaticamente */
   }
 
   .map {
@@ -1474,7 +1504,8 @@
     flex-direction: column;
     min-height: 200px; /* Aumentado para melhor visibilidade */
     overflow: hidden;
-    flex: 0 1 auto; /* Não crescer além do necessário, mas permitir scroll */
+    flex-shrink: 0; /* Não encolher */
+    flex-grow: 0; /* Não crescer automaticamente */
     width: 100%;
     max-width: 100%;
   }
