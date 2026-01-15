@@ -331,11 +331,10 @@
 
       console.log(`🔍 Buscando ${ctoNames.length} CTO(s):`, ctoNames);
 
-      const foundCTOsMap = new Map(); // Para evitar duplicatas (chave: coordenadas)
-      const searchedCTOsMap = new Map(); // CTOs pesquisadas pelo usuário (chave: coordenadas)
-      const searchMarkers = [];
+      const allCTOsMap = new Map(); // Todas as CTOs (pesquisadas + próximas) - chave: coordenadas
+      const searchedCTOsList = []; // Lista de CTOs pesquisadas pelo usuário (para garantir ordem)
 
-      // OTIMIZAÇÃO: Buscar todas as CTOs em paralelo
+      // ETAPA 1: Buscar TODAS as CTOs pesquisadas pelo usuário
       const searchPromises = ctoNames.map(async (ctoName) => {
         try {
           const searchResponse = await fetch(getApiUrl(`/api/ctos/search?nome=${encodeURIComponent(ctoName)}`));
@@ -349,9 +348,7 @@
 
       const searchResults = await Promise.all(searchPromises);
 
-      // Processar resultados e buscar CTOs próximas em paralelo
-      const nearbyPromises = [];
-
+      // Coletar todas as CTOs pesquisadas primeiro
       for (const { ctoName, searchData } of searchResults) {
         if (!searchData?.success || !searchData.ctos || searchData.ctos.length === 0) {
           console.warn(`⚠️ CTO "${ctoName}" não encontrada`);
@@ -369,56 +366,29 @@
           const lng = parseFloat(foundCTO.longitude);
           const ctoKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
 
-          // Se já processamos esta CTO, pular
-          if (foundCTOsMap.has(ctoKey)) {
-            continue;
+          // Adicionar à lista de CTOs pesquisadas (mesmo que já exista, para garantir que todas apareçam)
+          if (!allCTOsMap.has(ctoKey)) {
+            allCTOsMap.set(ctoKey, foundCTO);
+            searchedCTOsList.push({ cto: foundCTO, lat, lng });
           }
-
-          // Marcar como CTO pesquisada pelo usuário
-          searchedCTOsMap.set(ctoKey, foundCTO);
-          foundCTOsMap.set(ctoKey, foundCTO);
-
-          // Adicionar promessa para buscar CTOs próximas (em paralelo)
-          nearbyPromises.push(
-            fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=250`))
-              .then(response => response.json())
-              .then(nearbyData => ({ foundCTO, nearbyData, lat, lng }))
-              .catch(err => {
-                console.error(`Erro ao buscar CTOs próximas de "${foundCTO.nome}":`, err);
-                return { foundCTO, nearbyData: null, lat, lng };
-              })
-          );
         }
       }
 
-      // Aguardar todas as buscas de CTOs próximas em paralelo
-      const nearbyResults = await Promise.all(nearbyPromises);
+      if (searchedCTOsList.length === 0) {
+        error = 'Nenhuma CTO encontrada. Verifique os nomes digitados.';
+        loadingCTOs = false;
+        return;
+      }
 
-      // Processar resultados das buscas próximas
-      for (const { foundCTO, nearbyData, lat, lng } of nearbyResults) {
-        if (nearbyData?.success && nearbyData.ctos) {
-          // Filtrar apenas CTOs dentro de 250m e adicionar à lista
-          const nearbyCTOs = nearbyData.ctos.filter(cto => {
-            if (!cto.latitude || !cto.longitude) return false;
-            const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
-            return distance <= 250;
-          });
+      console.log(`✅ ${searchedCTOsList.length} CTO(s) pesquisada(s) encontrada(s)`);
 
-          // Adicionar CTOs próximas (evitando duplicatas)
-          for (const cto of nearbyCTOs) {
-            const ctoNearbyKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
-            if (!foundCTOsMap.has(ctoNearbyKey)) {
-              foundCTOsMap.set(ctoNearbyKey, cto);
-            }
-          }
-        }
-
-        // Criar marcador azul para a CTO pesquisada
-        if (map) {
+      // Criar marcadores azuis para TODAS as CTOs pesquisadas
+      if (map) {
+        for (const { cto, lat, lng } of searchedCTOsList) {
           const marker = new google.maps.Marker({
             position: { lat, lng },
             map: map,
-            title: `CTO pesquisada: ${foundCTO.nome}`,
+            title: `CTO pesquisada: ${cto.nome}`,
             icon: {
               url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
               scaledSize: new google.maps.Size(32, 32)
@@ -429,24 +399,53 @@
         }
       }
 
-      // Converter Map para array - priorizar CTOs pesquisadas primeiro
-      const allCTOs = Array.from(foundCTOsMap.values());
-      
-      // Separar CTOs pesquisadas e próximas para ordenação
-      const searchedCTOs = [];
-      const nearbyCTOs = [];
-      
-      for (const cto of allCTOs) {
-        const ctoKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
-        if (searchedCTOsMap.has(ctoKey)) {
-          searchedCTOs.push(cto);
-        } else {
-          nearbyCTOs.push(cto);
+      // ETAPA 2: Para CADA CTO pesquisada, buscar todas as próximas dentro de 250m
+      const nearbyPromises = searchedCTOsList.map(({ cto, lat, lng }) =>
+        fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=250`))
+          .then(response => response.json())
+          .then(nearbyData => ({ cto, nearbyData, lat, lng }))
+          .catch(err => {
+            console.error(`Erro ao buscar CTOs próximas de "${cto.nome}":`, err);
+            return { cto, nearbyData: null, lat, lng };
+          })
+      );
+
+      const nearbyResults = await Promise.all(nearbyPromises);
+
+      // ETAPA 3: Processar resultados e adicionar CTOs próximas (evitando duplicatas)
+      for (const { nearbyData, lat, lng } of nearbyResults) {
+        if (nearbyData?.success && nearbyData.ctos) {
+          // Filtrar apenas CTOs dentro de 250m
+          const nearbyCTOs = nearbyData.ctos.filter(cto => {
+            if (!cto.latitude || !cto.longitude) return false;
+            const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
+            return distance <= 250;
+          });
+
+          // Adicionar CTOs próximas (evitando duplicatas com as pesquisadas)
+          for (const cto of nearbyCTOs) {
+            const ctoNearbyKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
+            if (!allCTOsMap.has(ctoNearbyKey)) {
+              allCTOsMap.set(ctoNearbyKey, cto);
+            }
+          }
         }
       }
-      
-      // Ordenar: CTOs pesquisadas primeiro, depois próximas
+
+      // ETAPA 4: Organizar resultado final - CTOs pesquisadas primeiro, depois próximas
+      const searchedCTOs = searchedCTOsList.map(({ cto }) => cto);
+      const nearbyCTOs = Array.from(allCTOsMap.values()).filter(cto => {
+        const ctoKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
+        return !searchedCTOsList.some(({ cto: searched }) => {
+          const searchedKey = `${parseFloat(searched.latitude).toFixed(6)},${parseFloat(searched.longitude).toFixed(6)}`;
+          return searchedKey === ctoKey;
+        });
+      });
+
+      // Resultado final: CTOs pesquisadas primeiro, depois próximas
       ctos = [...searchedCTOs, ...nearbyCTOs];
+
+      console.log(`✅ Total: ${searchedCTOs.length} CTO(s) pesquisada(s) + ${nearbyCTOs.length} CTO(s) próxima(s) = ${ctos.length} CTO(s)`);
 
       if (ctos.length === 0) {
         error = 'Nenhuma CTO encontrada. Verifique os nomes digitados.';
