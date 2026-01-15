@@ -40,7 +40,7 @@
   let ctos = [];
   let error = null;
 
-  // Redimensionamento de boxes
+  // Redimensionamento de boxes - usar variáveis que o Svelte detecta como reativas
   let sidebarWidth = 350; // Largura inicial da sidebar em pixels
   let mapHeightPercent = 60; // Porcentagem de altura do mapa (resto vai para tabela)
   let isResizingSidebar = false;
@@ -49,6 +49,11 @@
   let resizeStartY = 0;
   let resizeStartSidebarWidth = 0;
   let resizeStartMapHeight = 0;
+  
+  // Reactive statements para calcular estilos automaticamente
+  $: sidebarWidthStyle = `${sidebarWidth}px`;
+  $: mapHeightPercentStyle = `${mapHeightPercent}%`;
+  $: tableHeightPercentStyle = `${100 - mapHeightPercent}%`;
   
   // Função para abrir configurações
   function openSettings() {
@@ -893,16 +898,20 @@
 
   // Funções de redimensionamento
   function startResizeSidebar(e) {
-    console.log('🖱️ Iniciando redimensionamento da sidebar');
+    console.log('🖱️ Iniciando redimensionamento da sidebar', e);
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
     isResizingSidebar = true;
-    resizeStartX = e.clientX;
+    resizeStartX = e.clientX || e.touches?.[0]?.clientX || 0;
     resizeStartSidebarWidth = sidebarWidth;
-    document.addEventListener('mousemove', handleResizeSidebar, { passive: false });
-    document.addEventListener('mouseup', stopResizeSidebar, { passive: false });
+    document.addEventListener('mousemove', handleResizeSidebar, { passive: false, capture: true });
+    document.addEventListener('mouseup', stopResizeSidebar, { passive: false, capture: true });
+    document.addEventListener('touchmove', handleResizeSidebar, { passive: false, capture: true });
+    document.addEventListener('touchend', stopResizeSidebar, { passive: false, capture: true });
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
+    return false;
   }
 
   function handleResizeSidebar(e) {
@@ -916,12 +925,12 @@
     // Limites: mínimo 250px, máximo 600px
     const clampedWidth = Math.max(250, Math.min(600, newWidth));
     
-    // Atualizar variável reativa diretamente
+    // Atualizar diretamente - Svelte detecta automaticamente
     sidebarWidth = clampedWidth;
     
     // Salvar no localStorage (sem await para não bloquear)
     try {
-      localStorage.setItem('analiseCobertura_sidebarWidth', sidebarWidth.toString());
+      localStorage.setItem('analiseCobertura_sidebarWidth', clampedWidth.toString());
     } catch (err) {
       console.warn('Erro ao salvar largura da sidebar:', err);
     }
@@ -972,12 +981,12 @@
     // Limites: mínimo 30%, máximo 85%
     const clampedHeight = Math.max(30, Math.min(85, newHeight));
     
-    // Atualizar variável reativa diretamente
+    // Atualizar diretamente - Svelte detecta automaticamente
     mapHeightPercent = clampedHeight;
     
     // Salvar no localStorage (sem await para não bloquear)
     try {
-      localStorage.setItem('analiseCobertura_mapHeightPercent', mapHeightPercent.toString());
+      localStorage.setItem('analiseCobertura_mapHeightPercent', clampedHeight.toString());
     } catch (err) {
       console.warn('Erro ao salvar altura do mapa:', err);
     }
@@ -1067,7 +1076,7 @@
   {:else}
     <div class="main-layout">
       <!-- Painel de Busca -->
-      <aside class="search-panel" style="width: {sidebarWidth}px;">
+      <aside class="search-panel" style="width: {sidebarWidthStyle};">
         <div class="panel-header">
           <h2>📡 Análise de Cobertura</h2>
           <p>Busque CTOs na base de dados</p>
@@ -1164,7 +1173,7 @@
       <!-- Área Principal (Mapa e Tabela) -->
       <main class="main-area">
         <!-- Mapa -->
-        <div class="map-container" style="flex: 0 0 {mapHeightPercent}%;">
+        <div class="map-container" style="flex: 0 0 {mapHeightPercentStyle};">
           <div id="map" class="map" bind:this={mapElement}></div>
         </div>
 
@@ -1182,7 +1191,7 @@
 
         <!-- Tabela de Resultados -->
         {#if ctos.length > 0}
-          <div class="results-table-container" style="flex: 0 0 {100 - mapHeightPercent}%;">
+          <div class="results-table-container" style="flex: 0 0 {tableHeightPercentStyle};">
             <h3>Resultados ({ctos.length})</h3>
             <div class="table-wrapper">
               <table class="results-table">
@@ -1224,7 +1233,7 @@
             </div>
           </div>
         {:else if !isLoading && !error}
-          <div class="empty-state" style="flex: 0 0 {100 - mapHeightPercent}%; min-height: 0;">
+          <div class="empty-state" style="flex: 0 0 {tableHeightPercentStyle}; min-height: 0;">
             <p>🔍 Realize uma busca para ver os resultados aqui</p>
           </div>
         {/if}
