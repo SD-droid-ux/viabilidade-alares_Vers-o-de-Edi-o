@@ -50,6 +50,11 @@
   let resizeStartSidebarWidth = 0;
   let resizeStartMapHeight = 0;
   
+  // Estados de minimização dos boxes
+  let isSearchPanelMinimized = false;
+  let isMapMinimized = false;
+  let isTableMinimized = false;
+  
   // Reactive statements para calcular estilos automaticamente
   $: sidebarWidthStyle = `${sidebarWidth}px`;
   $: mapHeightStyle = `${mapHeightPixels}px`;
@@ -1098,12 +1103,25 @@
   {:else}
     <div class="main-layout">
       <!-- Painel de Busca -->
-      <aside class="search-panel" style="width: {sidebarWidthStyle} !important; flex: 0 0 auto;">
+      <aside class="search-panel" class:minimized={isSearchPanelMinimized} style="width: {sidebarWidthStyle} !important; flex: 0 0 auto;">
         <div class="panel-header">
-          <h2>📡 Análise de Cobertura</h2>
-          <p>Busque CTOs na base de dados</p>
+          <div class="panel-header-content">
+            <h2>📡 Análise de Cobertura</h2>
+            <button 
+              class="minimize-button" 
+              on:click={() => isSearchPanelMinimized = !isSearchPanelMinimized}
+              aria-label={isSearchPanelMinimized ? 'Expandir painel de busca' : 'Minimizar painel de busca'}
+              title={isSearchPanelMinimized ? 'Expandir' : 'Minimizar'}
+            >
+              {isSearchPanelMinimized ? '⬆️' : '⬇️'}
+            </button>
+          </div>
+          {#if !isSearchPanelMinimized}
+            <p>Busque CTOs na base de dados</p>
+          {/if}
         </div>
 
+        {#if !isSearchPanelMinimized}
         <div class="search-mode-selector">
           <button 
             class="mode-button" 
@@ -1178,6 +1196,7 @@
             </div>
           {/if}
         </div>
+        {/if}
       </aside>
 
       <!-- Handle de redimensionamento vertical (sidebar) -->
@@ -1195,8 +1214,21 @@
       <!-- Área Principal (Mapa e Tabela) -->
       <main class="main-area">
         <!-- Mapa -->
-        <div class="map-container" style="height: {mapHeightStyle}; flex: 0 0 auto; min-height: {mapHeightStyle};">
-          <div id="map" class="map" bind:this={mapElement}></div>
+        <div class="map-container" class:minimized={isMapMinimized} style="height: {isMapMinimized ? '60px' : mapHeightStyle}; flex: 0 0 auto; min-height: {isMapMinimized ? '60px' : mapHeightStyle};">
+          <div class="map-header">
+            <h3>🗺️ Mapa</h3>
+            <button 
+              class="minimize-button" 
+              on:click={() => isMapMinimized = !isMapMinimized}
+              aria-label={isMapMinimized ? 'Expandir mapa' : 'Minimizar mapa'}
+              title={isMapMinimized ? 'Expandir' : 'Minimizar'}
+            >
+              {isMapMinimized ? '⬆️' : '⬇️'}
+            </button>
+          </div>
+          {#if !isMapMinimized}
+            <div id="map" class="map" bind:this={mapElement}></div>
+          {/if}
         </div>
 
         <!-- Handle de redimensionamento horizontal (mapa/tabela) -->
@@ -1213,8 +1245,19 @@
 
         <!-- Tabela de Resultados -->
         {#if ctos.length > 0}
-          <div class="results-table-container" style="flex: 1 1 auto; min-height: 200px;">
-            <h3>Resultados ({ctos.length})</h3>
+          <div class="results-table-container" class:minimized={isTableMinimized} style="flex: {isTableMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isTableMinimized ? '60px' : '200px'};">
+            <div class="table-header">
+              <h3>Resultados ({ctos.length})</h3>
+              <button 
+                class="minimize-button" 
+                on:click={() => isTableMinimized = !isTableMinimized}
+                aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
+                title={isTableMinimized ? 'Expandir' : 'Minimizar'}
+              >
+                {isTableMinimized ? '⬆️' : '⬇️'}
+              </button>
+            </div>
+            {#if !isTableMinimized}
             <div class="table-wrapper">
               <table class="results-table">
                 <thead>
@@ -1253,6 +1296,7 @@
                 </tbody>
               </table>
             </div>
+            {/if}
           </div>
         {:else if !isLoading && !error}
           <div class="empty-state">
@@ -1306,6 +1350,17 @@
     /* Bordas sempre visíveis + pequena distância até o final da página */
   }
 
+  .panel-header {
+    position: relative;
+  }
+
+  .panel-header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+  }
+
   .panel-header h2 {
     margin: 0 0 0.5rem 0;
     color: #4c1d95;
@@ -1317,6 +1372,33 @@
     margin: 0;
     color: #666;
     font-size: 0.875rem;
+  }
+
+  .minimize-button {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 1rem;
+    transition: background 0.2s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .minimize-button:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  .search-panel.minimized {
+    padding: 1rem 1.5rem;
+    overflow: hidden;
+  }
+
+  .search-panel.minimized .panel-header-content h2 {
+    margin: 0;
   }
 
   .search-mode-selector {
@@ -1480,11 +1562,37 @@
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    background: #e5e7eb;
+    background: white;
     display: flex;
     flex-direction: column;
     flex: 0 0 auto; /* Não crescer nem encolher automaticamente */
     width: 100%;
+  }
+
+  .map-container.minimized {
+    background: white;
+    min-height: 60px;
+  }
+
+  .map-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    background: white;
+    flex-shrink: 0;
+  }
+
+  .map-header h3 {
+    margin: 0;
+    color: #4c1d95;
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+
+  .map-container.minimized .map-header {
+    border-bottom: none;
   }
 
   .map {
@@ -1493,6 +1601,7 @@
     min-height: 500px;
     flex: 1;
     display: block;
+    background: #e5e7eb;
   }
   
 
@@ -1600,12 +1709,28 @@
     background: rgba(100, 149, 237, 0.08); /* Mais discreto */
   }
 
-  .results-table-container h3 {
-    margin: 0 0 1rem 0;
+  .table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-shrink: 0;
+  }
+
+  .table-header h3 {
+    margin: 0;
     color: #4c1d95;
     font-size: 1.125rem;
     font-weight: 600;
-    flex-shrink: 0;
+  }
+
+  .results-table-container.minimized {
+    padding: 1rem 1.5rem;
+    overflow: hidden;
+  }
+
+  .results-table-container.minimized .table-header {
+    margin-bottom: 0;
   }
 
   .table-wrapper {
