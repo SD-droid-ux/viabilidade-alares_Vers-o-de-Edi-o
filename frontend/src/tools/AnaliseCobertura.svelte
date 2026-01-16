@@ -1462,8 +1462,22 @@
             {/if}
           </div>
         {:else if !isLoading && !error}
-          <div class="empty-state">
-            <p>🔍 Realize uma busca para ver os resultados aqui</p>
+          <div class="empty-state" class:minimized={isTableMinimized} style="flex: {isTableMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isTableMinimized ? '60px' : '200px'};">
+            <div class="table-header">
+              <h3>Resultados</h3>
+              <button 
+                class="minimize-button" 
+                disabled={isResizingSidebar || isResizingMapTable}
+                on:click={() => isTableMinimized = !isTableMinimized}
+                aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
+                title={isTableMinimized ? 'Expandir' : 'Minimizar'}
+              >
+                {isTableMinimized ? '⬆️' : '⬇️'}
+              </button>
+            </div>
+            {#if !isTableMinimized}
+              <p>🔍 Realize uma busca para ver os resultados aqui</p>
+            {/if}
           </div>
         {/if}
       </main>
@@ -2053,19 +2067,50 @@
     background: white;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    padding: 3rem;
+    padding: 1.5rem;
     text-align: center;
     color: #6b7280;
     flex: 1 1 auto; /* Ocupar o espaço restante */
     min-height: 200px;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
     overflow: hidden;
     width: 100%;
     max-height: 100%;
     box-sizing: border-box;
     margin-bottom: 0;
+  }
+
+  .empty-state.minimized {
+    padding: 1rem 1.5rem;
+    min-height: 60px;
+  }
+
+  .empty-state.minimized .table-header {
+    margin-bottom: 0;
+  }
+
+  .empty-state .table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-shrink: 0;
+  }
+
+  .empty-state .table-header h3 {
+    margin: 0;
+    color: #4c1d95;
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+
+  .empty-state p {
+    margin: 0;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* Responsividade */
