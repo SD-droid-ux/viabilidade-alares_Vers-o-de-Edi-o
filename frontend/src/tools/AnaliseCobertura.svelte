@@ -1077,7 +1077,11 @@
     // Limites: mínimo 300px, máximo baseado no container
     const container = document.querySelector('.main-area');
     const containerHeight = container ? container.getBoundingClientRect().height : 800;
-    const maxHeight = Math.max(containerHeight - 200, 300); // Deixar pelo menos 200px para tabela
+    
+    // Se a tabela estiver minimizada, permitir que o mapa ocupe quase todo o espaço
+    // Deixar apenas espaço para a tabela minimizada (~70px) + handle (~20px) + pequena margem
+    const minSpaceForTable = isTableMinimized ? 90 : 200; // 90px quando minimizada, 200px quando expandida
+    const maxHeight = Math.max(containerHeight - minSpaceForTable, 300);
     const clampedHeight = Math.max(300, Math.min(maxHeight, newHeight));
     
     // Atualizar diretamente - Svelte detecta automaticamente
