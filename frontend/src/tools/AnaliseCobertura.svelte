@@ -1091,9 +1091,18 @@
     const mapElement = document.querySelector('.map-container');
     const tableElement = document.querySelector('.results-table-container, .empty-state');
     if (mapElement) {
-      mapElement.style.height = `${clampedHeight}px`;
-      mapElement.style.flex = '0 0 auto';
-      mapElement.style.minHeight = `${clampedHeight}px`;
+      // Respeitar o estado minimizado do mapa ao redimensionar
+      if (isMapMinimized) {
+        // Se o mapa está minimizado, manter altura minimizada
+        mapElement.style.height = '60px';
+        mapElement.style.flex = '0 0 auto';
+        mapElement.style.minHeight = '60px';
+      } else {
+        // Se o mapa está expandido, aplicar altura calculada
+        mapElement.style.height = `${clampedHeight}px`;
+        mapElement.style.flex = '0 0 auto';
+        mapElement.style.minHeight = `${clampedHeight}px`;
+      }
     }
     if (tableElement) {
       // Respeitar o estado minimizado da tabela ao redimensionar
