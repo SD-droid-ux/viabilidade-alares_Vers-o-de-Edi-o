@@ -2068,7 +2068,6 @@
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     padding: 1.5rem;
-    text-align: center;
     color: #6b7280;
     flex: 1 1 auto; /* Ocupar o espaço restante */
     min-height: 200px;
@@ -2111,6 +2110,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    text-align: center;
   }
 
   /* Responsividade */
