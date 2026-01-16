@@ -10,7 +10,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "npx serve -s dist -l ${PORT:-3000}",
-    "postinstall": "echo 'Dependencies installed successfully'"
+    "postinstall": "echo 'Dependencies installed successfully'",
+    "build:prod": "NODE_ENV=production vite build"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^3.0.0",
