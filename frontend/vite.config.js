@@ -19,21 +19,32 @@ export default defineConfig({
       },
     },
   },
-  // Configuração para produção (otimizada)
+  // Configuração para produção (ultra-otimizada)
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
     minify: 'esbuild', // esbuild é mais rápido que terser e já vem com Vite
     target: 'es2015', // Otimizar para browsers modernos
+    cssMinify: true, // Minificar CSS também
+    cssCodeSplit: true, // Code splitting para CSS
+    reportCompressedSize: false, // Desabilitar relatório de tamanho (acelera build)
     rollupOptions: {
       output: {
         manualChunks: {
           'google-maps': ['@googlemaps/js-api-loader'],
           'utils': ['xlsx', 'html2canvas'],
         },
+        // Otimizar nomes de arquivos para melhor cache
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
       },
     },
     chunkSizeWarningLimit: 1000, // Aumentar limite de warning
+    // Tree-shaking agressivo
+    treeshake: {
+      moduleSideEffects: false,
+    },
   },
 });
