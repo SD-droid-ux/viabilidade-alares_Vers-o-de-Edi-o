@@ -19,10 +19,21 @@ export default defineConfig({
       },
     },
   },
-  // Configuração para produção
+  // Configuração para produção (otimizada)
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
+    minify: 'esbuild', // esbuild é mais rápido que terser e já vem com Vite
+    target: 'es2015', // Otimizar para browsers modernos
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'google-maps': ['@googlemaps/js-api-loader'],
+          'utils': ['xlsx', 'html2canvas'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000, // Aumentar limite de warning
   },
 });
