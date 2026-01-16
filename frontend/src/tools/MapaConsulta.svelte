@@ -452,7 +452,7 @@
         strokeOpacity: 0.8,
         strokeWeight: 1.2,
         fillColor: '#6B8DD6', // Azul mais suave
-        fillOpacity: coverageOpacity,
+        fillOpacity: coverageOpacity || 0.4, // Fallback para garantir inicialização
         map: map,
         center: { lat, lng },
         radius: 250,
@@ -569,7 +569,7 @@
         strokeOpacity: 0.8,
         strokeWeight: 1.2,
         fillColor: '#6B8DD6', // Azul mais suave
-        fillOpacity: coverageOpacity,
+        fillOpacity: coverageOpacity || 0.4, // Fallback para garantir inicialização
         map: map,
         zIndex: 1,
         geodesic: true
@@ -577,22 +577,37 @@
     }
     
     // Suavizar o polígono adicionando pontos intermediários para bordas mais suaves
-    const smoothedHull = smoothPolygonEdges(hull);
+    let smoothedHull;
+    try {
+      smoothedHull = smoothPolygonEdges(hull);
+      if (!smoothedHull || smoothedHull.length < 3) {
+        smoothedHull = hull; // Fallback para hull original se suavização falhar
+      }
+    } catch (smoothErr) {
+      console.warn('⚠️ Erro ao suavizar polígono, usando hull original:', smoothErr);
+      smoothedHull = hull; // Fallback para hull original
+    }
     
     // Criar polígono com forma suave e natural
-    const polygon = new google.maps.Polygon({
-      paths: smoothedHull,
-      strokeColor: '#8B7AE8', // Roxo mais suave e profissional
-      strokeOpacity: 0.8,
-      strokeWeight: 1.2,
-      fillColor: '#6B8DD6', // Azul mais suave e profissional
-      fillOpacity: coverageOpacity,
-      map: map,
-      zIndex: 1,
-      geodesic: true
-    });
-    
-    return polygon;
+    try {
+      const polygon = new google.maps.Polygon({
+        paths: smoothedHull,
+        strokeColor: '#8B7AE8', // Roxo mais suave e profissional
+        strokeOpacity: 0.8,
+        strokeWeight: 1.2,
+        fillColor: '#6B8DD6', // Azul mais suave e profissional
+        fillOpacity: coverageOpacity || 0.4, // Fallback para garantir inicialização
+        map: map,
+        zIndex: 1,
+        geodesic: true
+      });
+      
+      return polygon;
+    } catch (polyErr) {
+      console.error('❌ Erro ao criar polígono:', polyErr);
+      // Retornar null em caso de erro
+      return null;
+    }
   }
   
   // Função auxiliar para calcular o convex hull (Graham scan)
@@ -1080,6 +1095,11 @@
   // Limpar círculos e polígonos de cobertura
   // Função para atualizar opacidade das manchas
   function updateCoverageOpacity() {
+    // Garantir que coverageOpacity está definido
+    if (coverageOpacity === undefined || coverageOpacity === null) {
+      coverageOpacity = 0.4;
+    }
+    
     // Atualizar opacidade de todos os círculos
     coverageCircles.forEach(circle => {
       if (circle && circle.setOptions) {
@@ -1170,6 +1190,21 @@
   // Função de inicialização da ferramenta
   async function initializeTool() {
     isLoading = true;
+    error = null; // Limpar erros anteriores
+    
+    // Garantir que todas as variáveis estão inicializadas
+    if (coverageOpacity === undefined || coverageOpacity === null) {
+      coverageOpacity = 0.4;
+    }
+    if (!allCTOs) {
+      allCTOs = [];
+    }
+    if (!coverageCircles) {
+      coverageCircles = [];
+    }
+    if (!coveragePolygons) {
+      coveragePolygons = [];
+    }
     
     try {
       // Etapa 1: Carregando Mapa
@@ -1290,24 +1325,33 @@
       
     } catch (err) {
       console.error('❌ Erro ao inicializar ferramenta:', err);
-      error = 'Erro ao inicializar ferramenta: ' + err.message;
+      console.error('Stack trace:', err.stack);
+      error = 'Erro ao inicializar ferramenta: ' + (err.message || 'Erro desconhecido');
       isLoading = false;
       
       // Tentar inicializar o mapa mesmo com erro
-      await tick();
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Tentar encontrar elemento e inicializar
-      let mapElement = document.getElementById('map-consulta');
-      if (mapElement && !map) {
-        console.log('🔄 Tentando inicializar mapa após erro...');
-        initMap();
+      try {
+        await tick();
+        await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Se conseguiu inicializar, tentar desenhar manchas
-        if (map && allCTOs.length > 0) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          await drawCoverageArea();
+        // Tentar encontrar elemento e inicializar
+        let mapElement = document.getElementById('map-consulta');
+        if (mapElement && !map) {
+          console.log('🔄 Tentando inicializar mapa após erro...');
+          initMap();
+          
+          // Se conseguiu inicializar, tentar desenhar manchas
+          if (map && allCTOs && allCTOs.length > 0) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            try {
+              await drawCoverageArea();
+            } catch (drawErr) {
+              console.error('❌ Erro ao desenhar manchas após erro:', drawErr);
+            }
+          }
         }
+      } catch (recoveryErr) {
+        console.error('❌ Erro ao tentar recuperar:', recoveryErr);
       }
     }
   }
@@ -1554,6 +1598,20 @@
   // Inicializar ferramenta
   onMount(async () => {
     try {
+      // Garantir inicialização de todas as variáveis críticas
+      if (coverageOpacity === undefined || coverageOpacity === null) {
+        coverageOpacity = 0.4;
+      }
+      if (!allCTOs) {
+        allCTOs = [];
+      }
+      if (!coverageCircles) {
+        coverageCircles = [];
+      }
+      if (!coveragePolygons) {
+        coveragePolygons = [];
+      }
+      
       loadResizePreferences();
       
       if (onSettingsRequest && typeof onSettingsRequest === 'function') {
@@ -1566,8 +1624,9 @@
       
       await initializeTool();
     } catch (err) {
-      console.error('Erro ao inicializar ferramenta:', err);
-      error = 'Erro ao inicializar ferramenta: ' + err.message;
+      console.error('❌ Erro crítico ao inicializar ferramenta:', err);
+      console.error('Stack trace:', err.stack);
+      error = 'Erro ao inicializar ferramenta: ' + (err.message || 'Erro desconhecido');
       isLoading = false;
     }
   });
