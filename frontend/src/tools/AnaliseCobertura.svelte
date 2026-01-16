@@ -557,7 +557,7 @@
         return;
       }
 
-      // Os marcadores já foram criados e adicionados ao array searchMarkers
+      // Os marcadores e círculos já foram criados acima
       // Limpar marcador único anterior se existir (compatibilidade)
       if (searchMarker) {
         searchMarker.setMap(null);
@@ -566,6 +566,8 @@
       
       // Aguardar um pouco para garantir que o DOM está atualizado
       await tick();
+      // Não chamar clearMap() aqui, pois já criamos os marcadores e círculos das CTOs pesquisadas
+      // displayResultsOnMap() vai criar os marcadores das CTOs próximas, mas não deve limpar os círculos
       await displayResultsOnMap();
     } catch (err) {
       console.error('Erro ao buscar CTOs:', err);
@@ -723,8 +725,14 @@
     
     console.log(`🗺️ Exibindo ${ctos.length} CTOs no mapa (sem limite)`);
 
-    // Limpar marcadores anteriores
-    clearMap();
+    // Limpar apenas marcadores das CTOs (mantendo círculos e marcadores de busca)
+    // Os círculos e marcadores de busca das CTOs pesquisadas devem ser preservados
+    markers.forEach(marker => {
+      if (marker && marker.setMap) {
+        marker.setMap(null);
+      }
+    });
+    markers = [];
 
     // Evitar múltiplas tentativas simultâneas
     if (isDisplayingMarkers) {
