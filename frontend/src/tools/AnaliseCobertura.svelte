@@ -1347,9 +1347,6 @@
                 rows="3"
                 on:keydown={(e) => e.key === 'Enter' && !e.shiftKey && handleSearch()}
               ></textarea>
-              <small style="color: #666; font-size: 0.75rem; margin-top: 0.25rem; display: block;">
-                Digite uma ou múltiplas CTOs separadas por vírgula, ponto e vírgula ou quebra de linha
-              </small>
             </div>
           {:else if searchMode === 'endereco'}
             <div class="form-group">
