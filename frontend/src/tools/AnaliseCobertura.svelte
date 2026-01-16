@@ -1374,10 +1374,14 @@
                         on:change={(e) => {
                           const isChecked = e.target.checked;
                           // Marcar/desmarcar todas as CTOs
+                          // Criar um novo Map para forçar reatividade do Svelte
+                          const newVisibility = new Map();
                           for (const cto of ctos) {
                             const ctoKey = getCTOKey(cto);
-                            ctoVisibility.set(ctoKey, isChecked);
+                            newVisibility.set(ctoKey, isChecked);
                           }
+                          // Substituir completamente o Map para forçar reatividade
+                          ctoVisibility = newVisibility;
                           // Atualizar mapa
                           displayResultsOnMap();
                         }}
