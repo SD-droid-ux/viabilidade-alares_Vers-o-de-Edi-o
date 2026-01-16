@@ -1343,7 +1343,7 @@
               <textarea 
                 id="nome-cto"
                 bind:value={nomeCTO}
-                placeholder="Ex: CTO123 ou múltiplas: CTO123, CTO456, CTO789"
+                placeholder="Insira uma ou mais CTOs"
                 rows="3"
                 on:keydown={(e) => e.key === 'Enter' && !e.shiftKey && handleSearch()}
               ></textarea>
@@ -1354,7 +1354,7 @@
               <textarea 
                 id="endereco"
                 bind:value={enderecoInput}
-                placeholder="Ex: Rua Exemplo, 123 ou -23.5505, -46.6333&#10;ou múltiplos: -23.5505, -46.6333&#10;-5.8706799321601, -35.19011154"
+                placeholder="Insira um ou mais endereços"
                 rows="3"
                 on:keydown={(e) => e.key === 'Enter' && !e.shiftKey && handleSearch()}
               ></textarea>
