@@ -1539,7 +1539,7 @@
 
   .minimize-button {
     background: transparent;
-    border: 1px solid rgba(100, 149, 237, 0.3);
+    border: 1px solid rgba(123, 104, 238, 0.3);
     cursor: pointer;
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
@@ -1560,11 +1560,14 @@
   .minimize-button:hover {
     opacity: 1;
     background: rgba(100, 149, 237, 0.1);
-    border-color: rgba(100, 149, 237, 0.5);
+    border-color: #7B68EE;
+    color: #4c1d95;
   }
 
   .minimize-button:active {
-    background: rgba(100, 149, 237, 0.15);
+    background: rgba(123, 104, 238, 0.15);
+    border-color: #7B68EE;
+    color: #4c1d95;
     transform: scale(0.95);
   }
 
