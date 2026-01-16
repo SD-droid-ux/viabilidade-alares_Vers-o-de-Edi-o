@@ -230,6 +230,9 @@
 
   // Array para armazenar múltiplos marcadores de busca
   let searchMarkers = [];
+  
+  // Array para armazenar círculos de raio de 250m das CTOs pesquisadas
+  let radiusCircles = [];
 
   // Limpar marcadores do mapa
   function clearMap() {
@@ -248,6 +251,14 @@
       }
     });
     searchMarkers = [];
+    
+    // Limpar círculos de raio de 250m
+    radiusCircles.forEach(circle => {
+      if (circle && circle.setMap) {
+        circle.setMap(null);
+      }
+    });
+    radiusCircles = [];
     
     // Limpar marcador único anterior (compatibilidade)
     if (searchMarker) {
@@ -416,7 +427,23 @@
             zIndex: 999
           });
           searchMarkers.push(marker);
+          
+          // Criar círculo de raio de 250m para cada CTO pesquisada (cor do projeto)
+          const circle = new google.maps.Circle({
+            strokeColor: '#7B68EE', // Cor da borda (roxo do projeto)
+            strokeOpacity: 0.8,
+            strokeWeight: 2,
+            fillColor: '#6495ED', // Cor de preenchimento (azul do projeto)
+            fillOpacity: 0.15, // Transparência para permitir ver as CTOs dentro
+            map: map,
+            center: { lat, lng },
+            radius: 250, // Raio de 250 metros
+            zIndex: 1 // Abaixo dos marcadores
+          });
+          radiusCircles.push(circle);
         }
+        
+        console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para CTOs pesquisadas`);
       }
 
       // ETAPA 2: Para CADA CTO pesquisada, buscar todas as próximas dentro de 250m
