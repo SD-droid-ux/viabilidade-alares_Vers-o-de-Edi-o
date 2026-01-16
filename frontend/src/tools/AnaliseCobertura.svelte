@@ -42,7 +42,26 @@
   
   // Mapa para controlar quais CTOs estão visíveis no mapa (key: identificador único da CTO)
   let ctoVisibility = new Map(); // Map<ctoKey, boolean>
-
+  
+  // Função para gerar uma chave única para uma CTO (declarada aqui para uso nos reactive statements)
+  function getCTOKey(cto) {
+    // Usar nome + coordenadas para criar chave única
+    const lat = parseFloat(cto.latitude || 0).toFixed(6);
+    const lng = parseFloat(cto.longitude || 0).toFixed(6);
+    return `${cto.nome || 'UNKNOWN'}_${lat}_${lng}`;
+  }
+  
+  // Estados reativos para checkbox "marcar todos"
+  $: allCTOsVisible = ctos.length > 0 && ctos.every(cto => {
+    const ctoKey = getCTOKey(cto);
+    return ctoVisibility.get(ctoKey) !== false;
+  });
+  
+  $: someCTOsVisible = ctos.length > 0 && ctos.some(cto => {
+    const ctoKey = getCTOKey(cto);
+    return ctoVisibility.get(ctoKey) === true;
+  }) && !allCTOsVisible;
+  
   // Redimensionamento de boxes - usar variáveis que o Svelte detecta como reativas
   let sidebarWidth = 400; // Largura inicial da sidebar em pixels (aumentada para melhor visibilidade)
   let mapHeightPixels = 400; // Altura inicial do mapa em pixels
@@ -307,14 +326,6 @@
       Math.sin(dLng / 2) * Math.sin(dLng / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c; // Distância em metros
-  }
-
-  // Função para gerar uma chave única para uma CTO
-  function getCTOKey(cto) {
-    // Usar nome + coordenadas para criar chave única
-    const lat = parseFloat(cto.latitude || 0).toFixed(6);
-    const lng = parseFloat(cto.longitude || 0).toFixed(6);
-    return `${cto.nome || 'UNKNOWN'}_${lat}_${lng}`;
   }
 
   // Função para verificar se uma CTO já está na lista (evitar duplicatas)
@@ -1355,7 +1366,26 @@
               <table class="results-table">
                 <thead>
                   <tr>
-                    <th style="width: 50px;"></th>
+                    <th style="width: 50px; text-align: center; padding: 0.5rem;">
+                      <input 
+                        type="checkbox" 
+                        checked={allCTOsVisible}
+                        indeterminate={someCTOsVisible}
+                        on:change={(e) => {
+                          const isChecked = e.target.checked;
+                          // Marcar/desmarcar todas as CTOs
+                          for (const cto of ctos) {
+                            const ctoKey = getCTOKey(cto);
+                            ctoVisibility.set(ctoKey, isChecked);
+                          }
+                          // Atualizar mapa
+                          displayResultsOnMap();
+                        }}
+                        style="cursor: pointer; width: 18px; height: 18px;"
+                        aria-label="Marcar/desmarcar todas as CTOs"
+                        title="Marcar/desmarcar todas as CTOs"
+                      />
+                    </th>
                     <th>CTO</th>
                     <th>Cidade</th>
                     <th>POP</th>
