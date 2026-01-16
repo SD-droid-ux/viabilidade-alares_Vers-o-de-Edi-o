@@ -127,55 +127,72 @@
   // Carregar todas as CTOs da base de dados
   async function loadAllCTOs() {
     try {
-      loadingMessage = 'Carregando CTOs da base de dados...';
-      console.log('📥 Carregando todas as CTOs...');
+      loadingMessage = 'Carregando todas as CTOs da base de dados...';
+      console.log('📥 Carregando TODAS as CTOs da base de dados...');
       
-      // Estratégia: buscar CTOs em lotes por regiões do Brasil
-      // Vou fazer múltiplas buscas cobrindo o território brasileiro
+      // Estratégia: buscar CTOs em lotes cobrindo TODO o território brasileiro
+      // Usando raios grandes (1000km) em pontos estratégicos para garantir cobertura completa
       const regions = [
-        // Região Nordeste (incluindo Fortaleza)
-        { lat: -3.7172, lng: -38.5433, radius: 500000 }, // Fortaleza e região
-        { lat: -8.0476, lng: -34.8770, radius: 500000 }, // Recife e região
-        { lat: -12.9714, lng: -38.5014, radius: 500000 }, // Salvador e região
+        // Região Nordeste
+        { lat: -3.7172, lng: -38.5433, radius: 1000000, name: 'Fortaleza' }, // 1000km
+        { lat: -8.0476, lng: -34.8770, radius: 1000000, name: 'Recife' },
+        { lat: -12.9714, lng: -38.5014, radius: 1000000, name: 'Salvador' },
+        { lat: -5.7950, lng: -35.2094, radius: 1000000, name: 'Natal' },
+        { lat: -7.2400, lng: -39.4200, radius: 1000000, name: 'Juazeiro do Norte' },
         // Região Sudeste
-        { lat: -23.5505, lng: -46.6333, radius: 500000 }, // São Paulo e região
-        { lat: -22.9068, lng: -43.1729, radius: 500000 }, // Rio de Janeiro e região
+        { lat: -23.5505, lng: -46.6333, radius: 1000000, name: 'São Paulo' },
+        { lat: -22.9068, lng: -43.1729, radius: 1000000, name: 'Rio de Janeiro' },
+        { lat: -19.9167, lng: -43.9345, radius: 1000000, name: 'Belo Horizonte' },
+        { lat: -20.3155, lng: -40.3128, radius: 1000000, name: 'Vitória' },
         // Região Sul
-        { lat: -30.0346, lng: -51.2177, radius: 500000 }, // Porto Alegre e região
-        { lat: -25.4284, lng: -49.2733, radius: 500000 }, // Curitiba e região
+        { lat: -30.0346, lng: -51.2177, radius: 1000000, name: 'Porto Alegre' },
+        { lat: -25.4284, lng: -49.2733, radius: 1000000, name: 'Curitiba' },
+        { lat: -27.5954, lng: -48.5480, radius: 1000000, name: 'Florianópolis' },
         // Região Centro-Oeste
-        { lat: -15.7942, lng: -47.8822, radius: 500000 }, // Brasília e região
+        { lat: -15.7942, lng: -47.8822, radius: 1000000, name: 'Brasília' },
+        { lat: -20.4428, lng: -54.6458, radius: 1000000, name: 'Campo Grande' },
+        { lat: -16.6864, lng: -49.2643, radius: 1000000, name: 'Goiânia' },
         // Região Norte
-        { lat: -3.1190, lng: -60.0217, radius: 500000 }, // Manaus e região
-        { lat: -1.4558, lng: -48.5044, radius: 500000 }, // Belém e região
+        { lat: -3.1190, lng: -60.0217, radius: 1000000, name: 'Manaus' },
+        { lat: -1.4558, lng: -48.5044, radius: 1000000, name: 'Belém' },
+        { lat: -8.7619, lng: -63.9039, radius: 1000000, name: 'Porto Velho' },
+        { lat: -10.1833, lng: -48.3336, radius: 1000000, name: 'Palmas' },
+        { lat: -9.9747, lng: -67.8100, radius: 1000000, name: 'Rio Branco' },
+        // Pontos adicionais para garantir cobertura completa
+        { lat: -14.2350, lng: -42.4333, radius: 1000000, name: 'Centro-Norte' },
+        { lat: -7.2300, lng: -36.8300, radius: 1000000, name: 'Interior Nordeste' },
       ];
 
       const allCTOsMap = new Map(); // Usar Map para evitar duplicatas por coordenadas
       let totalFound = 0;
+      let regionsProcessed = 0;
 
       // Buscar CTOs em paralelo para todas as regiões
       const regionPromises = regions.map(async (region) => {
         try {
+          console.log(`🔍 Buscando CTOs na região de ${region.name} (raio: ${region.radius/1000}km)...`);
           const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${region.lat}&lng=${region.lng}&radius=${region.radius}`));
           if (!response.ok) {
-            console.warn(`⚠️ Erro ao buscar CTOs na região ${region.lat}, ${region.lng}`);
-            return [];
+            console.warn(`⚠️ Erro ao buscar CTOs na região ${region.name}`);
+            return { region: region.name, ctos: [] };
           }
           const data = await response.json();
           if (data.success && data.ctos) {
-            return data.ctos;
+            console.log(`✅ ${data.ctos.length} CTOs encontradas na região de ${region.name}`);
+            return { region: region.name, ctos: data.ctos };
           }
-          return [];
+          return { region: region.name, ctos: [] };
         } catch (err) {
-          console.warn(`⚠️ Erro ao buscar CTOs na região ${region.lat}, ${region.lng}:`, err);
-          return [];
+          console.warn(`⚠️ Erro ao buscar CTOs na região ${region.name}:`, err);
+          return { region: region.name, ctos: [] };
         }
       });
 
       const regionResults = await Promise.all(regionPromises);
 
       // Consolidar todas as CTOs (evitando duplicatas)
-      for (const ctos of regionResults) {
+      for (const { region, ctos } of regionResults) {
+        regionsProcessed++;
         for (const cto of ctos) {
           if (!cto.latitude || !cto.longitude) continue;
           
@@ -188,7 +205,8 @@
       }
 
       allCTOs = Array.from(allCTOsMap.values());
-      console.log(`✅ ${allCTOs.length} CTOs únicas carregadas`);
+      console.log(`✅ ${allCTOs.length} CTOs únicas carregadas de ${regionsProcessed} regiões processadas`);
+      console.log(`📊 Total de CTOs na base: ${allCTOs.length}`);
       
       return allCTOs;
     } catch (err) {
@@ -244,23 +262,36 @@
 
     console.log(`✅ ${circlesCreated} círculos de cobertura criados`);
 
-    // Ajustar zoom para mostrar toda a área coberta
+    // Ajustar zoom para mostrar toda a área coberta (todas as manchas)
     if (circlesCreated > 0) {
       try {
         google.maps.event.trigger(map, 'resize');
         setTimeout(() => {
           if (map && bounds && !bounds.isEmpty()) {
+            // Ajustar zoom para mostrar TODA a área coberta por todas as CTOs
             map.fitBounds(bounds, {
               top: 50,
               right: 50,
               bottom: 50,
               left: 50
             });
-            console.log('✅ Zoom ajustado para mostrar toda a área de cobertura');
+            console.log(`✅ Zoom ajustado para mostrar toda a área de cobertura (${circlesCreated} círculos)`);
+          } else {
+            // Fallback: centralizar no Brasil se bounds estiver vazio
+            map.setCenter({ lat: -14.2350, lng: -51.9253 }); // Centro geográfico do Brasil
+            map.setZoom(5);
+            console.log('✅ Zoom ajustado para centro do Brasil (fallback)');
           }
         }, 500);
       } catch (err) {
         console.warn('Erro ao ajustar zoom:', err);
+        // Fallback: centralizar no Brasil
+        try {
+          map.setCenter({ lat: -14.2350, lng: -51.9253 });
+          map.setZoom(5);
+        } catch (fallbackErr) {
+          console.error('Erro no fallback de zoom:', fallbackErr);
+        }
       }
     }
   }
@@ -341,17 +372,17 @@
       await loadGoogleMaps();
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Etapa 2: Carregando CTOs
-      loadingMessage = 'Carregando CTOs da base de dados';
+      // Etapa 2: Carregando TODAS as CTOs
+      loadingMessage = 'Carregando todas as CTOs da base de dados...';
       await loadAllCTOs();
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Etapa 3: Ajuste Finais
-      loadingMessage = 'Ajuste Finais';
+      // Etapa 3: Desenhando mancha de cobertura
+      loadingMessage = 'Desenhando mancha de cobertura...';
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Etapa 4: Abrindo Ferramenta
-      loadingMessage = 'Abrindo Ferramenta';
+      // Etapa 4: Finalizando
+      loadingMessage = 'Finalizando...';
       await new Promise(resolve => setTimeout(resolve, 500));
       
       isLoading = false;
