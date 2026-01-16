@@ -719,6 +719,22 @@
             },
             zIndex: 999
           });
+          
+          // Criar círculo de raio de 250m a partir do ponto pesquisado (cor do projeto)
+          const circle = new google.maps.Circle({
+            strokeColor: '#7B68EE', // Cor da borda (roxo do projeto)
+            strokeOpacity: 0.8,
+            strokeWeight: 2,
+            fillColor: '#6495ED', // Cor de preenchimento (azul do projeto)
+            fillOpacity: 0.15, // Transparência para permitir ver as CTOs dentro
+            map: map,
+            center: { lat, lng },
+            radius: 250, // Raio de 250 metros
+            zIndex: 1 // Abaixo dos marcadores
+          });
+          radiusCircles.push(circle);
+          
+          console.log(`✅ Círculo de raio de 250m criado para ponto pesquisado`);
         }
         
         // Aguardar um pouco para garantir que o DOM está atualizado
