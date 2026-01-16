@@ -1358,9 +1358,6 @@
                 rows="3"
                 on:keydown={(e) => e.key === 'Enter' && !e.shiftKey && handleSearch()}
               ></textarea>
-              <small style="color: #666; font-size: 0.75rem; margin-top: 0.25rem; display: block;">
-                Digite um ou múltiplos endereços/coordenadas separados por vírgula, ponto e vírgula ou quebra de linha. Formato: lat, lng
-              </small>
             </div>
           {/if}
 
