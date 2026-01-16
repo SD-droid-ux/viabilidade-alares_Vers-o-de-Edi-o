@@ -59,9 +59,15 @@
   let isSearchPanelMinimized = false;
   let isMapMinimized = false;
   
+  // Controles de visualização
+  let coverageOpacity = 0.4; // Opacidade das manchas (0-1)
+  let showLegend = true; // Mostrar legenda
+  let showStats = true; // Mostrar estatísticas
+  
   // Reactive statements
   $: sidebarWidthStyle = `${sidebarWidth}px`;
   $: mapHeightStyle = `${mapHeightPixels}px`;
+  $: coverageOpacityPercent = Math.round(coverageOpacity * 100);
 
   // Função para abrir configurações
   function openSettings() {
@@ -147,26 +153,8 @@
   // Carregar todas as CTOs da base de dados usando grade para garantir cobertura completa
   async function loadAllCTOs() {
     try {
-      loadingMessage = 'Verificando total de CTOs na base de dados...';
-      console.log('📥 Carregando TODAS as CTOs da base de dados usando grade...');
-      
-      // ETAPA 1: Verificar total de CTOs no Supabase (se possível)
-      let expectedTotal = null;
-      try {
-        loadingMessage = 'Verificando total de CTOs no Supabase...';
-        // Tentar obter uma estimativa do total fazendo uma busca ampla
-        const testResponse = await fetch(getApiUrl('/api/ctos/nearby?lat=-14.2350&lng=-51.9253&radius=5000000'));
-        if (testResponse.ok) {
-          const testData = await testResponse.json();
-          if (testData.success && testData.count !== undefined) {
-            console.log(`📊 Total aproximado de CTOs na base: ${testData.count} (pode ser maior devido ao limite da API)`);
-          }
-        }
-      } catch (err) {
-        console.warn('⚠️ Não foi possível verificar total de CTOs:', err);
-      }
-      
       loadingMessage = 'Criando grade de cobertura completa...';
+      console.log('📥 Carregando TODAS as CTOs da base de dados usando grade otimizada...');
       
       // Estratégia: Dividir o Brasil em uma grade de células menores
       // Isso garante que pegamos TODAS as CTOs, mesmo que a API tenha limite de 1000 resultados
@@ -178,11 +166,12 @@
         maxLng: -34.7
       };
       
-      // Tamanho da célula: 100km x 100km (raio de 50km por célula)
-      // Células menores garantem cobertura completa e evitam perda de CTOs
-      // Mesmo que demore mais, garante que TODAS as ~220.000 CTOs sejam carregadas
-      const CELL_SIZE_KM = 100;
-      const CELL_RADIUS_M = (CELL_SIZE_KM / 2) * 1000; // Raio em metros (50km)
+      // Tamanho da célula: 200km x 200km (raio de 100km por célula)
+      // Células maiores = menos requisições = carregamento mais rápido
+      // IMPORTANTE: Usar raio maior que metade da célula para garantir sobreposição
+      // Isso garante que nenhuma CTO seja perdida nas bordas
+      const CELL_SIZE_KM = 200;
+      const CELL_RADIUS_M = (CELL_SIZE_KM / 2) * 1000 * 1.2; // Raio 20% maior para sobreposição (120km)
       const CELL_SIZE_DEG = CELL_SIZE_KM / 111; // Aproximação: 1 grau ≈ 111km
       
       // Calcular número de células necessárias
@@ -220,9 +209,9 @@
       const cellsWithErrors = []; // Células que tiveram erros
       let totalCTOsLoaded = 0;
       
-      // Processar células em lotes para não sobrecarregar a API
-      // Lotes menores para garantir que cada requisição seja processada corretamente
-      const BATCH_SIZE = 15; // Processar 15 células por vez (reduzido para melhor qualidade)
+      // Processar células em lotes maiores para acelerar o carregamento
+      // Lotes maiores = menos pausas = carregamento mais rápido
+      const BATCH_SIZE = 30; // Processar 30 células por vez (aumentado para velocidade)
       for (let batchStart = 0; batchStart < cells.length; batchStart += BATCH_SIZE) {
         const batch = cells.slice(batchStart, batchStart + BATCH_SIZE);
         loadingMessage = `Carregando CTOs... ${cellsProcessed}/${cells.length} células processadas (${totalCTOsLoaded.toLocaleString('pt-BR')} CTOs carregadas)`;
@@ -285,9 +274,9 @@
           }
         }
         
-        // Pausa entre lotes para não sobrecarregar a API e garantir qualidade
+        // Pausa mínima entre lotes para não sobrecarregar a API
         if (batchStart + BATCH_SIZE < cells.length) {
-          await new Promise(resolve => setTimeout(resolve, 150));
+          await new Promise(resolve => setTimeout(resolve, 50)); // Reduzido de 150ms para 50ms
         }
       }
       
@@ -298,9 +287,10 @@
         loadingMessage = `Processando células com muitas CTOs... ${cellsWithLimit.length} células para subdividir`;
         
         for (const limitedCell of cellsWithLimit) {
-          // Subdividir a célula em 4 células menores (25km x 25km cada)
+          // Subdividir a célula em 4 células menores (100km x 100km cada)
+          // Com sobreposição para garantir que todas as CTOs sejam capturadas
           const subCellSize = CELL_SIZE_KM / 2;
-          const subCellRadius = (subCellSize / 2) * 1000;
+          const subCellRadius = (subCellSize / 2) * 1000 * 1.2; // 20% maior para sobreposição
           const subCellSizeDeg = subCellSize / 111;
           
           const subCells = [
@@ -338,7 +328,7 @@
             } catch (err) {
               console.warn(`   ⚠️ Erro ao processar subcélula:`, err);
             }
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 50)); // Reduzido para acelerar
           }
         }
       }
@@ -373,7 +363,7 @@
           } catch (err) {
             console.error(`   ❌ Erro persistente na célula ${errorCell.index}:`, err);
           }
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, 50)); // Reduzido para acelerar
         }
       }
 
@@ -458,11 +448,11 @@
       const lng = parseFloat(cto.longitude);
       
       const circle = new google.maps.Circle({
-        strokeColor: '#7B68EE',
-        strokeOpacity: 0.7,
-        strokeWeight: 1.5,
-        fillColor: '#6495ED',
-        fillOpacity: 0.4, // Aumentada para melhor visibilidade
+        strokeColor: '#8B7AE8', // Roxo mais suave
+        strokeOpacity: 0.8,
+        strokeWeight: 1.2,
+        fillColor: '#6B8DD6', // Azul mais suave
+        fillOpacity: coverageOpacity,
         map: map,
         center: { lat, lng },
         radius: 250,
@@ -491,9 +481,9 @@
       circleCenters.push({ lat, lng });
       circles.push({ lat, lng, radius: RADIUS_DEG });
       
-      // Criar pontos ao redor do círculo (32 pontos para máxima suavidade e detalhe)
-      // Mais pontos = manchas mais suaves e precisas
-      const pointsPerCircle = 32;
+      // Criar pontos ao redor do círculo (64 pontos para máxima suavidade e detalhe)
+      // Muito mais pontos = manchas super suaves como na imagem
+      const pointsPerCircle = 64;
       const latRadius = RADIUS_DEG;
       const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
       
@@ -526,9 +516,32 @@
       }
     }
     
-    // Calcular o convex hull (envoltória convexa) dos pontos
+    // Filtrar pontos que estão dentro de outros círculos (não são parte da borda externa)
+    // Isso cria formas não-convexas mais naturais
+    const boundaryPoints = allPoints.filter(point => {
+      // Verificar se este ponto está na borda externa (não dentro de todos os círculos)
+      let isInsideAll = true;
+      for (const circle of circles) {
+        const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
+        const distDeg = dist / 111000;
+        const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
+        
+        // Se o ponto está fora deste círculo, não está dentro de todos
+        if (distDeg > circleRadius * 1.05) { // 5% de margem
+          isInsideAll = false;
+          break;
+        }
+      }
+      // Manter pontos que NÃO estão dentro de todos os círculos (são parte da borda)
+      return !isInsideAll;
+    });
+    
+    // Se não temos pontos suficientes na borda, usar todos os pontos
+    const pointsToUse = boundaryPoints.length >= 3 ? boundaryPoints : allPoints;
+    
+    // Calcular o convex hull (envoltória convexa) dos pontos da borda
     // Isso cria um polígono que envolve todos os círculos de forma natural e precisa
-    const hull = computeConvexHull(allPoints);
+    const hull = computeConvexHull(pointsToUse);
     
     // Se o convex hull falhar ou tiver poucos pontos, usar bounding box expandido
     if (!hull || hull.length < 3) {
@@ -552,29 +565,31 @@
       
       return new google.maps.Polygon({
         paths: polygonPath,
-        strokeColor: '#7B68EE',
-        strokeOpacity: 0.7,
-        strokeWeight: 1.5,
-        fillColor: '#6495ED',
-        fillOpacity: 0.4, // Aumentada para melhor visibilidade
+        strokeColor: '#8B7AE8', // Roxo mais suave
+        strokeOpacity: 0.8,
+        strokeWeight: 1.2,
+        fillColor: '#6B8DD6', // Azul mais suave
+        fillOpacity: coverageOpacity,
         map: map,
         zIndex: 1,
-        geodesic: true // Usar geodésico para melhor precisão
+        geodesic: true
       });
     }
     
-    // Criar polígono com o convex hull refinado
-    // Usar cores mais suaves e opacidade ajustada para melhor visualização
+    // Suavizar o polígono adicionando pontos intermediários para bordas mais suaves
+    const smoothedHull = smoothPolygonEdges(hull);
+    
+    // Criar polígono com forma suave e natural
     const polygon = new google.maps.Polygon({
-      paths: hull,
-      strokeColor: '#7B68EE',
-      strokeOpacity: 0.7,
-      strokeWeight: 1.5,
-      fillColor: '#6495ED',
-      fillOpacity: 0.4, // Aumentada para melhor visibilidade
+      paths: smoothedHull,
+      strokeColor: '#8B7AE8', // Roxo mais suave e profissional
+      strokeOpacity: 0.8,
+      strokeWeight: 1.2,
+      fillColor: '#6B8DD6', // Azul mais suave e profissional
+      fillOpacity: coverageOpacity,
       map: map,
       zIndex: 1,
-      geodesic: true // Usar geodésico para melhor precisão em grandes áreas
+      geodesic: true
     });
     
     return polygon;
@@ -628,6 +643,34 @@
   // Função auxiliar para calcular o produto vetorial (cross product)
   function crossProduct(o, a, b) {
     return (a.lng - o.lng) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lng - o.lng);
+  }
+  
+  // Função para suavizar bordas do polígono adicionando pontos intermediários
+  function smoothPolygonEdges(points) {
+    if (points.length < 3) return points;
+    
+    const smoothed = [];
+    const smoothingSteps = 2; // Número de pontos intermediários por aresta
+    
+    for (let i = 0; i < points.length; i++) {
+      const current = points[i];
+      const next = points[(i + 1) % points.length];
+      
+      // Adicionar ponto atual
+      smoothed.push(current);
+      
+      // Adicionar pontos intermediários suavizados
+      for (let step = 1; step <= smoothingSteps; step++) {
+        const t = step / (smoothingSteps + 1);
+        // Interpolação linear com suavização
+        const smoothT = t * t * (3 - 2 * t); // Função de suavização (smoothstep)
+        const midLat = current.lat + (next.lat - current.lat) * smoothT;
+        const midLng = current.lng + (next.lng - current.lng) * smoothT;
+        smoothed.push({ lat: midLat, lng: midLng });
+      }
+    }
+    
+    return smoothed;
   }
   
   // Função auxiliar para calcular pontos de interseção entre dois círculos
@@ -892,16 +935,16 @@
 
             try {
               const circle = new google.maps.Circle({
-                strokeColor: '#7B68EE',
-                strokeOpacity: 0.7,
-                strokeWeight: 1.5,
-                fillColor: '#6495ED',
-                fillOpacity: 0.4, // Aumentada para melhor visibilidade
+                strokeColor: '#8B7AE8', // Roxo mais suave
+                strokeOpacity: 0.8,
+                strokeWeight: 1.2,
+                fillColor: '#6B8DD6', // Azul mais suave
+                fillOpacity: coverageOpacity,
                 map: map,
                 center: { lat, lng },
                 radius: 250,
                 zIndex: 1,
-                optimized: false // Desabilitar otimização para garantir visibilidade
+                optimized: false
               });
 
               coverageCircles.push(circle);
@@ -1035,6 +1078,23 @@
   }
 
   // Limpar círculos e polígonos de cobertura
+  // Função para atualizar opacidade das manchas
+  function updateCoverageOpacity() {
+    // Atualizar opacidade de todos os círculos
+    coverageCircles.forEach(circle => {
+      if (circle && circle.setOptions) {
+        circle.setOptions({ fillOpacity: coverageOpacity });
+      }
+    });
+    
+    // Atualizar opacidade de todos os polígonos
+    coveragePolygons.forEach(polygon => {
+      if (polygon && polygon.setOptions) {
+        polygon.setOptions({ fillOpacity: coverageOpacity });
+      }
+    });
+  }
+  
   function clearCoverageCircles() {
     coverageCircles.forEach(circle => {
       if (circle && circle.setMap) {
@@ -1621,23 +1681,41 @@
 
           {#if allCTOs.length > 0}
             <div class="results-summary">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <span>📍</span>
-                <div style="flex: 1;">
-                  <div style="font-weight: 600; margin-bottom: 4px;">
-                    {allCTOs.length.toLocaleString('pt-BR')} CTOs carregadas
+              <div class="stats-card">
+                <div class="stats-header">
+                  <span class="stats-icon">📍</span>
+                  <div class="stats-content">
+                    <div class="stats-title">
+                      {allCTOs.length.toLocaleString('pt-BR')} CTOs
+                    </div>
+                    <div class="stats-subtitle">carregadas na base</div>
                   </div>
-                  {#if loadingStats.cellsWithLimit > 0}
-                    <div style="font-size: 0.85em; color: #ff9800; margin-top: 4px;">
-                      ⚠️ {loadingStats.cellsWithLimit} áreas com alta densidade processadas
-                    </div>
-                  {/if}
-                  {#if loadingStats.totalCells > 0}
-                    <div style="font-size: 0.85em; color: #666; margin-top: 2px;">
-                      {loadingStats.cellsProcessed}/{loadingStats.totalCells} células analisadas
-                    </div>
-                  {/if}
                 </div>
+                {#if loadingStats.totalCells > 0}
+                  <div class="stats-detail">
+                    {loadingStats.cellsProcessed}/{loadingStats.totalCells} células analisadas
+                  </div>
+                {/if}
+              </div>
+            </div>
+            
+            <!-- Controles de Visualização -->
+            <div class="visualization-controls">
+              <div class="control-group">
+                <label for="opacity-slider" class="control-label">
+                  <span>Opacidade das Manchas</span>
+                  <span class="control-value">{coverageOpacityPercent}%</span>
+                </label>
+                <input 
+                  type="range" 
+                  id="opacity-slider"
+                  min="0.1" 
+                  max="0.8" 
+                  step="0.05"
+                  bind:value={coverageOpacity}
+                  on:input={updateCoverageOpacity}
+                  class="opacity-slider"
+                />
               </div>
             </div>
           {/if}
@@ -1689,6 +1767,50 @@
             </button>
           </div>
           <div id="map-consulta" class="map" class:hidden={isMapMinimized} bind:this={mapElement}></div>
+          
+          <!-- Legenda Profissional -->
+          {#if showLegend && allCTOs.length > 0 && !isMapMinimized}
+            <div class="map-legend">
+              <div class="legend-header">
+                <h4>Legenda</h4>
+                <button class="legend-toggle" on:click={() => showLegend = false} title="Ocultar legenda">
+                  ✕
+                </button>
+              </div>
+              <div class="legend-content">
+                <div class="legend-item">
+                  <div class="legend-color" style="background: linear-gradient(135deg, #6B8DD6 0%, #8B7AE8 100%); opacity: {coverageOpacity};"></div>
+                  <div class="legend-text">
+                    <strong>Área de Cobertura</strong>
+                    <span>Raio de 250m por CTO</span>
+                  </div>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-color" style="background: #4285F4; border: 2px solid #fff;"></div>
+                  <div class="legend-text">
+                    <strong>Localização Buscada</strong>
+                    <span>Marcador azul</span>
+                  </div>
+                </div>
+              </div>
+              <div class="legend-footer">
+                <div class="legend-stats">
+                  <div class="legend-stat">
+                    <span class="stat-number">{coveragePolygons.length}</span>
+                    <span class="stat-label">Polígonos</span>
+                  </div>
+                  <div class="legend-stat">
+                    <span class="stat-number">{coverageCircles.length}</span>
+                    <span class="stat-label">Círculos</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          {:else if !showLegend && allCTOs.length > 0 && !isMapMinimized}
+            <button class="legend-toggle-button" on:click={() => showLegend = true} title="Mostrar legenda">
+              📊
+            </button>
+          {/if}
         </div>
       </main>
     </div>
@@ -1983,14 +2105,264 @@
   }
 
   .results-summary {
-    padding: 0.75rem;
-    background: #dcfce7;
-    border: 1px solid #bbf7d0;
-    border-radius: 8px;
-    color: #166534;
+    margin-top: 1rem;
+  }
+  
+  .stats-card {
+    background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+    border: 2px solid #e0e7ff;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 8px rgba(123, 104, 238, 0.1);
+  }
+  
+  .stats-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  
+  .stats-icon {
+    font-size: 2rem;
+    line-height: 1;
+  }
+  
+  .stats-content {
+    flex: 1;
+  }
+  
+  .stats-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #4c1d95;
+    line-height: 1.2;
+  }
+  
+  .stats-subtitle {
     font-size: 0.875rem;
-    font-weight: 500;
-    text-align: center;
+    color: #6b7280;
+    margin-top: 0.25rem;
+  }
+  
+  .stats-detail {
+    font-size: 0.8125rem;
+    color: #6b7280;
+    padding-top: 0.75rem;
+    border-top: 1px solid #e5e7eb;
+    margin-top: 0.75rem;
+  }
+  
+  .visualization-controls {
+    margin-top: 1.5rem;
+    padding: 1.25rem;
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+  
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  
+  .control-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    color: #374151;
+    font-size: 0.9375rem;
+  }
+  
+  .control-value {
+    color: #7B68EE;
+    font-weight: 700;
+    font-size: 1rem;
+  }
+  
+  .opacity-slider {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: #e5e7eb;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  
+  .opacity-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6495ED 0%, #7B68EE 100%);
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(123, 104, 238, 0.4);
+    transition: all 0.2s;
+  }
+  
+  .opacity-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.1);
+    box-shadow: 0 3px 8px rgba(123, 104, 238, 0.5);
+  }
+  
+  .opacity-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6495ED 0%, #7B68EE 100%);
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 6px rgba(123, 104, 238, 0.4);
+    transition: all 0.2s;
+  }
+  
+  .opacity-slider::-moz-range-thumb:hover {
+    transform: scale(1.1);
+    box-shadow: 0 3px 8px rgba(123, 104, 238, 0.5);
+  }
+  
+  .map-legend {
+    position: absolute;
+    top: 80px;
+    right: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    padding: 1.25rem;
+    min-width: 240px;
+    z-index: 1000;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+  }
+  
+  .legend-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid #e5e7eb;
+  }
+  
+  .legend-header h4 {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #1f2937;
+  }
+  
+  .legend-toggle {
+    background: transparent;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    font-size: 1.125rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+  }
+  
+  .legend-toggle:hover {
+    background: #f3f4f6;
+    color: #374151;
+  }
+  
+  .legend-content {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .legend-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  
+  .legend-color {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .legend-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  
+  .legend-text strong {
+    font-size: 0.9375rem;
+    color: #1f2937;
+    font-weight: 600;
+  }
+  
+  .legend-text span {
+    font-size: 0.8125rem;
+    color: #6b7280;
+  }
+  
+  .legend-footer {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 2px solid #e5e7eb;
+  }
+  
+  .legend-stats {
+    display: flex;
+    gap: 1rem;
+    justify-content: space-around;
+  }
+  
+  .legend-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  
+  .stat-number {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #7B68EE;
+    line-height: 1;
+  }
+  
+  .stat-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  .legend-toggle-button {
+    position: absolute;
+    top: 80px;
+    right: 20px;
+    background: white;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 0.75rem;
+    cursor: pointer;
+    font-size: 1.25rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s;
+    z-index: 1000;
+  }
+  
+  .legend-toggle-button:hover {
+    background: #f9fafb;
+    border-color: #7B68EE;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(123, 104, 238, 0.2);
   }
 
   .main-area {
