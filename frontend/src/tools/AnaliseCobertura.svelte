@@ -923,6 +923,9 @@
     e.preventDefault();
     e.stopPropagation();
     
+    // Se o painel estiver minimizado, não permitir redimensionamento manual
+    if (isSearchPanelMinimized) return;
+    
     const clientX = e.clientX || e.touches?.[0]?.clientX || resizeStartX;
     const deltaX = clientX - resizeStartX;
     const newWidth = resizeStartSidebarWidth + deltaX;
@@ -1103,17 +1106,22 @@
   {:else}
     <div class="main-layout">
       <!-- Painel de Busca -->
-      <aside class="search-panel" class:minimized={isSearchPanelMinimized} style="width: {sidebarWidthStyle} !important; flex: 0 0 auto;">
+      <aside class="search-panel" class:minimized={isSearchPanelMinimized} style="width: {isSearchPanelMinimized ? '60px' : sidebarWidthStyle} !important; flex: 0 0 auto;">
         <div class="panel-header">
           <div class="panel-header-content">
-            <h2>📡 Análise de Cobertura</h2>
+            {#if !isSearchPanelMinimized}
+              <h2>📡 Análise de Cobertura</h2>
+            {:else}
+              <h2 class="vertical-title">📡</h2>
+            {/if}
             <button 
               class="minimize-button" 
+              disabled={isResizingSidebar || isResizingMapTable}
               on:click={() => isSearchPanelMinimized = !isSearchPanelMinimized}
               aria-label={isSearchPanelMinimized ? 'Expandir painel de busca' : 'Minimizar painel de busca'}
               title={isSearchPanelMinimized ? 'Expandir' : 'Minimizar'}
             >
-              {isSearchPanelMinimized ? '⬆️' : '⬇️'}
+              {isSearchPanelMinimized ? '➡️' : '⬅️'}
             </button>
           </div>
           {#if !isSearchPanelMinimized}
@@ -1219,6 +1227,7 @@
             <h3>🗺️ Mapa</h3>
             <button 
               class="minimize-button" 
+              disabled={isResizingSidebar || isResizingMapTable}
               on:click={async () => {
                 isMapMinimized = !isMapMinimized;
                 if (!isMapMinimized && map && google?.maps) {
@@ -1259,6 +1268,7 @@
               <h3>Resultados ({ctos.length})</h3>
               <button 
                 class="minimize-button" 
+                disabled={isResizingSidebar || isResizingMapTable}
                 on:click={() => isTableMinimized = !isTableMinimized}
                 aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
                 title={isTableMinimized ? 'Expandir' : 'Minimizar'}
@@ -1413,13 +1423,57 @@
     box-shadow: 0 2px 4px rgba(100, 149, 237, 0.2);
   }
 
-  .search-panel.minimized {
-    padding: 1rem 1.5rem;
-    overflow: hidden;
+  .minimize-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
   }
 
-  .search-panel.minimized .panel-header-content h2 {
+  .vertical-title {
     margin: 0;
+    color: #4c1d95;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  .search-panel.minimized {
+    padding: 1rem 0.75rem;
+    overflow: hidden;
+    min-width: 60px !important;
+    max-width: 60px !important;
+    align-items: center;
+  }
+
+  .search-panel.minimized .panel-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+  }
+
+  .search-panel.minimized .panel-header-content {
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .search-panel.minimized .panel-header-content h2,
+  .search-panel.minimized .vertical-title {
+    margin: 0;
+    font-size: 1.5rem;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+  }
+
+  .search-panel.minimized .panel-header p {
+    display: none;
+  }
+
+  .search-panel.minimized .minimize-button {
+    width: 100%;
+    min-width: auto;
   }
 
   .search-mode-selector {
