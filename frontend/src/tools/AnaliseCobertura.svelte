@@ -1299,9 +1299,9 @@
         <div class="panel-header">
           <div class="panel-header-content">
             {#if !isSearchPanelMinimized}
-              <h2>📡 Análise de Cobertura</h2>
+              <h2>Análise de Cobertura</h2>
             {:else}
-              <h2 class="vertical-title">📡</h2>
+              <h2 class="vertical-title"></h2>
             {/if}
             <button 
               class="minimize-button" 
