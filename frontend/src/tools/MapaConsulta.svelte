@@ -105,24 +105,35 @@
 
   // Inicializar o mapa
   function initMap() {
-    if (!googleMapsLoaded) return;
+    if (!googleMapsLoaded) {
+      console.warn('⚠️ Google Maps não está carregado');
+      return;
+    }
 
     const mapElement = document.getElementById('map-consulta');
-    if (!mapElement) return;
+    if (!mapElement) {
+      console.warn('⚠️ Elemento do mapa não encontrado no DOM');
+      return;
+    }
 
-    // Centralizar no Brasil (Fortaleza como padrão, mas ajustará para mostrar todas as CTOs)
-    map = new google.maps.Map(mapElement, {
-      center: { lat: -3.7172, lng: -38.5433 }, // Fortaleza
-      zoom: 12,
-      mapTypeControl: true,
-      streetViewControl: true,
-      fullscreenControl: true,
-      scrollwheel: true,
-      gestureHandling: 'greedy'
-    });
-    
-    mapInitialized = true;
-    console.log('✅ Mapa inicializado com sucesso');
+    try {
+      // Centralizar no Brasil (Fortaleza como padrão, mas ajustará para mostrar todas as CTOs)
+      map = new google.maps.Map(mapElement, {
+        center: { lat: -3.7172, lng: -38.5433 }, // Fortaleza
+        zoom: 12,
+        mapTypeControl: true,
+        streetViewControl: true,
+        fullscreenControl: true,
+        scrollwheel: true,
+        gestureHandling: 'greedy'
+      });
+      
+      mapInitialized = true;
+      console.log('✅ Mapa inicializado com sucesso');
+    } catch (err) {
+      console.error('❌ Erro ao inicializar mapa:', err);
+      map = null;
+    }
   }
 
   // Carregar todas as CTOs da base de dados
@@ -680,30 +691,7 @@
       // Pequeno delay para visualização
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Etapa 3: Aguardar DOM atualizar e inicializar mapa
-      loadingMessage = 'Inicializando Mapa';
-      await tick();
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Inicializar mapa ANTES de carregar CTOs
-      initMap();
-      
-      // Aguardar mapa estar pronto
-      await new Promise((resolve) => {
-        if (map) {
-          google.maps.event.addListenerOnce(map, 'idle', () => {
-            console.log('✅ Mapa totalmente carregado');
-            resolve();
-          });
-        } else {
-          setTimeout(resolve, 1000);
-        }
-      });
-      
-      // Pequeno delay para visualização
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Etapa 4: Carregando CTOs
+      // Etapa 3: Carregando CTOs
       loadingMessage = 'Carregando CTOs';
       await loadAllCTOs();
       console.log(`✅ ${allCTOs.length} CTOs carregadas`);
@@ -711,43 +699,87 @@
       // Pequeno delay para visualização
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Etapa 5: Desenhando manchas de cobertura
-      if (allCTOs.length > 0) {
-        loadingMessage = 'Desenhando manchas de cobertura';
-        
-        // Verificar se o mapa está pronto
-        if (!map) {
-          console.error('❌ Mapa não foi inicializado corretamente');
-          isLoading = false;
-          return;
+      // Etapa 4: Ajuste Finais
+      loadingMessage = 'Ajuste Finais';
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Etapa 5: Abrindo Ferramenta
+      loadingMessage = 'Abrindo Ferramenta';
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Só agora terminar o loading - o elemento do mapa vai aparecer no DOM
+      isLoading = false;
+      console.log('✅ Loading finalizado, elemento do mapa agora está no DOM');
+      
+      // Aguardar DOM atualizar completamente e elemento do mapa estar disponível
+      await tick();
+      
+      // Tentar encontrar o elemento do mapa (pode levar alguns ciclos)
+      let mapElement = null;
+      let attempts = 0;
+      while (!mapElement && attempts < 10) {
+        mapElement = document.getElementById('map-consulta');
+        if (!mapElement) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          attempts++;
         }
+      }
+      
+      if (!mapElement) {
+        console.error('❌ Elemento do mapa não encontrado após múltiplas tentativas');
+        return;
+      }
+      
+      console.log('✅ Elemento do mapa encontrado no DOM');
+      
+      // AGORA inicializar o mapa (elemento já existe no DOM)
+      console.log('🗺️ Inicializando mapa...');
+      initMap();
+      
+      // Se não conseguiu inicializar, tentar novamente
+      if (!map) {
+        console.warn('⚠️ Primeira tentativa falhou, tentando novamente...');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await tick();
+        initMap();
+      }
+      
+      // Aguardar mapa estar pronto
+      if (map) {
+        await new Promise((resolve) => {
+          google.maps.event.addListenerOnce(map, 'idle', () => {
+            console.log('✅ Mapa totalmente carregado');
+            resolve();
+          });
+        });
+      } else {
+        console.error('❌ Não foi possível inicializar o mapa após múltiplas tentativas');
+        return;
+      }
+      
+      // Aguardar um pouco para garantir que o mapa está renderizado
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Desenhar TODAS as manchas de cobertura
+      if (allCTOs.length > 0 && map) {
+        console.log(`🎨 Desenhando ${allCTOs.length} manchas de cobertura em todo o Brasil...`);
         
         // Forçar redimensionamento do mapa
         google.maps.event.trigger(map, 'resize');
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 500));
         
         // Desenhar TODAS as manchas de cobertura
-        console.log(`🎨 Desenhando ${allCTOs.length} manchas de cobertura em todo o Brasil...`);
         await drawCoverageArea();
         console.log(`✅ ${coveragePolygons.length} polígonos + ${coverageCircles.length} círculos criados - manchas visíveis em todo o Brasil`);
         
         // Aguardar um pouco para garantir que tudo foi renderizado
         await new Promise(resolve => setTimeout(resolve, 500));
-      } else {
-        loadingMessage = 'Nenhuma CTO encontrada na base de dados';
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else if (allCTOs.length === 0) {
+        console.warn('⚠️ Nenhuma CTO carregada para desenhar');
+      } else if (!map) {
+        console.error('❌ Mapa não foi inicializado, não é possível desenhar manchas');
       }
       
-      // Etapa 6: Ajuste Finais
-      loadingMessage = 'Ajuste Finais';
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Etapa 7: Abrindo Ferramenta
-      loadingMessage = 'Abrindo Ferramenta';
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Só agora terminar o loading - tudo já está pronto e visível
-      isLoading = false;
       console.log('✅ Ferramenta totalmente carregada e pronta para uso');
       
     } catch (err) {
@@ -757,9 +789,19 @@
       
       // Tentar inicializar o mapa mesmo com erro
       await tick();
-      await new Promise(resolve => setTimeout(resolve, 100));
-      if (!map) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Tentar encontrar elemento e inicializar
+      let mapElement = document.getElementById('map-consulta');
+      if (mapElement && !map) {
+        console.log('🔄 Tentando inicializar mapa após erro...');
         initMap();
+        
+        // Se conseguiu inicializar, tentar desenhar manchas
+        if (map && allCTOs.length > 0) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await drawCoverageArea();
+        }
       }
     }
   }
