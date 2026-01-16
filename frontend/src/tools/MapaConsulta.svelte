@@ -260,18 +260,21 @@
       const lat = parseFloat(cto.latitude);
       const lng = parseFloat(cto.longitude);
       
-      return new google.maps.Circle({
+      const circle = new google.maps.Circle({
         strokeColor: '#7B68EE',
-        strokeOpacity: 0.4,
-        strokeWeight: 0.5,
+        strokeOpacity: 0.6,
+        strokeWeight: 1,
         fillColor: '#6495ED',
-        fillOpacity: 0.2,
+        fillOpacity: 0.35,
         map: map,
         center: { lat, lng },
         radius: 250,
         zIndex: 1,
-        optimized: true
+        optimized: false // Desabilitar otimização para garantir visibilidade
       });
+      
+      console.log(`✅ Círculo criado para CTO: lat=${lat}, lng=${lng}`);
+      return circle;
     }
     
     // Para múltiplas CTOs próximas, criar um polígono que representa a área coberta
@@ -306,28 +309,31 @@
       { lat: minLat, lng: maxLng }
     ];
     
-    return new google.maps.Polygon({
+    const polygon = new google.maps.Polygon({
       paths: polygonPath,
       strokeColor: '#7B68EE',
-      strokeOpacity: 0.4,
-      strokeWeight: 0.5,
+      strokeOpacity: 0.6,
+      strokeWeight: 1,
       fillColor: '#6495ED',
-      fillOpacity: 0.2,
+      fillOpacity: 0.35,
       map: map,
       zIndex: 1
     });
+    
+    console.log(`✅ Polígono criado para ${ctos.length} CTOs: bounds=[${minLat.toFixed(4)}, ${minLng.toFixed(4)}] a [${maxLat.toFixed(4)}, ${maxLng.toFixed(4)}]`);
+    return polygon;
   }
 
   // Desenhar mancha de cobertura no mapa (otimizado: polígonos para áreas densas, círculos para bordas)
   async function drawCoverageArea() {
     // Verificar se tudo está pronto
     if (!map) {
-      console.warn('⚠️ Mapa não está inicializado');
+      console.error('❌ Mapa não está inicializado');
       return;
     }
     
     if (!google || !google.maps) {
-      console.warn('⚠️ Google Maps não está carregado');
+      console.error('❌ Google Maps não está carregado');
       return;
     }
     
@@ -336,7 +342,24 @@
       return;
     }
 
+    // Verificar se o mapa está realmente visível no DOM
+    const mapElement = document.getElementById('map-consulta');
+    if (!mapElement) {
+      console.error('❌ Elemento do mapa não encontrado no DOM');
+      return;
+    }
+    
+    // Verificar se o mapa tem dimensões válidas
+    const mapRect = mapElement.getBoundingClientRect();
+    if (mapRect.width === 0 || mapRect.height === 0) {
+      console.warn('⚠️ Mapa não tem dimensões válidas, aguardando...');
+      await new Promise(resolve => setTimeout(resolve, 500));
+      google.maps.event.trigger(map, 'resize');
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
     console.log(`🗺️ Desenhando mancha de cobertura com ${allCTOs.length} CTOs...`);
+    console.log(`📐 Dimensões do mapa: ${mapRect.width}x${mapRect.height}`);
 
     // Limpar círculos anteriores
     clearCoverageCircles();
@@ -414,13 +437,11 @@
     const coveredByPolygons = new Set(); // Índices de CTOs já cobertas por polígonos
     
     let groupsProcessed = 0;
+    let polygonsCreated = 0;
     
     // FASE 1: Criar polígonos para áreas densas (sem sobreposição)
     for (const group of groups) {
       groupsProcessed++;
-      
-      // Atualizar mensagem de loading (manter simples como ViabilidadeAlares)
-      // Não atualizar mensagem durante processamento para manter consistência visual
       
       // Se grupo tem muitas CTOs (área densa), criar polígono
       if (group.length >= 5) {
@@ -430,9 +451,12 @@
           if (polygon) {
             if (polygon instanceof google.maps.Polygon) {
               coveragePolygons.push(polygon);
-            } else {
+              polygonsCreated++;
+              console.log(`✅ Polígono criado para grupo com ${group.length} CTOs`);
+            } else if (polygon instanceof google.maps.Circle) {
               coverageCircles.push(polygon);
               circlesCreated++;
+              console.log(`✅ Círculo criado para grupo com ${group.length} CTOs`);
             }
             
             // Marcar todas as CTOs deste grupo como cobertas por polígono
@@ -454,9 +478,11 @@
                 lng: parseFloat(cto.longitude) 
               });
             }
+          } else {
+            console.warn(`⚠️ createUnionPolygon retornou null para grupo com ${group.length} CTOs`);
           }
         } catch (err) {
-          console.error('Erro ao criar polígono:', err);
+          console.error(`❌ Erro ao criar polígono para grupo com ${group.length} CTOs:`, err);
         }
       }
       
@@ -466,8 +492,11 @@
       }
     }
     
+    console.log(`✅ FASE 1 concluída: ${polygonsCreated} polígonos criados para áreas densas`);
+    
     // FASE 2: Criar círculos individuais apenas para CTOs NÃO cobertas por polígonos (bordas/isoladas)
     // E garantir que círculos não se sobreponham
+    let circlesPhase2Created = 0;
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i];
       
@@ -495,9 +524,13 @@
               if (polygon) {
                 if (polygon instanceof google.maps.Polygon) {
                   coveragePolygons.push(polygon);
-                } else {
+                  polygonsCreated++;
+                  console.log(`✅ Polígono pequeno criado para grupo com ${group.length} CTOs`);
+                } else if (polygon instanceof google.maps.Circle) {
                   coverageCircles.push(polygon);
                   circlesCreated++;
+                  circlesPhase2Created++;
+                  console.log(`✅ Círculo criado para grupo com ${group.length} CTOs`);
                 }
                 
                 // Adicionar ao bounds
@@ -509,7 +542,7 @@
                 }
               }
             } catch (err) {
-              console.error('Erro ao criar polígono pequeno:', err);
+              console.error(`❌ Erro ao criar polígono pequeno para grupo com ${group.length} CTOs:`, err);
             }
           } else {
             // Grupo com apenas 1 CTO (isolada) - criar círculo individual
@@ -522,21 +555,26 @@
             try {
               const circle = new google.maps.Circle({
                 strokeColor: '#7B68EE',
-                strokeOpacity: 0.4,
-                strokeWeight: 0.5,
+                strokeOpacity: 0.6,
+                strokeWeight: 1,
                 fillColor: '#6495ED',
-                fillOpacity: 0.2,
+                fillOpacity: 0.35,
                 map: map,
                 center: { lat, lng },
                 radius: 250,
                 zIndex: 1,
-                optimized: true
+                optimized: false // Desabilitar otimização para garantir visibilidade
               });
 
               coverageCircles.push(circle);
               circlesCreated++;
+              circlesPhase2Created++;
+              
+              if (circlesPhase2Created % 100 === 0) {
+                console.log(`📊 ${circlesPhase2Created} círculos individuais criados...`);
+              }
             } catch (circleErr) {
-              console.error(`Erro ao criar círculo:`, circleErr);
+              console.error(`❌ Erro ao criar círculo para CTO ${cto.nome}:`, circleErr);
               skipped++;
             }
           }
@@ -544,7 +582,77 @@
       }
     }
     
-    console.log(`✅ ${coveragePolygons.length} polígonos (áreas densas) + ${circlesCreated} círculos (bordas/isoladas) criados`);
+    console.log(`✅ FASE 2 concluída: ${circlesPhase2Created} círculos individuais criados para bordas/isoladas`);
+    
+    console.log(`✅ RESUMO: ${coveragePolygons.length} polígonos + ${circlesCreated} círculos criados`);
+    console.log(`   - Polígonos: ${coveragePolygons.length}`);
+    console.log(`   - Círculos: ${circlesCreated}`);
+    console.log(`   - Total de elementos no mapa: ${coveragePolygons.length + circlesCreated}`);
+    
+    // Verificar se os elementos foram realmente adicionados ao mapa
+    if (coveragePolygons.length === 0 && circlesCreated === 0) {
+      console.error('❌ ERRO: Nenhum elemento foi criado! Verifique os dados das CTOs.');
+      
+      // TESTE: Tentar criar um círculo de teste para verificar se o problema é com a criação
+      console.log('🧪 Criando círculo de teste...');
+      try {
+        const testCircle = new google.maps.Circle({
+          strokeColor: '#FF0000', // Vermelho para teste
+          strokeOpacity: 1,
+          strokeWeight: 2,
+          fillColor: '#FF0000',
+          fillOpacity: 0.5,
+          map: map,
+          center: { lat: -23.5505, lng: -46.6333 }, // São Paulo
+          radius: 1000,
+          zIndex: 999
+        });
+        console.log('✅ Círculo de teste criado com sucesso! Se você vê um círculo vermelho em São Paulo, o problema é com os dados das CTOs.');
+      } catch (testErr) {
+        console.error('❌ Erro ao criar círculo de teste:', testErr);
+      }
+    } else {
+      // Verificar se os elementos estão visíveis no mapa
+      let visiblePolygons = 0;
+      let visibleCircles = 0;
+      
+      coveragePolygons.forEach(poly => {
+        if (poly && poly.getMap && poly.getMap() === map) {
+          visiblePolygons++;
+        }
+      });
+      
+      coverageCircles.forEach(circle => {
+        if (circle && circle.getMap && circle.getMap() === map) {
+          visibleCircles++;
+        }
+      });
+      
+      console.log(`✅ Verificação: ${visiblePolygons}/${coveragePolygons.length} polígonos visíveis, ${visibleCircles}/${circlesCreated} círculos visíveis`);
+      
+      // Se nenhum elemento está visível, pode ser um problema de renderização
+      if (visiblePolygons === 0 && visibleCircles === 0 && (coveragePolygons.length > 0 || circlesCreated > 0)) {
+        console.error('❌ ERRO: Elementos foram criados mas não estão visíveis no mapa!');
+        console.log('   Tentando forçar atualização do mapa...');
+        google.maps.event.trigger(map, 'resize');
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Verificar novamente
+        let retryVisiblePolygons = 0;
+        let retryVisibleCircles = 0;
+        coveragePolygons.forEach(poly => {
+          if (poly && poly.getMap && poly.getMap() === map) {
+            retryVisiblePolygons++;
+          }
+        });
+        coverageCircles.forEach(circle => {
+          if (circle && circle.getMap && circle.getMap() === map) {
+            retryVisibleCircles++;
+          }
+        });
+        console.log(`   Após retry: ${retryVisiblePolygons} polígonos, ${retryVisibleCircles} círculos visíveis`);
+      }
+    }
 
     if (skipped > 0) {
       console.warn(`⚠️ ${skipped} CTOs ignoradas (coordenadas inválidas)`);
