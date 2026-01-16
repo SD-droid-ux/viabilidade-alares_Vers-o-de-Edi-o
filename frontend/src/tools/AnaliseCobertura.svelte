@@ -1538,33 +1538,34 @@
   }
 
   .minimize-button {
-    background: linear-gradient(135deg, #6495ED 0%, #7B68EE 100%);
-    border: none;
+    background: transparent;
+    border: 1px solid rgba(100, 149, 237, 0.3);
     cursor: pointer;
-    padding: 0.375rem 0.625rem;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    color: white;
-    font-weight: 500;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: #7B68EE;
+    font-weight: 400;
     transition: all 0.2s;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 32px;
-    height: 28px;
-    box-shadow: 0 2px 4px rgba(100, 149, 237, 0.2);
+    min-width: 24px;
+    height: 24px;
+    box-shadow: none;
+    opacity: 0.7;
   }
 
   .minimize-button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(100, 149, 237, 0.3);
-    background: linear-gradient(135deg, #7B68EE 0%, #8B6FE8 100%);
+    opacity: 1;
+    background: rgba(100, 149, 237, 0.1);
+    border-color: rgba(100, 149, 237, 0.5);
   }
 
   .minimize-button:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 4px rgba(100, 149, 237, 0.2);
+    background: rgba(100, 149, 237, 0.15);
+    transform: scale(0.95);
   }
 
   .minimize-button:disabled {
