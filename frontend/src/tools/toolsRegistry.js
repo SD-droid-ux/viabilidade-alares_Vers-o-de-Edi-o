@@ -10,6 +10,7 @@
 import ViabilidadeAlares from './ViabilidadeAlares.svelte';
 import AnaliseCobertura from './AnaliseCobertura.svelte';
 import CalculadoraOrcamento from './CalculadoraOrcamento.svelte';
+import MapaConsulta from './MapaConsulta.svelte';
 
 /**
  * Registry de todas as ferramentas disponíveis no portal
@@ -48,6 +49,15 @@ export const toolsRegistry = [
     icon: '💰',
     color: '#10B981',
     component: CalculadoraOrcamento,
+    available: true
+  },
+  {
+    id: 'mapa-consulta',
+    title: 'Mapa de Consulta',
+    description: 'Visualização e consulta de informações em mapa interativo',
+    icon: '🗺️',
+    color: '#F59E0B',
+    component: MapaConsulta,
     available: true
   }
 ];
