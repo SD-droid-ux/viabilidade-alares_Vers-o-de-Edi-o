@@ -1371,7 +1371,7 @@
             {#if loadingCTOs}
               ⏳ Buscando...
             {:else}
-              🔍 Buscar
+              Buscar
             {/if}
           </button>
 
@@ -1413,7 +1413,7 @@
         <!-- Mapa -->
         <div class="map-container" class:minimized={isMapMinimized} style="height: {isMapMinimized ? '60px' : mapHeightStyle}; flex: 0 0 auto; min-height: {isMapMinimized ? '60px' : mapHeightStyle};">
           <div class="map-header">
-            <h3>🗺️ Mapa</h3>
+            <h3>Mapa</h3>
             <button 
               class="minimize-button" 
               disabled={isResizingSidebar || isResizingMapTable}
