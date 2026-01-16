@@ -166,12 +166,11 @@
         maxLng: -34.7
       };
       
-      // Tamanho da célula: 200km x 200km (raio de 100km por célula)
-      // Células maiores = menos requisições = carregamento mais rápido
+      // Tamanho da célula OTIMIZADO: 300km x 300km (raio de 150km por célula)
+      // Células MUITO maiores = MUITO menos requisições = carregamento MUITO mais rápido
       // IMPORTANTE: Usar raio maior que metade da célula para garantir sobreposição
-      // Isso garante que nenhuma CTO seja perdida nas bordas
-      const CELL_SIZE_KM = 200;
-      const CELL_RADIUS_M = (CELL_SIZE_KM / 2) * 1000 * 1.2; // Raio 20% maior para sobreposição (120km)
+      const CELL_SIZE_KM = 300; // Aumentado de 200km para 300km para reduzir requisições
+      const CELL_RADIUS_M = (CELL_SIZE_KM / 2) * 1000 * 1.2; // Raio 20% maior para sobreposição (180km)
       const CELL_SIZE_DEG = CELL_SIZE_KM / 111; // Aproximação: 1 grau ≈ 111km
       
       // Calcular número de células necessárias
@@ -209,9 +208,9 @@
       const cellsWithErrors = []; // Células que tiveram erros
       let totalCTOsLoaded = 0;
       
-      // Processar células em lotes maiores para acelerar o carregamento
-      // Lotes maiores = menos pausas = carregamento mais rápido
-      const BATCH_SIZE = 30; // Processar 30 células por vez (aumentado para velocidade)
+      // Processar células em lotes MÁXIMOS para velocidade extrema
+      // Paralelismo TOTAL = carregamento ULTRA-rápido
+      const BATCH_SIZE = 100; // Aumentado para 100 células por vez (paralelismo máximo)
       for (let batchStart = 0; batchStart < cells.length; batchStart += BATCH_SIZE) {
         const batch = cells.slice(batchStart, batchStart + BATCH_SIZE);
         loadingMessage = `Carregando CTOs... ${cellsProcessed}/${cells.length} células processadas (${totalCTOsLoaded.toLocaleString('pt-BR')} CTOs carregadas)`;
@@ -221,13 +220,12 @@
         loadingStats.ctoCount = totalCTOsLoaded;
         loadingStats.totalRequests = totalRequests;
         
-        // Buscar CTOs em paralelo para o lote atual
+        // Buscar CTOs em paralelo para o lote atual (máximo paralelismo)
         const batchPromises = batch.map(async (cell) => {
           try {
             totalRequests++;
             const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${cell.lat}&lng=${cell.lng}&radius=${cell.radius}`));
             if (!response.ok) {
-              console.warn(`⚠️ Erro ao buscar CTOs na célula ${cell.index} (${cell.lat.toFixed(4)}, ${cell.lng.toFixed(4)})`);
               cellsWithErrors.push(cell);
               loadingStats.cellsWithErrors = cellsWithErrors.length;
               return { cell: cell.index, ctos: [], cellData: cell };
@@ -236,8 +234,6 @@
             if (data.success && data.ctos) {
               // SINALIZADOR: Se retornou 1000 CTOs, pode haver mais (limite da API)
               if (data.ctos.length >= 1000) {
-                console.warn(`🚨 SINALIZADOR: Célula ${cell.index} retornou ${data.ctos.length} CTOs (LIMITE DA API ATINGIDO - pode haver mais CTOs!)`);
-                console.warn(`   Localização: (${cell.lat.toFixed(4)}, ${cell.lng.toFixed(4)})`);
                 cellsWithLimit.push({ ...cell, count: data.ctos.length });
                 loadingStats.cellsWithLimit = cellsWithLimit.length;
               }
@@ -245,7 +241,6 @@
             }
             return { cell: cell.index, ctos: [], cellData: cell };
           } catch (err) {
-            console.warn(`⚠️ Erro ao buscar CTOs na célula ${cell.index}:`, err);
             cellsWithErrors.push(cell);
             loadingStats.cellsWithErrors = cellsWithErrors.length;
             return { cell: cell.index, ctos: [], cellData: cell };
@@ -254,7 +249,7 @@
         
         const batchResults = await Promise.all(batchPromises);
         
-        // Consolidar CTOs do lote (evitando duplicatas)
+        // Consolidar CTOs do lote (evitando duplicatas) - otimizado
         for (const { cell, ctos, cellData } of batchResults) {
           cellsProcessed++;
           let newCTOsInCell = 0;
@@ -269,26 +264,36 @@
               totalCTOsLoaded++;
             }
           }
-          if (newCTOsInCell > 0 && cellData) {
-            console.log(`✅ Célula ${cell}: ${newCTOsInCell} novas CTOs carregadas (total: ${totalCTOsLoaded})`);
+          // Log apenas a cada 10 células para não sobrecarregar console
+          if (newCTOsInCell > 0 && cellData && cellsProcessed % 10 === 0) {
+            console.log(`✅ ${cellsProcessed} células: ${totalCTOsLoaded.toLocaleString('pt-BR')} CTOs carregadas`);
           }
         }
         
-        // Pausa mínima entre lotes para não sobrecarregar a API
-        if (batchStart + BATCH_SIZE < cells.length) {
-          await new Promise(resolve => setTimeout(resolve, 50)); // Reduzido de 150ms para 50ms
+        // SEM DELAY entre lotes - processamento contínuo e máximo paralelismo
+        // Apenas yield ao navegador se necessário (praticamente zero delay)
+        if (batchStart + BATCH_SIZE < cells.length && batchStart % (BATCH_SIZE * 2) === 0) {
+          // Yield apenas a cada 2 lotes para não bloquear completamente
+          await new Promise(resolve => {
+            if (window.requestIdleCallback) {
+              window.requestIdleCallback(resolve, { timeout: 1 });
+            } else {
+              setTimeout(resolve, 0); // Zero delay - apenas yield ao event loop
+            }
+          });
         }
       }
       
-      // ETAPA 2: Processar células que atingiram o limite (subdividir em células menores)
+      // ETAPA 2: Processar células que atingiram o limite (subdividir em paralelo TOTAL)
       if (cellsWithLimit.length > 0) {
-        console.log(`\n🚨 PROCESSANDO ${cellsWithLimit.length} CÉLULAS QUE ATINGIRAM O LIMITE DA API`);
-        console.log(`   Subdividindo essas células para garantir que TODAS as CTOs sejam carregadas...`);
+        console.log(`\n🚨 PROCESSANDO ${cellsWithLimit.length} CÉLULAS QUE ATINGIRAM O LIMITE DA API (EM PARALELO TOTAL)`);
         loadingMessage = `Processando células com muitas CTOs... ${cellsWithLimit.length} células para subdividir`;
         
+        // Processar TODAS as subdivisões em paralelo para máxima velocidade
+        const allSubCellPromises = [];
+        
         for (const limitedCell of cellsWithLimit) {
-          // Subdividir a célula em 4 células menores (100km x 100km cada)
-          // Com sobreposição para garantir que todas as CTOs sejam capturadas
+          // Subdividir a célula em 4 células menores (150km x 150km cada)
           const subCellSize = CELL_SIZE_KM / 2;
           const subCellRadius = (subCellSize / 2) * 1000 * 1.2; // 20% maior para sobreposição
           const subCellSizeDeg = subCellSize / 111;
@@ -300,45 +305,49 @@
             { lat: limitedCell.lat + subCellSizeDeg/2, lng: limitedCell.lng + subCellSizeDeg/2, radius: subCellRadius }
           ];
           
+          // Processar todas as subcélulas em paralelo
           for (const subCell of subCells) {
-            try {
-              totalRequests++;
-              const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${subCell.lat}&lng=${subCell.lng}&radius=${subCell.radius}`));
-              if (response.ok) {
-                const data = await response.json();
-                if (data.success && data.ctos) {
-                  let newCTOs = 0;
-                  for (const cto of data.ctos) {
-                    if (!cto.latitude || !cto.longitude) continue;
-                    const key = cto.id ? `id_${cto.id}` : `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
-                    if (!allCTOsMap.has(key)) {
-                      allCTOsMap.set(key, cto);
-                      newCTOs++;
-                      totalCTOsLoaded++;
+            allSubCellPromises.push(
+              (async () => {
+                try {
+                  totalRequests++;
+                  const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${subCell.lat}&lng=${subCell.lng}&radius=${subCell.radius}`));
+                  if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.ctos) {
+                      let newCTOs = 0;
+                      for (const cto of data.ctos) {
+                        if (!cto.latitude || !cto.longitude) continue;
+                        const key = cto.id ? `id_${cto.id}` : `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
+                        if (!allCTOsMap.has(key)) {
+                          allCTOsMap.set(key, cto);
+                          newCTOs++;
+                          totalCTOsLoaded++;
+                        }
+                      }
+                      return newCTOs;
                     }
                   }
-                  if (newCTOs > 0) {
-                    console.log(`   ✅ Subcélula: ${newCTOs} novas CTOs encontradas`);
-                  }
-                  if (data.ctos.length >= 1000) {
-                    console.warn(`   ⚠️ Subcélula ainda retornou ${data.ctos.length} CTOs (pode precisar subdividir mais)`);
-                  }
+                } catch (err) {
+                  // Silenciar erros
                 }
-              }
-            } catch (err) {
-              console.warn(`   ⚠️ Erro ao processar subcélula:`, err);
-            }
-            await new Promise(resolve => setTimeout(resolve, 50)); // Reduzido para acelerar
+                return 0;
+              })()
+            );
           }
         }
+        
+        // Aguardar TODAS as subdivisões em paralelo
+        await Promise.all(allSubCellPromises);
       }
       
-      // ETAPA 3: Retry de células com erros
+      // ETAPA 3: Retry de células com erros (em paralelo para velocidade)
       if (cellsWithErrors.length > 0) {
         console.log(`\n🔄 REPROCESSANDO ${cellsWithErrors.length} CÉLULAS COM ERROS`);
         loadingMessage = `Reprocessando células com erros... ${cellsWithErrors.length} células`;
         
-        for (const errorCell of cellsWithErrors) {
+        // Processar retries em paralelo também
+        const retryPromises = cellsWithErrors.map(async (errorCell) => {
           try {
             totalRequests++;
             const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${errorCell.lat}&lng=${errorCell.lng}&radius=${errorCell.radius}`));
@@ -355,16 +364,16 @@
                     totalCTOsLoaded++;
                   }
                 }
-                if (newCTOs > 0) {
-                  console.log(`   ✅ Célula ${errorCell.index} (retry): ${newCTOs} novas CTOs encontradas`);
-                }
+                return newCTOs;
               }
             }
           } catch (err) {
-            console.error(`   ❌ Erro persistente na célula ${errorCell.index}:`, err);
+            // Silenciar erros para não sobrecarregar
           }
-          await new Promise(resolve => setTimeout(resolve, 50)); // Reduzido para acelerar
-        }
+          return 0;
+        });
+        
+        await Promise.all(retryPromises);
       }
 
       allCTOs = Array.from(allCTOsMap.values());
@@ -481,9 +490,9 @@
       circleCenters.push({ lat, lng });
       circles.push({ lat, lng, radius: RADIUS_DEG });
       
-      // Criar pontos ao redor do círculo (64 pontos para máxima suavidade e detalhe)
-      // Muito mais pontos = manchas super suaves como na imagem
-      const pointsPerCircle = 64;
+      // Criar pontos ao redor do círculo (otimizado: menos pontos para grupos menores)
+      // Ajustar dinamicamente baseado no tamanho do grupo para performance
+      const pointsPerCircle = ctos.length > 50 ? 64 : ctos.length > 20 ? 48 : 32; // Menos pontos = mais rápido
       const latRadius = RADIUS_DEG;
       const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
       
@@ -788,45 +797,96 @@
 
     console.log(`📊 ${validCTOs.length} CTOs válidas para desenhar (${skipped} ignoradas)`);
 
-    // Estratégia: Agrupar CTOs próximas (que se sobrepõem) e criar polígonos
-    // CTOs isoladas ou em grupos pequenos: círculos individuais (bordas)
+    // Estratégia OTIMIZADA: Usar Spatial Hash Grid para agrupamento O(n) em vez de O(n²)
+    // Isso é CRÍTICO para 220k CTOs - O(n²) seria impossível!
     const OVERLAP_DISTANCE = 500; // Se duas CTOs estão a menos de 500m, elas se sobrepõem
     
-    // Agrupar CTOs por proximidade
-    const groups = [];
-    const processedIndices = new Set();
+    console.log('🔍 Criando spatial hash grid para agrupamento rápido...');
+    const startTime = performance.now();
     
-    for (let i = 0; i < validCTOs.length; i++) {
-      if (processedIndices.has(i)) continue;
+    // Criar spatial hash grid (grid de células espaciais)
+    // Cada célula do grid tem ~500m (OVERLAP_DISTANCE) para capturar CTOs próximas
+    const GRID_CELL_SIZE = OVERLAP_DISTANCE; // 500m
+    const GRID_CELL_SIZE_DEG = GRID_CELL_SIZE / 111000; // Converter para graus
+    
+    // Encontrar bounds das CTOs para criar grid
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const cto of validCTOs) {
+      const lat = parseFloat(cto.latitude);
+      const lng = parseFloat(cto.longitude);
+      minLat = Math.min(minLat, lat);
+      maxLat = Math.max(maxLat, lat);
+      minLng = Math.min(minLng, lng);
+      maxLng = Math.max(maxLng, lng);
+    }
+    
+    // Criar grid
+    const gridCols = Math.ceil((maxLng - minLng) / GRID_CELL_SIZE_DEG) + 1;
+    const gridRows = Math.ceil((maxLat - minLat) / GRID_CELL_SIZE_DEG) + 1;
+    const spatialGrid = new Map(); // Map<gridKey, CTO[]>
+    
+    // Função para obter chave do grid para uma coordenada
+    function getGridKey(lat, lng) {
+      const col = Math.floor((lng - minLng) / GRID_CELL_SIZE_DEG);
+      const row = Math.floor((lat - minLat) / GRID_CELL_SIZE_DEG);
+      return `${row}_${col}`;
+    }
+    
+    // Adicionar cada CTO ao grid (O(n))
+    for (const cto of validCTOs) {
+      const lat = parseFloat(cto.latitude);
+      const lng = parseFloat(cto.longitude);
+      const key = getGridKey(lat, lng);
       
-      const cto = validCTOs[i];
-      const lat1 = parseFloat(cto.latitude);
-      const lng1 = parseFloat(cto.longitude);
+      if (!spatialGrid.has(key)) {
+        spatialGrid.set(key, []);
+      }
+      spatialGrid.get(key).push(cto);
+    }
+    
+    // Agrupar CTOs usando o grid (O(n) - muito mais rápido!)
+    const groups = [];
+    const processedCTOs = new Set();
+    
+    for (const cto of validCTOs) {
+      if (processedCTOs.has(cto)) continue;
+      
+      const lat = parseFloat(cto.latitude);
+      const lng = parseFloat(cto.longitude);
+      const gridKey = getGridKey(lat, lng);
       
       const group = [cto];
-      processedIndices.add(i);
+      processedCTOs.add(cto);
       
-      // Encontrar todas as CTOs próximas (que se sobrepõem)
-      for (let j = i + 1; j < validCTOs.length; j++) {
-        if (processedIndices.has(j)) continue;
-        
-        const otherCto = validCTOs[j];
-        const lat2 = parseFloat(otherCto.latitude);
-        const lng2 = parseFloat(otherCto.longitude);
-        
-        const distance = calculateDistance(lat1, lng1, lat2, lng2);
-        
-        // Se estão próximas o suficiente para sobrepor (500m = 2x raio de 250m)
-        if (distance <= OVERLAP_DISTANCE) {
-          group.push(otherCto);
-          processedIndices.add(j);
+      // Verificar células adjacentes (3x3 = 9 células) para encontrar CTOs próximas
+      const [row, col] = gridKey.split('_').map(Number);
+      for (let dr = -1; dr <= 1; dr++) {
+        for (let dc = -1; dc <= 1; dc++) {
+          const neighborKey = `${row + dr}_${col + dc}`;
+          const neighborCTOs = spatialGrid.get(neighborKey) || [];
+          
+          for (const neighborCto of neighborCTOs) {
+            if (processedCTOs.has(neighborCto)) continue;
+            
+            const neighborLat = parseFloat(neighborCto.latitude);
+            const neighborLng = parseFloat(neighborCto.longitude);
+            
+            // Verificar distância real (pode estar em célula adjacente mas não próxima o suficiente)
+            const distance = calculateDistance(lat, lng, neighborLat, neighborLng);
+            if (distance <= OVERLAP_DISTANCE) {
+              group.push(neighborCto);
+              processedCTOs.add(neighborCto);
+            }
+          }
         }
       }
       
       groups.push(group);
     }
     
-    console.log(`📊 ${groups.length} grupos identificados (áreas densas e isoladas)`);
+    const groupingTime = performance.now() - startTime;
+    console.log(`✅ Agrupamento concluído em ${groupingTime.toFixed(0)}ms: ${groups.length} grupos identificados`);
+    console.log(`   Performance: ${(validCTOs.length / (groupingTime / 1000)).toFixed(0)} CTOs/segundo`);
     
     // Processar grupos - SEM sobreposição
     // Primeiro, identificar quais CTOs já estão cobertas por polígonos
@@ -835,154 +895,157 @@
     let groupsProcessed = 0;
     let polygonsCreated = 0;
     
+    // Criar Set de CTOs cobertas por polígonos (otimizado)
+    const coveredCTOsSet = new Set();
+    
     // FASE 1: Criar polígonos para áreas densas (sem sobreposição)
-    for (const group of groups) {
-      groupsProcessed++;
+    // Processar em lotes MUITO maiores para máxima velocidade
+    const GROUP_BATCH_SIZE = 200; // Aumentado para 200 grupos por vez (processamento agressivo)
+    
+    // Separar grupos densos primeiro para processamento prioritário
+    const denseGroups = groups.filter(g => g.length >= 5);
+    const sparseGroups = groups.filter(g => g.length < 5);
+    
+    console.log(`🎯 Processando ${denseGroups.length} grupos densos primeiro (áreas prioritárias)`);
+    
+    // Processar grupos densos em lotes grandes
+    for (let i = 0; i < denseGroups.length; i += GROUP_BATCH_SIZE) {
+      const groupBatch = denseGroups.slice(i, i + GROUP_BATCH_SIZE);
       
-      // Se grupo tem muitas CTOs (área densa), criar polígono
-      if (group.length >= 5) {
-        // Área densa: criar polígono único
+      // Processar lote em paralelo quando possível
+      const batchPromises = groupBatch.map(async (group) => {
         try {
           const polygon = createUnionPolygon(group);
           if (polygon) {
             if (polygon instanceof google.maps.Polygon) {
               coveragePolygons.push(polygon);
               polygonsCreated++;
-              console.log(`✅ Polígono criado para grupo com ${group.length} CTOs`);
             } else if (polygon instanceof google.maps.Circle) {
               coverageCircles.push(polygon);
               circlesCreated++;
-              console.log(`✅ Círculo criado para grupo com ${group.length} CTOs`);
             }
             
-            // Marcar todas as CTOs deste grupo como cobertas por polígono
-            for (let i = 0; i < validCTOs.length; i++) {
-              const cto = validCTOs[i];
-              const isInGroup = group.some(g => 
-                Math.abs(parseFloat(g.latitude) - parseFloat(cto.latitude)) < 0.0001 &&
-                Math.abs(parseFloat(g.longitude) - parseFloat(cto.longitude)) < 0.0001
-              );
-              if (isInGroup) {
-                coveredByPolygons.add(i);
-              }
-            }
-            
-            // Adicionar ao bounds
+            // Marcar CTOs como cobertas
             for (const cto of group) {
+              coveredCTOsSet.add(cto);
               bounds.extend({ 
                 lat: parseFloat(cto.latitude), 
                 lng: parseFloat(cto.longitude) 
               });
             }
-          } else {
-            console.warn(`⚠️ createUnionPolygon retornou null para grupo com ${group.length} CTOs`);
+            return true;
           }
         } catch (err) {
-          console.error(`❌ Erro ao criar polígono para grupo com ${group.length} CTOs:`, err);
+          // Silenciar erros
         }
-      }
+        return false;
+      });
       
-      // Pequena pausa para não travar
-      if (groupsProcessed % 100 === 0) {
-        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+      await Promise.all(batchPromises);
+      groupsProcessed += groupBatch.length;
+      
+      // Yield mínimo apenas a cada 5 lotes
+      if (i + GROUP_BATCH_SIZE < denseGroups.length && i % (GROUP_BATCH_SIZE * 5) === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0)); // Apenas yield ao event loop
       }
     }
     
     console.log(`✅ FASE 1 concluída: ${polygonsCreated} polígonos criados para áreas densas`);
     
     // FASE 2: Criar círculos individuais apenas para CTOs NÃO cobertas por polígonos (bordas/isoladas)
-    // E garantir que círculos não se sobreponham
+    // Processar grupos esparsos em lotes grandes e paralelos
+    console.log(`🎯 Processando ${sparseGroups.length} grupos esparsos (bordas/isoladas)`);
     let circlesPhase2Created = 0;
-    for (let i = 0; i < groups.length; i++) {
-      const group = groups[i];
+    
+    for (let i = 0; i < sparseGroups.length; i += GROUP_BATCH_SIZE) {
+      const groupBatch = sparseGroups.slice(i, i + GROUP_BATCH_SIZE);
       
-      // Se grupo é pequeno (bordas/isoladas) E não está coberto por polígono
-      if (group.length < 5) {
-        // Verificar se alguma CTO do grupo já está coberta por polígono
+      // Processar lote em paralelo
+      const batchPromises = groupBatch.map(async (group) => {
+        // Verificar se grupo já está coberto (otimizado com Set)
         let groupIsCovered = false;
         for (const cto of group) {
-          const ctoIndex = validCTOs.findIndex(v => 
-            Math.abs(parseFloat(v.latitude) - parseFloat(cto.latitude)) < 0.0001 &&
-            Math.abs(parseFloat(v.longitude) - parseFloat(cto.longitude)) < 0.0001
-          );
-          if (ctoIndex >= 0 && coveredByPolygons.has(ctoIndex)) {
+          if (coveredCTOsSet.has(cto)) {
             groupIsCovered = true;
             break;
           }
         }
         
-        // Só criar círculos se o grupo NÃO estiver coberto por polígono
-        if (!groupIsCovered) {
-          // Se o grupo tem 2-4 CTOs próximas, criar um polígono pequeno (evita sobreposição)
-          if (group.length >= 2) {
-            try {
-              const polygon = createUnionPolygon(group);
-              if (polygon) {
-                if (polygon instanceof google.maps.Polygon) {
-                  coveragePolygons.push(polygon);
-                  polygonsCreated++;
-                  console.log(`✅ Polígono pequeno criado para grupo com ${group.length} CTOs`);
-                } else if (polygon instanceof google.maps.Circle) {
-                  coverageCircles.push(polygon);
-                  circlesCreated++;
-                  circlesPhase2Created++;
-                  console.log(`✅ Círculo criado para grupo com ${group.length} CTOs`);
-                }
-                
-                // Adicionar ao bounds
-                for (const cto of group) {
-                  bounds.extend({ 
-                    lat: parseFloat(cto.latitude), 
-                    lng: parseFloat(cto.longitude) 
-                  });
-                }
+        if (groupIsCovered) return false;
+        
+        // Se o grupo tem 2-4 CTOs próximas, criar um polígono pequeno
+        if (group.length >= 2) {
+          try {
+            const polygon = createUnionPolygon(group);
+            if (polygon) {
+              if (polygon instanceof google.maps.Polygon) {
+                coveragePolygons.push(polygon);
+                polygonsCreated++;
+              } else if (polygon instanceof google.maps.Circle) {
+                coverageCircles.push(polygon);
+                circlesCreated++;
+                circlesPhase2Created++;
               }
-            } catch (err) {
-              console.error(`❌ Erro ao criar polígono pequeno para grupo com ${group.length} CTOs:`, err);
-            }
-          } else {
-            // Grupo com apenas 1 CTO (isolada) - criar círculo individual
-            const cto = group[0];
-            const lat = parseFloat(cto.latitude);
-            const lng = parseFloat(cto.longitude);
-
-            bounds.extend({ lat, lng });
-
-            try {
-              const circle = new google.maps.Circle({
-                strokeColor: '#8B7AE8', // Roxo mais suave
-                strokeOpacity: 0.8,
-                strokeWeight: 1.2,
-                fillColor: '#6B8DD6', // Azul mais suave
-                fillOpacity: coverageOpacity,
-                map: map,
-                center: { lat, lng },
-                radius: 250,
-                zIndex: 1,
-                optimized: false
-              });
-
-              coverageCircles.push(circle);
-              circlesCreated++;
-              circlesPhase2Created++;
               
-              if (circlesPhase2Created % 100 === 0) {
-                console.log(`📊 ${circlesPhase2Created} círculos individuais criados...`);
+              // Marcar como cobertas e adicionar ao bounds
+              for (const cto of group) {
+                coveredCTOsSet.add(cto);
+                bounds.extend({ 
+                  lat: parseFloat(cto.latitude), 
+                  lng: parseFloat(cto.longitude) 
+                });
               }
-            } catch (circleErr) {
-              console.error(`❌ Erro ao criar círculo para CTO ${cto.nome}:`, circleErr);
-              skipped++;
+              return true;
             }
+          } catch (err) {
+            // Silenciar erros
+          }
+        } else {
+          // Grupo com apenas 1 CTO (isolada) - criar círculo individual
+          const cto = group[0];
+          const lat = parseFloat(cto.latitude);
+          const lng = parseFloat(cto.longitude);
+
+          bounds.extend({ lat, lng });
+
+          try {
+            const circle = new google.maps.Circle({
+              strokeColor: '#8B7AE8',
+              strokeOpacity: 0.8,
+              strokeWeight: 1.2,
+              fillColor: '#6B8DD6',
+              fillOpacity: coverageOpacity,
+              map: map,
+              center: { lat, lng },
+              radius: 250,
+              zIndex: 1,
+              optimized: false
+            });
+
+            coverageCircles.push(circle);
+            circlesCreated++;
+            circlesPhase2Created++;
+            return true;
+          } catch (circleErr) {
+            skipped++;
           }
         }
+        return false;
+      });
+      
+      await Promise.all(batchPromises);
+      groupsProcessed += groupBatch.length;
+      
+      // Yield mínimo apenas a cada 10 lotes
+      if (i + GROUP_BATCH_SIZE < sparseGroups.length && i % (GROUP_BATCH_SIZE * 10) === 0) {
+        await new Promise(resolve => setTimeout(resolve, 0)); // Apenas yield ao event loop
       }
     }
     
-    console.log(`✅ FASE 2 concluída: ${circlesPhase2Created} círculos individuais criados para bordas/isoladas`);
-    
-    console.log(`✅ RESUMO: ${coveragePolygons.length} polígonos + ${circlesCreated} círculos criados`);
-    console.log(`   - Polígonos: ${coveragePolygons.length}`);
-    console.log(`   - Círculos: ${circlesCreated}`);
+    const totalTime = performance.now() - startTime;
+    console.log(`✅ FASE 2 concluída: ${circlesPhase2Created} círculos individuais criados`);
+    console.log(`✅ RESUMO FINAL: ${coveragePolygons.length} polígonos + ${circlesCreated} círculos criados em ${totalTime.toFixed(0)}ms`);
+    console.log(`   - Performance: ${(validCTOs.length / (totalTime / 1000)).toFixed(0)} CTOs/segundo`);
     console.log(`   - Total de elementos no mapa: ${coveragePolygons.length + circlesCreated}`);
     
     // Verificar se os elementos foram realmente adicionados ao mapa
