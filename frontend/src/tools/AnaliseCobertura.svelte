@@ -1219,16 +1219,25 @@
             <h3>🗺️ Mapa</h3>
             <button 
               class="minimize-button" 
-              on:click={() => isMapMinimized = !isMapMinimized}
+              on:click={async () => {
+                isMapMinimized = !isMapMinimized;
+                if (!isMapMinimized && map && google?.maps) {
+                  // Quando expandir, aguardar renderização e fazer resize do mapa
+                  await tick();
+                  setTimeout(() => {
+                    if (map && google.maps) {
+                      google.maps.event.trigger(map, 'resize');
+                    }
+                  }, 100);
+                }
+              }}
               aria-label={isMapMinimized ? 'Expandir mapa' : 'Minimizar mapa'}
               title={isMapMinimized ? 'Expandir' : 'Minimizar'}
             >
               {isMapMinimized ? '⬆️' : '⬇️'}
             </button>
           </div>
-          {#if !isMapMinimized}
-            <div id="map" class="map" bind:this={mapElement}></div>
-          {/if}
+          <div id="map" class="map" class:hidden={isMapMinimized} bind:this={mapElement}></div>
         </div>
 
         <!-- Handle de redimensionamento horizontal (mapa/tabela) -->
@@ -1610,10 +1619,15 @@
   .map {
     width: 100%;
     height: 100%;
-    min-height: 500px;
-    flex: 1;
+    min-height: 0;
+    flex: 1 1 auto;
     display: block;
     background: #e5e7eb;
+    position: relative;
+  }
+
+  .map.hidden {
+    display: none;
   }
   
 
