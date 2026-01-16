@@ -37,3 +37,18 @@ docs/
 .env.development
 .env.test
 
+# Backend (não precisa no frontend)
+../backend/
+
+# Arquivos grandes desnecessários
+**/*.map
+**/*.log
+**/*.lock
+package-lock.json
+yarn.lock
+
+# Assets grandes (se não usados no build)
+**/*.xlsx
+**/*.csv
+**/*.xls
+
