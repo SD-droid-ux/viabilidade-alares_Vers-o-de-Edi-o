@@ -2,10 +2,14 @@
 nixPkgs = ["nodejs_18", "npm-9_x"]
 
 [phases.install]
-cmds = ["npm ci --prefer-offline --no-audit --legacy-peer-deps || npm install --prefer-offline --no-audit --legacy-peer-deps"]
+cmds = [
+  "npm ci --prefer-offline --no-audit --legacy-peer-deps --silent || npm install --prefer-offline --no-audit --legacy-peer-deps --silent"
+]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = [
+  "NODE_ENV=production npm run build"
+]
 
 [start]
 cmd = "npm start"
