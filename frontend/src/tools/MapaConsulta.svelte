@@ -25,6 +25,7 @@
   let mapInitialized = false;
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
   let coverageCircles = []; // Array para armazenar círculos de cobertura (250m de cada CTO)
+  let coveragePolygons = []; // Array para armazenar polígonos de áreas densas
   let searchMarkers = []; // Array para armazenar marcadores de busca
   let allCTOs = []; // Array para armazenar todas as CTOs carregadas
   
@@ -131,36 +132,46 @@
       console.log('📥 Carregando TODAS as CTOs da base de dados...');
       
       // Estratégia: buscar CTOs em lotes cobrindo TODO o território brasileiro
-      // Usando raios grandes (1000km) em pontos estratégicos para garantir cobertura completa
+      // Usando raios grandes (1500km) em pontos estratégicos para garantir cobertura completa
+      // Aumentando o raio e adicionando mais pontos para pegar TODAS as CTOs
       const regions = [
-        // Região Nordeste
-        { lat: -3.7172, lng: -38.5433, radius: 1000000, name: 'Fortaleza' }, // 1000km
-        { lat: -8.0476, lng: -34.8770, radius: 1000000, name: 'Recife' },
-        { lat: -12.9714, lng: -38.5014, radius: 1000000, name: 'Salvador' },
-        { lat: -5.7950, lng: -35.2094, radius: 1000000, name: 'Natal' },
-        { lat: -7.2400, lng: -39.4200, radius: 1000000, name: 'Juazeiro do Norte' },
+        // Região Nordeste - pontos principais e interior
+        { lat: -3.7172, lng: -38.5433, radius: 1500000, name: 'Fortaleza' }, // 1500km
+        { lat: -8.0476, lng: -34.8770, radius: 1500000, name: 'Recife' },
+        { lat: -12.9714, lng: -38.5014, radius: 1500000, name: 'Salvador' },
+        { lat: -5.7950, lng: -35.2094, radius: 1500000, name: 'Natal' },
+        { lat: -7.2400, lng: -39.4200, radius: 1500000, name: 'Juazeiro do Norte' },
+        { lat: -5.0880, lng: -42.8019, radius: 1500000, name: 'Teresina' },
+        { lat: -9.5713, lng: -36.7820, radius: 1500000, name: 'Maceió' },
+        { lat: -7.2300, lng: -36.8300, radius: 1500000, name: 'Interior Nordeste' },
         // Região Sudeste
-        { lat: -23.5505, lng: -46.6333, radius: 1000000, name: 'São Paulo' },
-        { lat: -22.9068, lng: -43.1729, radius: 1000000, name: 'Rio de Janeiro' },
-        { lat: -19.9167, lng: -43.9345, radius: 1000000, name: 'Belo Horizonte' },
-        { lat: -20.3155, lng: -40.3128, radius: 1000000, name: 'Vitória' },
+        { lat: -23.5505, lng: -46.6333, radius: 1500000, name: 'São Paulo' },
+        { lat: -22.9068, lng: -43.1729, radius: 1500000, name: 'Rio de Janeiro' },
+        { lat: -19.9167, lng: -43.9345, radius: 1500000, name: 'Belo Horizonte' },
+        { lat: -20.3155, lng: -40.3128, radius: 1500000, name: 'Vitória' },
+        { lat: -22.3145, lng: -49.0611, radius: 1500000, name: 'Bauru' },
+        { lat: -21.1774, lng: -47.8103, radius: 1500000, name: 'Ribeirão Preto' },
         // Região Sul
-        { lat: -30.0346, lng: -51.2177, radius: 1000000, name: 'Porto Alegre' },
-        { lat: -25.4284, lng: -49.2733, radius: 1000000, name: 'Curitiba' },
-        { lat: -27.5954, lng: -48.5480, radius: 1000000, name: 'Florianópolis' },
+        { lat: -30.0346, lng: -51.2177, radius: 1500000, name: 'Porto Alegre' },
+        { lat: -25.4284, lng: -49.2733, radius: 1500000, name: 'Curitiba' },
+        { lat: -27.5954, lng: -48.5480, radius: 1500000, name: 'Florianópolis' },
+        { lat: -26.3044, lng: -48.8464, radius: 1500000, name: 'Joinville' },
         // Região Centro-Oeste
-        { lat: -15.7942, lng: -47.8822, radius: 1000000, name: 'Brasília' },
-        { lat: -20.4428, lng: -54.6458, radius: 1000000, name: 'Campo Grande' },
-        { lat: -16.6864, lng: -49.2643, radius: 1000000, name: 'Goiânia' },
+        { lat: -15.7942, lng: -47.8822, radius: 1500000, name: 'Brasília' },
+        { lat: -20.4428, lng: -54.6458, radius: 1500000, name: 'Campo Grande' },
+        { lat: -16.6864, lng: -49.2643, radius: 1500000, name: 'Goiânia' },
+        { lat: -15.6014, lng: -56.0979, radius: 1500000, name: 'Cuiabá' },
         // Região Norte
-        { lat: -3.1190, lng: -60.0217, radius: 1000000, name: 'Manaus' },
-        { lat: -1.4558, lng: -48.5044, radius: 1000000, name: 'Belém' },
-        { lat: -8.7619, lng: -63.9039, radius: 1000000, name: 'Porto Velho' },
-        { lat: -10.1833, lng: -48.3336, radius: 1000000, name: 'Palmas' },
-        { lat: -9.9747, lng: -67.8100, radius: 1000000, name: 'Rio Branco' },
-        // Pontos adicionais para garantir cobertura completa
-        { lat: -14.2350, lng: -42.4333, radius: 1000000, name: 'Centro-Norte' },
-        { lat: -7.2300, lng: -36.8300, radius: 1000000, name: 'Interior Nordeste' },
+        { lat: -3.1190, lng: -60.0217, radius: 1500000, name: 'Manaus' },
+        { lat: -1.4558, lng: -48.5044, radius: 1500000, name: 'Belém' },
+        { lat: -8.7619, lng: -63.9039, radius: 1500000, name: 'Porto Velho' },
+        { lat: -10.1833, lng: -48.3336, radius: 1500000, name: 'Palmas' },
+        { lat: -9.9747, lng: -67.8100, radius: 1500000, name: 'Rio Branco' },
+        { lat: -2.5297, lng: -44.3028, radius: 1500000, name: 'São Luís' },
+        { lat: -0.9500, lng: -48.4500, radius: 1500000, name: 'Macapá' },
+        // Pontos adicionais para garantir cobertura completa de todo o Brasil
+        { lat: -14.2350, lng: -42.4333, radius: 1500000, name: 'Centro-Norte' },
+        { lat: -10.0, lng: -50.0, radius: 1500000, name: 'Centro-Brasil' },
       ];
 
       const allCTOsMap = new Map(); // Usar Map para evitar duplicatas por coordenadas
@@ -215,88 +226,358 @@
     }
   }
 
-  // Desenhar mancha de cobertura no mapa
-  function drawCoverageArea() {
-    if (!map || !google.maps || allCTOs.length === 0) {
-      console.warn('Mapa não disponível ou sem CTOs para desenhar');
+  // Função auxiliar para calcular distância entre duas coordenadas
+  function calculateDistance(lat1, lng1, lat2, lng2) {
+    const R = 6371000; // Raio da Terra em metros
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distância em metros
+  }
+
+  // Função para criar polígono que representa a união de círculos próximos
+  function createUnionPolygon(ctos) {
+    if (ctos.length === 0) return null;
+    
+    // Se for apenas uma CTO, criar círculo individual
+    if (ctos.length === 1) {
+      const cto = ctos[0];
+      const lat = parseFloat(cto.latitude);
+      const lng = parseFloat(cto.longitude);
+      
+      return new google.maps.Circle({
+        strokeColor: '#7B68EE',
+        strokeOpacity: 0.4,
+        strokeWeight: 0.5,
+        fillColor: '#6495ED',
+        fillOpacity: 0.2,
+        map: map,
+        center: { lat, lng },
+        radius: 250,
+        zIndex: 1,
+        optimized: true
+      });
+    }
+    
+    // Para múltiplas CTOs próximas, criar um polígono que representa a área coberta
+    // Calcular bounding box expandido pelo raio de 250m
+    const RADIUS_M = 250; // Raio em metros
+    const RADIUS_DEG = RADIUS_M / 111000; // Raio em graus (aproximação)
+    
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLng = Infinity;
+    let maxLng = -Infinity;
+    
+    for (const cto of ctos) {
+      const lat = parseFloat(cto.latitude);
+      const lng = parseFloat(cto.longitude);
+      
+      // Expandir pelo raio
+      const latRadius = RADIUS_DEG;
+      const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
+      
+      minLat = Math.min(minLat, lat - latRadius);
+      maxLat = Math.max(maxLat, lat + latRadius);
+      minLng = Math.min(minLng, lng - lngRadius);
+      maxLng = Math.max(maxLng, lng + lngRadius);
+    }
+    
+    // Criar polígono retangular que cobre toda a área (simplificado mas eficiente)
+    const polygonPath = [
+      { lat: minLat, lng: minLng },
+      { lat: maxLat, lng: minLng },
+      { lat: maxLat, lng: maxLng },
+      { lat: minLat, lng: maxLng }
+    ];
+    
+    return new google.maps.Polygon({
+      paths: polygonPath,
+      strokeColor: '#7B68EE',
+      strokeOpacity: 0.4,
+      strokeWeight: 0.5,
+      fillColor: '#6495ED',
+      fillOpacity: 0.2,
+      map: map,
+      zIndex: 1
+    });
+  }
+
+  // Desenhar mancha de cobertura no mapa (otimizado: polígonos para áreas densas, círculos para bordas)
+  async function drawCoverageArea() {
+    // Verificar se tudo está pronto
+    if (!map) {
+      console.warn('⚠️ Mapa não está inicializado');
       return;
     }
+    
+    if (!google || !google.maps) {
+      console.warn('⚠️ Google Maps não está carregado');
+      return;
+    }
+    
+    if (!allCTOs || allCTOs.length === 0) {
+      console.warn('⚠️ Nenhuma CTO carregada para desenhar');
+      return;
+    }
+
+    console.log(`🗺️ Desenhando mancha de cobertura com ${allCTOs.length} CTOs...`);
 
     // Limpar círculos anteriores
     clearCoverageCircles();
 
-    console.log(`🗺️ Desenhando mancha de cobertura com ${allCTOs.length} CTOs...`);
+    // Aguardar um pouco para garantir que o mapa está totalmente renderizado
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     const bounds = new google.maps.LatLngBounds();
     let circlesCreated = 0;
+    let skipped = 0;
 
-    // Criar círculo de 250m para cada CTO
-    for (const cto of allCTOs) {
-      if (!cto.latitude || !cto.longitude) continue;
-
+    // Otimização: renderizar em lotes para não travar o navegador
+    const BATCH_SIZE = 1000; // Processar 1000 círculos por vez
+    const DELAY_BETWEEN_BATCHES = 10; // 10ms entre lotes (permite que o navegador respire)
+    
+    // Filtrar CTOs válidas primeiro
+    const validCTOs = allCTOs.filter(cto => {
+      if (!cto.latitude || !cto.longitude) {
+        skipped++;
+        return false;
+      }
       const lat = parseFloat(cto.latitude);
       const lng = parseFloat(cto.longitude);
+      if (isNaN(lat) || isNaN(lng)) {
+        skipped++;
+        return false;
+      }
+      return true;
+    });
 
-      if (isNaN(lat) || isNaN(lng)) continue;
+    console.log(`📊 ${validCTOs.length} CTOs válidas para desenhar (${skipped} ignoradas)`);
 
-      // Adicionar ao bounds para ajustar zoom depois
-      bounds.extend({ lat, lng });
+    // Estratégia: Agrupar CTOs próximas (que se sobrepõem) e criar polígonos
+    // CTOs isoladas ou em grupos pequenos: círculos individuais (bordas)
+    const OVERLAP_DISTANCE = 500; // Se duas CTOs estão a menos de 500m, elas se sobrepõem
+    
+    // Agrupar CTOs por proximidade
+    const groups = [];
+    const processedIndices = new Set();
+    
+    for (let i = 0; i < validCTOs.length; i++) {
+      if (processedIndices.has(i)) continue;
+      
+      const cto = validCTOs[i];
+      const lat1 = parseFloat(cto.latitude);
+      const lng1 = parseFloat(cto.longitude);
+      
+      const group = [cto];
+      processedIndices.add(i);
+      
+      // Encontrar todas as CTOs próximas (que se sobrepõem)
+      for (let j = i + 1; j < validCTOs.length; j++) {
+        if (processedIndices.has(j)) continue;
+        
+        const otherCto = validCTOs[j];
+        const lat2 = parseFloat(otherCto.latitude);
+        const lng2 = parseFloat(otherCto.longitude);
+        
+        const distance = calculateDistance(lat1, lng1, lat2, lng2);
+        
+        // Se estão próximas o suficiente para sobrepor (500m = 2x raio de 250m)
+        if (distance <= OVERLAP_DISTANCE) {
+          group.push(otherCto);
+          processedIndices.add(j);
+        }
+      }
+      
+      groups.push(group);
+    }
+    
+    console.log(`📊 ${groups.length} grupos identificados (áreas densas e isoladas)`);
+    
+    // Processar grupos - SEM sobreposição
+    // Primeiro, identificar quais CTOs já estão cobertas por polígonos
+    const coveredByPolygons = new Set(); // Índices de CTOs já cobertas por polígonos
+    
+    let groupsProcessed = 0;
+    
+    // FASE 1: Criar polígonos para áreas densas (sem sobreposição)
+    for (const group of groups) {
+      groupsProcessed++;
+      
+      // Atualizar mensagem de loading (manter simples como ViabilidadeAlares)
+      // Não atualizar mensagem durante processamento para manter consistência visual
+      
+      // Se grupo tem muitas CTOs (área densa), criar polígono
+      if (group.length >= 5) {
+        // Área densa: criar polígono único
+        try {
+          const polygon = createUnionPolygon(group);
+          if (polygon) {
+            if (polygon instanceof google.maps.Polygon) {
+              coveragePolygons.push(polygon);
+            } else {
+              coverageCircles.push(polygon);
+              circlesCreated++;
+            }
+            
+            // Marcar todas as CTOs deste grupo como cobertas por polígono
+            for (let i = 0; i < validCTOs.length; i++) {
+              const cto = validCTOs[i];
+              const isInGroup = group.some(g => 
+                Math.abs(parseFloat(g.latitude) - parseFloat(cto.latitude)) < 0.0001 &&
+                Math.abs(parseFloat(g.longitude) - parseFloat(cto.longitude)) < 0.0001
+              );
+              if (isInGroup) {
+                coveredByPolygons.add(i);
+              }
+            }
+            
+            // Adicionar ao bounds
+            for (const cto of group) {
+              bounds.extend({ 
+                lat: parseFloat(cto.latitude), 
+                lng: parseFloat(cto.longitude) 
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Erro ao criar polígono:', err);
+        }
+      }
+      
+      // Pequena pausa para não travar
+      if (groupsProcessed % 100 === 0) {
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+      }
+    }
+    
+    // FASE 2: Criar círculos individuais apenas para CTOs NÃO cobertas por polígonos (bordas/isoladas)
+    // E garantir que círculos não se sobreponham
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      
+      // Se grupo é pequeno (bordas/isoladas) E não está coberto por polígono
+      if (group.length < 5) {
+        // Verificar se alguma CTO do grupo já está coberta por polígono
+        let groupIsCovered = false;
+        for (const cto of group) {
+          const ctoIndex = validCTOs.findIndex(v => 
+            Math.abs(parseFloat(v.latitude) - parseFloat(cto.latitude)) < 0.0001 &&
+            Math.abs(parseFloat(v.longitude) - parseFloat(cto.longitude)) < 0.0001
+          );
+          if (ctoIndex >= 0 && coveredByPolygons.has(ctoIndex)) {
+            groupIsCovered = true;
+            break;
+          }
+        }
+        
+        // Só criar círculos se o grupo NÃO estiver coberto por polígono
+        if (!groupIsCovered) {
+          // Se o grupo tem 2-4 CTOs próximas, criar um polígono pequeno (evita sobreposição)
+          if (group.length >= 2) {
+            try {
+              const polygon = createUnionPolygon(group);
+              if (polygon) {
+                if (polygon instanceof google.maps.Polygon) {
+                  coveragePolygons.push(polygon);
+                } else {
+                  coverageCircles.push(polygon);
+                  circlesCreated++;
+                }
+                
+                // Adicionar ao bounds
+                for (const cto of group) {
+                  bounds.extend({ 
+                    lat: parseFloat(cto.latitude), 
+                    lng: parseFloat(cto.longitude) 
+                  });
+                }
+              }
+            } catch (err) {
+              console.error('Erro ao criar polígono pequeno:', err);
+            }
+          } else {
+            // Grupo com apenas 1 CTO (isolada) - criar círculo individual
+            const cto = group[0];
+            const lat = parseFloat(cto.latitude);
+            const lng = parseFloat(cto.longitude);
 
-      // Criar círculo de 250m (cor da paleta do projeto)
-      // Apenas círculos formando a mancha de cobertura, sem marcadores
-      const circle = new google.maps.Circle({
-        strokeColor: '#7B68EE', // Roxo da paleta (borda)
-        strokeOpacity: 0.3, // Borda mais sutil
-        strokeWeight: 1,
-        fillColor: '#6495ED', // Azul da paleta (preenchimento)
-        fillOpacity: 0.2, // Opacidade ajustada para formar mancha visível quando sobrepostos
-        map: map,
-        center: { lat, lng },
-        radius: 250, // 250 metros
-        zIndex: 1
-      });
+            bounds.extend({ lat, lng });
 
-      coverageCircles.push(circle);
-      circlesCreated++;
+            try {
+              const circle = new google.maps.Circle({
+                strokeColor: '#7B68EE',
+                strokeOpacity: 0.4,
+                strokeWeight: 0.5,
+                fillColor: '#6495ED',
+                fillOpacity: 0.2,
+                map: map,
+                center: { lat, lng },
+                radius: 250,
+                zIndex: 1,
+                optimized: true
+              });
+
+              coverageCircles.push(circle);
+              circlesCreated++;
+            } catch (circleErr) {
+              console.error(`Erro ao criar círculo:`, circleErr);
+              skipped++;
+            }
+          }
+        }
+      }
+    }
+    
+    console.log(`✅ ${coveragePolygons.length} polígonos (áreas densas) + ${circlesCreated} círculos (bordas/isoladas) criados`);
+
+    if (skipped > 0) {
+      console.warn(`⚠️ ${skipped} CTOs ignoradas (coordenadas inválidas)`);
     }
 
-    console.log(`✅ ${circlesCreated} círculos de cobertura criados`);
-
     // Ajustar zoom para mostrar toda a área coberta (todas as manchas)
-    if (circlesCreated > 0) {
+    if (circlesCreated > 0 || coveragePolygons.length > 0) {
       try {
+        // Forçar redimensionamento do mapa
         google.maps.event.trigger(map, 'resize');
-        setTimeout(() => {
-          if (map && bounds && !bounds.isEmpty()) {
-            // Ajustar zoom para mostrar TODA a área coberta por todas as CTOs
-            map.fitBounds(bounds, {
-              top: 50,
-              right: 50,
-              bottom: 50,
-              left: 50
-            });
-            console.log(`✅ Zoom ajustado para mostrar toda a área de cobertura (${circlesCreated} círculos)`);
-          } else {
-            // Fallback: centralizar no Brasil se bounds estiver vazio
-            map.setCenter({ lat: -14.2350, lng: -51.9253 }); // Centro geográfico do Brasil
-            map.setZoom(5);
-            console.log('✅ Zoom ajustado para centro do Brasil (fallback)');
-          }
-        }, 500);
+        
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        if (map && bounds && !bounds.isEmpty()) {
+          // Ajustar zoom para mostrar TODA a área coberta por todas as CTOs
+          map.fitBounds(bounds, {
+            top: 50,
+            right: 50,
+            bottom: 50,
+            left: 50
+          });
+          console.log(`✅ Zoom ajustado para mostrar toda a área de cobertura (${coveragePolygons.length} polígonos + ${circlesCreated} círculos)`);
+        } else {
+          // Fallback: centralizar no Brasil se bounds estiver vazio
+          map.setCenter({ lat: -14.2350, lng: -51.9253 }); // Centro geográfico do Brasil
+          map.setZoom(5);
+          console.log('✅ Zoom ajustado para centro do Brasil (fallback)');
+        }
       } catch (err) {
-        console.warn('Erro ao ajustar zoom:', err);
+        console.error('❌ Erro ao ajustar zoom:', err);
         // Fallback: centralizar no Brasil
         try {
           map.setCenter({ lat: -14.2350, lng: -51.9253 });
           map.setZoom(5);
         } catch (fallbackErr) {
-          console.error('Erro no fallback de zoom:', fallbackErr);
+          console.error('❌ Erro no fallback de zoom:', fallbackErr);
         }
       }
+    } else {
+      console.error('❌ Nenhum círculo foi criado!');
     }
   }
 
-  // Limpar círculos de cobertura
+  // Limpar círculos e polígonos de cobertura
   function clearCoverageCircles() {
     coverageCircles.forEach(circle => {
       if (circle && circle.setMap) {
@@ -304,6 +585,13 @@
       }
     });
     coverageCircles = [];
+    
+    coveragePolygons.forEach(polygon => {
+      if (polygon && polygon.setMap) {
+        polygon.setMap(null);
+      }
+    });
+    coveragePolygons = [];
   }
 
   // Limpar marcadores de busca
@@ -370,45 +658,109 @@
       // Etapa 1: Carregando Mapa
       loadingMessage = 'Carregando Mapa';
       await loadGoogleMaps();
+      
+      // Pequeno delay para visualização
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Etapa 2: Carregando TODAS as CTOs
-      loadingMessage = 'Carregando todas as CTOs da base de dados...';
-      await loadAllCTOs();
+      // Etapa 2: Verificando Base de dados
+      loadingMessage = 'Verificando Base de dados';
+      baseDataExists = true; // Resetar estado
+      try {
+        // Verificar se há CTOs na base fazendo uma busca de teste
+        const testResponse = await fetch(getApiUrl('/api/ctos/nearby?lat=-23.5505&lng=-46.6333&radius=1000'));
+        if (testResponse.ok) {
+          const testData = await testResponse.json();
+          baseDataExists = testData.success && testData.ctos && testData.ctos.length > 0;
+        }
+      } catch (err) {
+        console.warn('Aviso: Não foi possível verificar base de dados:', err.message);
+        baseDataExists = false;
+      }
+      
+      // Pequeno delay para visualização
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Etapa 3: Desenhando mancha de cobertura
-      loadingMessage = 'Desenhando mancha de cobertura...';
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Etapa 4: Finalizando
-      loadingMessage = 'Finalizando...';
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      isLoading = false;
-      
-      // Aguardar DOM atualizar antes de inicializar o mapa
+      // Etapa 3: Aguardar DOM atualizar e inicializar mapa
+      loadingMessage = 'Inicializando Mapa';
       await tick();
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
       
-      // Inicializar mapa
+      // Inicializar mapa ANTES de carregar CTOs
       initMap();
       
-      // Aguardar mapa renderizar antes de desenhar cobertura
-      await tick();
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Aguardar mapa estar pronto
+      await new Promise((resolve) => {
+        if (map) {
+          google.maps.event.addListenerOnce(map, 'idle', () => {
+            console.log('✅ Mapa totalmente carregado');
+            resolve();
+          });
+        } else {
+          setTimeout(resolve, 1000);
+        }
+      });
       
-      // Desenhar mancha de cobertura
-      drawCoverageArea();
+      // Pequeno delay para visualização
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Etapa 4: Carregando CTOs
+      loadingMessage = 'Carregando CTOs';
+      await loadAllCTOs();
+      console.log(`✅ ${allCTOs.length} CTOs carregadas`);
+      
+      // Pequeno delay para visualização
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Etapa 5: Desenhando manchas de cobertura
+      if (allCTOs.length > 0) {
+        loadingMessage = 'Desenhando manchas de cobertura';
+        
+        // Verificar se o mapa está pronto
+        if (!map) {
+          console.error('❌ Mapa não foi inicializado corretamente');
+          isLoading = false;
+          return;
+        }
+        
+        // Forçar redimensionamento do mapa
+        google.maps.event.trigger(map, 'resize');
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Desenhar TODAS as manchas de cobertura
+        console.log(`🎨 Desenhando ${allCTOs.length} manchas de cobertura em todo o Brasil...`);
+        await drawCoverageArea();
+        console.log(`✅ ${coveragePolygons.length} polígonos + ${coverageCircles.length} círculos criados - manchas visíveis em todo o Brasil`);
+        
+        // Aguardar um pouco para garantir que tudo foi renderizado
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } else {
+        loadingMessage = 'Nenhuma CTO encontrada na base de dados';
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      
+      // Etapa 6: Ajuste Finais
+      loadingMessage = 'Ajuste Finais';
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Etapa 7: Abrindo Ferramenta
+      loadingMessage = 'Abrindo Ferramenta';
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Só agora terminar o loading - tudo já está pronto e visível
+      isLoading = false;
+      console.log('✅ Ferramenta totalmente carregada e pronta para uso');
+      
     } catch (err) {
-      console.error('Erro ao inicializar ferramenta:', err);
+      console.error('❌ Erro ao inicializar ferramenta:', err);
       error = 'Erro ao inicializar ferramenta: ' + err.message;
       isLoading = false;
       
       // Tentar inicializar o mapa mesmo com erro
       await tick();
       await new Promise(resolve => setTimeout(resolve, 100));
-      initMap();
+      if (!map) {
+        initMap();
+      }
     }
   }
 
@@ -672,7 +1024,7 @@
     }
   });
 
-  // Cleanup ao desmontar
+    // Cleanup ao desmontar
   onDestroy(() => {
     clearCoverageCircles();
     clearSearchMarkers();
@@ -682,7 +1034,7 @@
 <!-- Conteúdo da Ferramenta Mapa de Consulta -->
 <div class="mapa-consulta-content">
   {#if isLoading}
-    <Loading message={loadingMessage} />
+    <Loading currentMessage={loadingMessage} />
   {:else}
     <div class="main-layout">
       <!-- Painel de Busca -->
@@ -816,8 +1168,13 @@
                   setTimeout(() => {
                     if (map && google.maps) {
                       google.maps.event.trigger(map, 'resize');
+                      // Se temos CTOs carregadas mas não temos círculos, redesenhar
+                      if (allCTOs.length > 0 && coverageCircles.length === 0) {
+                        console.log('🔄 Redesenhando mancha após expandir mapa...');
+                        drawCoverageArea();
+                      }
                     }
-                  }, 100);
+                  }, 200);
                 }
               }}
               aria-label={isMapMinimized ? 'Expandir mapa' : 'Minimizar mapa'}
