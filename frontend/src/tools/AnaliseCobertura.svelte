@@ -39,6 +39,9 @@
   // Resultados
   let ctos = [];
   let error = null;
+  
+  // Mapa para controlar quais CTOs estão visíveis no mapa (key: identificador único da CTO)
+  let ctoVisibility = new Map(); // Map<ctoKey, boolean>
 
   // Redimensionamento de boxes - usar variáveis que o Svelte detecta como reativas
   let sidebarWidth = 400; // Largura inicial da sidebar em pixels (aumentada para melhor visibilidade)
@@ -306,6 +309,14 @@
     return R * c; // Distância em metros
   }
 
+  // Função para gerar uma chave única para uma CTO
+  function getCTOKey(cto) {
+    // Usar nome + coordenadas para criar chave única
+    const lat = parseFloat(cto.latitude || 0).toFixed(6);
+    const lng = parseFloat(cto.longitude || 0).toFixed(6);
+    return `${cto.nome || 'UNKNOWN'}_${lat}_${lng}`;
+  }
+
   // Função para verificar se uma CTO já está na lista (evitar duplicatas)
   function isCTODuplicate(cto, existingList) {
     return existingList.some(existing => 
@@ -530,6 +541,15 @@
       // Resultado final: TODAS as CTOs pesquisadas primeiro (na ordem pesquisada), depois próximas
       // IMPORTANTE: Todas as CTOs pesquisadas aparecem, mesmo com coordenadas duplicadas
       ctos = [...searchedCTOs, ...nearbyCTOs];
+      
+      // Inicializar visibilidade de todas as CTOs como verdadeira (todas visíveis por padrão)
+      ctoVisibility.clear();
+      for (const cto of ctos) {
+        const ctoKey = getCTOKey(cto);
+        if (!ctoVisibility.has(ctoKey)) {
+          ctoVisibility.set(ctoKey, true); // Todas visíveis por padrão
+        }
+      }
 
       console.log(`✅ Total final: ${searchedCTOs.length} CTO(s) pesquisada(s) + ${nearbyCTOs.length} CTO(s) próxima(s) = ${ctos.length} CTO(s) no total`);
       console.log(`📋 CTOs pesquisadas na lista: ${searchedCTOsList.length}, CTOs pesquisadas no resultado: ${searchedCTOs.length}, CTOs próximas: ${nearbyCTOs.length}`);
@@ -658,6 +678,15 @@
         console.log(`📍 Busca por endereço: ${allNearbyCTOs.length} CTOs encontradas dentro de 250m (sem limite)`);
         ctos = allNearbyCTOs; // Todas as CTOs, sem limite
         
+        // Inicializar visibilidade de todas as CTOs como verdadeira (todas visíveis por padrão)
+        ctoVisibility.clear();
+        for (const cto of ctos) {
+          const ctoKey = getCTOKey(cto);
+          if (!ctoVisibility.has(ctoKey)) {
+            ctoVisibility.set(ctoKey, true); // Todas visíveis por padrão
+          }
+        }
+        
         // Limpar marcador anterior se existir
         if (searchMarker) {
           searchMarker.setMap(null);
@@ -747,12 +776,22 @@
     let markersCreated = 0;
     let markersSkipped = 0;
 
-    // ETAPA 1: Agrupar CTOs por coordenadas (lat/lng idênticas)
+    // ETAPA 1: Agrupar CTOs por coordenadas (lat/lng idênticas) e filtrar apenas as visíveis
     const ctosByPosition = new Map(); // Chave: "lat,lng", Valor: Array de CTOs + números
     const ctoToNumber = new Map(); // Mapear CTO para seu número no array
     
     for (let i = 0; i < ctos.length; i++) {
       const cto = ctos[i];
+      
+      // Verificar se a CTO está marcada como visível
+      const ctoKey = getCTOKey(cto);
+      const isVisible = ctoVisibility.get(ctoKey) !== false; // Padrão: true (visível)
+      
+      if (!isVisible) {
+        // CTO não está marcada como visível, pular
+        markersSkipped++;
+        continue;
+      }
       
       // Validar coordenadas
       if (!cto.latitude || !cto.longitude || isNaN(cto.latitude) || isNaN(cto.longitude)) {
@@ -1316,6 +1355,7 @@
               <table class="results-table">
                 <thead>
                   <tr>
+                    <th style="width: 50px;"></th>
                     <th>CTO</th>
                     <th>Cidade</th>
                     <th>POP</th>
@@ -1328,7 +1368,22 @@
                 </thead>
                 <tbody>
                   {#each ctos as cto}
+                    {@const ctoKey = getCTOKey(cto)}
+                    {@const isVisible = ctoVisibility.get(ctoKey) !== false}
                     <tr>
+                      <td style="text-align: center; padding: 0.5rem;">
+                        <input 
+                          type="checkbox" 
+                          checked={isVisible}
+                          on:change={(e) => {
+                            ctoVisibility.set(ctoKey, e.target.checked);
+                            // Atualizar mapa quando checkbox mudar
+                            displayResultsOnMap();
+                          }}
+                          style="cursor: pointer; width: 18px; height: 18px;"
+                          aria-label="Mostrar/ocultar CTO no mapa"
+                        />
+                      </td>
                       <td><strong>{cto.nome}</strong></td>
                       <td>{cto.cidade}</td>
                       <td>{cto.pop || 'N/A'}</td>
