@@ -652,75 +652,83 @@
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      let lat, lng;
-      const parsed = parseCoordinatesOrAddress(enderecoInput);
-
-      if (parsed.isCoordinates) {
-        // É coordenadas - usar diretamente
-        lat = parsed.lat;
-        lng = parsed.lng;
-      } else {
-        // É endereço - verificar se o Google Maps está carregado
-        if (!googleMapsLoaded || !google.maps || !google.maps.Geocoder) {
-          error = 'Google Maps não está carregado. Aguarde alguns instantes e tente novamente.';
-          loadingCTOs = false;
-          return;
-        }
-        
-        // Geocodificar endereço
-        const result = await geocodeAddress(parsed.address);
-        const location = result.geometry.location;
-        lat = location.lat();
-        lng = location.lng();
+      // Verificar se o Google Maps está carregado (necessário para geocodificação)
+      if (!googleMapsLoaded || !google.maps || !google.maps.Geocoder) {
+        error = 'Google Maps não está carregado. Aguarde alguns instantes e tente novamente.';
+        loadingCTOs = false;
+        return;
       }
 
-      // Buscar todas as CTOs próximas dentro de 250m
-      const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=250`));
-      const data = await response.json();
+      // Separar múltiplos endereços/coordenadas (aceita vírgula, ponto e vírgula, ou quebra de linha)
+      const addressesInputs = enderecoInput
+        .split(/[,;\n]/)
+        .map(addr => addr.trim())
+        .filter(addr => addr.length > 0);
 
-      if (data.success && data.ctos) {
-        // Filtrar apenas CTOs dentro de 250m (garantir precisão) - SEM LIMITE
-        const allNearbyCTOs = data.ctos.filter(cto => {
-          if (!cto.latitude || !cto.longitude) return false;
-          const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
-          return distance <= 250;
-        });
-        
-        console.log(`📍 Busca por endereço: ${allNearbyCTOs.length} CTOs encontradas dentro de 250m (sem limite)`);
-        ctos = allNearbyCTOs; // Todas as CTOs, sem limite
-        
-        // Inicializar visibilidade de todas as CTOs como verdadeira (todas visíveis por padrão)
-        ctoVisibility.clear();
-        for (const cto of ctos) {
-          const ctoKey = getCTOKey(cto);
-          if (!ctoVisibility.has(ctoKey)) {
-            ctoVisibility.set(ctoKey, true); // Todas visíveis por padrão
+      if (addressesInputs.length === 0) {
+        error = 'Por favor, insira pelo menos um endereço ou coordenadas';
+        loadingCTOs = false;
+        return;
+      }
+
+      console.log(`🔍 Buscando ${addressesInputs.length} endereço(s)/coordenada(s):`, addressesInputs);
+
+      // Processar cada endereço/coordenada em paralelo
+      const searchPromises = addressesInputs.map(async (input) => {
+        try {
+          const parsed = parseCoordinatesOrAddress(input);
+          let lat, lng;
+          let title;
+
+          if (parsed.isCoordinates) {
+            // É coordenadas - usar diretamente
+            lat = parsed.lat;
+            lng = parsed.lng;
+            title = `Coordenadas: ${lat}, ${lng}`;
+          } else {
+            // É endereço - geocodificar
+            const result = await geocodeAddress(parsed.address);
+            const location = result.geometry.location;
+            lat = location.lat();
+            lng = location.lng();
+            title = `Endereço: ${parsed.address}`;
           }
+
+          return { lat, lng, title, input };
+        } catch (err) {
+          console.error(`Erro ao processar "${input}":`, err);
+          return null;
         }
-        
-        // Limpar marcador anterior se existir
-        if (searchMarker) {
-          searchMarker.setMap(null);
-        }
-        
-        // Adicionar marcador do ponto pesquisado (azul)
-        if (map) {
-          const markerTitle = parsed.isCoordinates 
-            ? `Coordenadas pesquisadas: ${lat}, ${lng}` 
-            : 'Endereço pesquisado';
-          
-          searchMarker = new google.maps.Marker({
+      });
+
+      const searchResults = await Promise.all(searchPromises);
+      const validPoints = searchResults.filter(result => result !== null);
+
+      if (validPoints.length === 0) {
+        error = 'Nenhum endereço ou coordenada válida encontrada. Verifique os valores digitados.';
+        loadingCTOs = false;
+        return;
+      }
+
+      console.log(`✅ ${validPoints.length} ponto(s) válido(s) encontrado(s)`);
+
+      // Criar marcadores e círculos para cada ponto pesquisado
+      if (map) {
+        for (const { lat, lng, title } of validPoints) {
+          // Marcador azul para o ponto pesquisado
+          const marker = new google.maps.Marker({
             position: { lat, lng },
             map: map,
-            title: markerTitle,
+            title: title,
             icon: {
               url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
               scaledSize: new google.maps.Size(32, 32)
             },
             zIndex: 999
           });
+          searchMarkers.push(marker);
           
-          // Criar círculo de raio de 250m a partir do ponto pesquisado (cor do projeto)
+          // Criar círculo de raio de 250m para cada ponto pesquisado (cor do projeto)
           const circle = new google.maps.Circle({
             strokeColor: '#7B68EE', // Cor da borda (roxo do projeto)
             strokeOpacity: 0.8,
@@ -733,22 +741,82 @@
             zIndex: 1 // Abaixo dos marcadores
           });
           radiusCircles.push(circle);
-          
-          console.log(`✅ Círculo de raio de 250m criado para ponto pesquisado`);
         }
         
-        // Aguardar um pouco para garantir que o DOM está atualizado
-        await tick();
-        // Exibir CTOs no mapa (isso vai ajustar o zoom automaticamente)
-        await displayResultsOnMap();
-        
-        // Se não houver CTOs, centralizar no ponto pesquisado
-        if (ctos.length === 0 && map) {
-          map.setCenter({ lat, lng });
-          map.setZoom(15);
+        console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para pontos pesquisados`);
+      }
+
+      // Buscar CTOs próximas de cada ponto (em paralelo)
+      const nearbyPromises = validPoints.map(({ lat, lng }) =>
+        fetch(getApiUrl(`/api/ctos/nearby?lat=${lat}&lng=${lng}&radius=250`))
+          .then(response => response.json())
+          .then(data => ({ data, lat, lng }))
+          .catch(err => {
+            console.error(`Erro ao buscar CTOs próximas de ${lat}, ${lng}:`, err);
+            return { data: null, lat, lng };
+          })
+      );
+
+      const nearbyResults = await Promise.all(nearbyPromises);
+
+      // Consolidar todas as CTOs encontradas (evitando duplicatas por coordenadas)
+      const allCTOsMap = new Map(); // Chave: coordenadas para evitar duplicatas
+      
+      for (const { data, lat, lng } of nearbyResults) {
+        if (data?.success && data.ctos) {
+          // Filtrar apenas CTOs dentro de 250m (garantir precisão)
+          const nearbyCTOs = data.ctos.filter(cto => {
+            if (!cto.latitude || !cto.longitude) return false;
+            const distance = calculateDistance(lat, lng, parseFloat(cto.latitude), parseFloat(cto.longitude));
+            return distance <= 250;
+          });
+
+          // Adicionar CTOs ao Map (evitando duplicatas)
+          for (const cto of nearbyCTOs) {
+            const ctoKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
+            if (!allCTOsMap.has(ctoKey)) {
+              allCTOsMap.set(ctoKey, cto);
+            }
+          }
         }
-      } else {
-        error = data.error || 'Erro ao buscar CTOs';
+      }
+
+      // Converter Map para array
+      ctos = Array.from(allCTOsMap.values());
+
+      console.log(`📍 Busca por endereço/coordenadas: ${ctos.length} CTOs únicas encontradas dentro de 250m`);
+
+      // Inicializar visibilidade de todas as CTOs como verdadeira (todas visíveis por padrão)
+      ctoVisibility.clear();
+      for (const cto of ctos) {
+        const ctoKey = getCTOKey(cto);
+        if (!ctoVisibility.has(ctoKey)) {
+          ctoVisibility.set(ctoKey, true); // Todas visíveis por padrão
+        }
+      }
+
+      if (ctos.length === 0) {
+        error = 'Nenhuma CTO encontrada dentro de 250m dos pontos pesquisados.';
+        loadingCTOs = false;
+        return;
+      }
+
+      // Limpar marcador único anterior se existir (compatibilidade)
+      if (searchMarker) {
+        searchMarker.setMap(null);
+        searchMarker = null;
+      }
+      
+      // Aguardar um pouco para garantir que o DOM está atualizado
+      await tick();
+      // Exibir CTOs no mapa (isso vai ajustar o zoom automaticamente)
+      await displayResultsOnMap();
+      
+      // Se não houver CTOs, centralizar no primeiro ponto pesquisado
+      if (ctos.length === 0 && map && validPoints.length > 0) {
+        const firstPoint = validPoints[0];
+        map.setCenter({ lat: firstPoint.lat, lng: firstPoint.lng });
+        map.setZoom(15);
       }
     } catch (err) {
       console.error('Erro ao buscar por endereço/coordenadas:', err);
@@ -1286,15 +1354,15 @@
           {:else if searchMode === 'endereco'}
             <div class="form-group">
               <label for="endereco">Endereço ou Coordenadas</label>
-              <input 
+              <textarea 
                 id="endereco"
-                type="text" 
                 bind:value={enderecoInput}
-                placeholder="Ex: Rua Exemplo, 123 ou -23.5505, -46.6333"
-                on:keydown={(e) => e.key === 'Enter' && handleSearch()}
-              />
+                placeholder="Ex: Rua Exemplo, 123 ou -23.5505, -46.6333&#10;ou múltiplos: -23.5505, -46.6333&#10;-5.8706799321601, -35.19011154"
+                rows="3"
+                on:keydown={(e) => e.key === 'Enter' && !e.shiftKey && handleSearch()}
+              ></textarea>
               <small style="color: #666; font-size: 0.75rem; margin-top: 0.25rem; display: block;">
-                Digite um endereço ou coordenadas no formato: lat, lng
+                Digite um ou múltiplos endereços/coordenadas separados por vírgula, ponto e vírgula ou quebra de linha. Formato: lat, lng
               </small>
             </div>
           {/if}
