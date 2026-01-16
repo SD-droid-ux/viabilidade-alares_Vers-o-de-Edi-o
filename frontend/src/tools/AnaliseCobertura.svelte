@@ -453,10 +453,10 @@
           // Criar círculo de raio de 250m para cada CTO pesquisada (cor do projeto)
           const circle = new google.maps.Circle({
             strokeColor: '#7B68EE', // Cor da borda (roxo do projeto)
-            strokeOpacity: 0.8,
+            strokeOpacity: 0.6, // Opacidade reduzida para evitar acúmulo visual
             strokeWeight: 2,
             fillColor: '#6495ED', // Cor de preenchimento (azul do projeto)
-            fillOpacity: 0.15, // Transparência para permitir ver as CTOs dentro
+            fillOpacity: 0.08, // Opacidade reduzida para evitar acúmulo visual quando há múltiplos círculos
             map: map,
             center: { lat, lng },
             radius: 250, // Raio de 250 metros
@@ -731,10 +731,10 @@
           // Criar círculo de raio de 250m para cada ponto pesquisado (cor do projeto)
           const circle = new google.maps.Circle({
             strokeColor: '#7B68EE', // Cor da borda (roxo do projeto)
-            strokeOpacity: 0.8,
+            strokeOpacity: 0.6, // Opacidade reduzida para evitar acúmulo visual
             strokeWeight: 2,
             fillColor: '#6495ED', // Cor de preenchimento (azul do projeto)
-            fillOpacity: 0.15, // Transparência para permitir ver as CTOs dentro
+            fillOpacity: 0.08, // Opacidade reduzida para evitar acúmulo visual quando há múltiplos círculos
             map: map,
             center: { lat, lng },
             radius: 250, // Raio de 250 metros
