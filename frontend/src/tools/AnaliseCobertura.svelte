@@ -1096,9 +1096,16 @@
       mapElement.style.minHeight = `${clampedHeight}px`;
     }
     if (tableElement) {
-      // Tabela ocupa o resto do espaço
-      tableElement.style.flex = '1 1 auto';
-      tableElement.style.minHeight = '200px';
+      // Respeitar o estado minimizado da tabela ao redimensionar
+      if (isTableMinimized) {
+        // Se a tabela está minimizada, manter estilos minimizados
+        tableElement.style.flex = '0 0 auto';
+        tableElement.style.minHeight = '60px';
+      } else {
+        // Se a tabela está expandida, ocupar o resto do espaço
+        tableElement.style.flex = '1 1 auto';
+        tableElement.style.minHeight = '200px';
+      }
     }
     
     console.log(`📏 Arrastando mapa/tabela: Mapa ${clampedHeight}px`);
