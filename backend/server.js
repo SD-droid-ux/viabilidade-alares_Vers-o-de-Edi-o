@@ -844,7 +844,7 @@ app.post('/api/coverage/calculate', async (req, res) => {
     }
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     
-    console.log('🗺️ [API] Iniciando cálculo de polígonos de cobertura (assíncrono)...');
+    console.log('🗺️ [API] Iniciando cálculo de polígonos de cobertura (incremental)...');
     
     if (!supabase || !isSupabaseAvailable()) {
       return res.status(503).json({ 
@@ -853,36 +853,90 @@ app.post('/api/coverage/calculate', async (req, res) => {
       });
     }
     
+    // Gerar ID único para este cálculo
+    const calculationId = `calc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const batchSize = 5000; // Lotes pequenos para evitar timeout
+    
     // Retornar resposta imediata e processar em background
     res.json({
       success: true,
-      message: 'Cálculo iniciado em background. Use GET /api/coverage/calculate-status para verificar progresso.',
-      status: 'processing'
+      message: 'Cálculo iniciado em background (processamento incremental). Use GET /api/coverage/calculate-status?calculation_id=' + calculationId + ' para verificar progresso.',
+      status: 'processing',
+      calculation_id: calculationId
     });
     
     // Processar em background (não bloquear resposta)
     (async () => {
       try {
-        console.log('🔄 [API] Processando polígonos em background...');
+        console.log(`🔄 [API] Processando polígonos em background (ID: ${calculationId})...`);
         
-        // Executar função SQL via RPC com processamento em lotes
-        // Usar versão batched que processa em lotes menores
-        const { data, error } = await supabase.rpc('recalculate_coverage_batched');
+        let isComplete = false;
+        let attempts = 0;
+        const maxAttempts = 1000; // Máximo de lotes (5000 CTOs por lote = 5 milhões de CTOs)
         
-        if (error) {
-          console.error('❌ [API] Erro ao calcular polígonos:', error);
-          return;
+        // Processar lotes até completar
+        while (!isComplete && attempts < maxAttempts) {
+          attempts++;
+          
+          console.log(`📦 [API] Processando lote ${attempts}...`);
+          
+          const { data, error } = await supabase.rpc('process_coverage_batch', {
+            p_calculation_id: calculationId,
+            p_batch_size: batchSize
+          });
+          
+          if (error) {
+            console.error(`❌ [API] Erro ao processar lote ${attempts}:`, error);
+            break;
+          }
+          
+          if (!data || data.length === 0) {
+            console.error(`❌ [API] Nenhum resultado retornado do lote ${attempts}`);
+            break;
+          }
+          
+          const result = data[0];
+          
+          if (!result.success) {
+            console.error(`❌ [API] Erro no lote ${attempts}:`, result.message);
+            break;
+          }
+          
+          isComplete = result.is_complete;
+          
+          console.log(`✅ [API] Lote ${attempts}: ${result.processed_ctos}/${result.total_ctos} CTOs (${result.progress_percent?.toFixed(1)}%)`);
+          
+          if (isComplete) {
+            console.log(`🎉 [API] Processamento completo! Finalizando cálculo...`);
+            
+            // Finalizar e salvar polígono
+            const { data: finalData, error: finalError } = await supabase.rpc('finalize_coverage_calculation', {
+              p_calculation_id: calculationId,
+              p_simplification_tolerance: 0.0001
+            });
+            
+            if (finalError) {
+              console.error('❌ [API] Erro ao finalizar cálculo:', finalError);
+              return;
+            }
+            
+            if (finalData && finalData.length > 0 && finalData[0].success) {
+              const finalResult = finalData[0];
+              console.log(`✅ [API] Polígono salvo: ID ${finalResult.polygon_id}, ${finalResult.total_ctos} CTOs, ${finalResult.area_km2?.toFixed(2)} km²`);
+            } else {
+              console.error('❌ [API] Erro ao finalizar:', finalData);
+            }
+            
+            break;
+          }
+          
+          // Pequeno delay entre lotes para não sobrecarregar
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
-        if (!data || data.length === 0) {
-          console.error('❌ [API] Nenhum resultado retornado da função');
-          return;
+        if (!isComplete && attempts >= maxAttempts) {
+          console.error(`❌ [API] Limite de tentativas atingido (${maxAttempts})`);
         }
-        
-        const result = data[0];
-        
-        console.log(`✅ [API] Polígono calculado: ID ${result.polygon_id}, ${result.total_ctos} CTOs, ${result.area_km2?.toFixed(2)} km²`);
-        console.log(`⏱️ [API] Tempo de processamento: ${result.processing_time_seconds?.toFixed(2)} segundos`);
         
       } catch (err) {
         console.error('❌ [API] Erro no processamento em background:', err);
@@ -927,7 +981,34 @@ app.get('/api/coverage/calculate-status', async (req, res) => {
       });
     }
     
-    // Buscar polígono ativo mais recente
+    const calculationId = req.query.calculation_id;
+    
+    // Se há calculation_id, verificar status do cálculo incremental
+    if (calculationId) {
+      try {
+        const { data: statusData, error: statusError } = await supabase.rpc('get_coverage_calculation_status', {
+          p_calculation_id: calculationId
+        });
+        
+        if (!statusError && statusData && statusData.length > 0) {
+          const status = statusData[0];
+          return res.json({
+            success: true,
+            status: status.status === 'completed' ? 'completed' : 'processing',
+            calculation_id: calculationId,
+            processed_ctos: status.processed_ctos,
+            total_ctos: status.total_ctos,
+            progress_percent: status.progress_percent,
+            error_message: status.error_message
+          });
+        }
+      } catch (statusErr) {
+        console.warn('⚠️ [API] Erro ao buscar status incremental:', statusErr);
+        // Continuar para verificar polígono final
+      }
+    }
+    
+    // Buscar polígono ativo mais recente (cálculo já finalizado)
     const { data, error } = await supabase
       .from('coverage_polygons')
       .select('id, version, total_ctos, area_km2, created_at, is_active')
