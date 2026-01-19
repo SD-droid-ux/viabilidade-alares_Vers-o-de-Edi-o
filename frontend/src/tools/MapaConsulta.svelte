@@ -209,11 +209,12 @@
         throw new Error(data.error || 'Erro ao iniciar cálculo');
       }
 
+      const calculationId = data.calculation_id || null;
       calculationMessage = 'Cálculo iniciado em background. Aguardando conclusão...';
-      console.log('✅ Cálculo iniciado:', data.message);
+      console.log('✅ Cálculo iniciado:', data.message, calculationId ? `(ID: ${calculationId})` : '');
 
       // Verificar status periodicamente
-      await checkCalculationStatus();
+      await checkCalculationStatus(calculationId);
 
     } catch (err) {
       console.error('❌ Erro ao iniciar cálculo:', err);
@@ -224,13 +225,18 @@
   }
 
   // Verificar status do cálculo periodicamente
-  async function checkCalculationStatus() {
-    const maxAttempts = 120; // Máximo 10 minutos (120 * 5s)
+  async function checkCalculationStatus(calculationId = null) {
+    const maxAttempts = 600; // Máximo 50 minutos (600 * 5s) - cálculo incremental pode demorar mais
     let attempts = 0;
 
     const checkStatus = async () => {
       try {
-        const response = await fetch(getApiUrl('/api/coverage/calculate-status'));
+        // Adicionar calculation_id se disponível
+        const url = calculationId 
+          ? `/api/coverage/calculate-status?calculation_id=${calculationId}`
+          : '/api/coverage/calculate-status';
+        
+        const response = await fetch(getApiUrl(url));
         
         if (!response.ok) {
           throw new Error(`Erro ao verificar status: ${response.status}`);
@@ -257,6 +263,13 @@
           return;
         }
 
+        // Se está processando, mostrar progresso
+        if (data.status === 'processing' && data.progress_percent !== undefined) {
+          calculationMessage = `Processando... ${data.processed_ctos?.toLocaleString('pt-BR') || 0}/${data.total_ctos?.toLocaleString('pt-BR') || 0} CTOs (${data.progress_percent?.toFixed(1) || 0}%)`;
+        } else {
+          calculationMessage = `Processando... (verificação ${attempts}/${maxAttempts})`;
+        }
+
         attempts++;
         if (attempts >= maxAttempts) {
           calculationStatus = 'error';
@@ -266,7 +279,6 @@
         }
 
         // Continuar verificando
-        calculationMessage = `Processando... (tentativa ${attempts}/${maxAttempts})`;
         setTimeout(checkStatus, 5000); // Verificar a cada 5 segundos
 
       } catch (err) {
