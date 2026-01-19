@@ -151,13 +151,15 @@
       const response = await fetch(getApiUrl('/api/coverage/polygon?simplified=true'));
       
       if (!response.ok) {
-        throw new Error(`Erro ao buscar polígono: ${response.status}`);
+        console.warn('⚠️ Não foi possível carregar polígonos de cobertura:', response.status);
+        return false; // Não lançar erro, apenas retornar false
       }
       
       const data = await response.json();
       
       if (!data.success) {
-        throw new Error(data.message || 'Nenhum polígono de cobertura encontrado');
+        console.warn('⚠️ Nenhum polígono de cobertura encontrado. Execute o cálculo primeiro.');
+        return false; // Não lançar erro, apenas retornar false
       }
       
       coverageData = data;
@@ -167,8 +169,8 @@
       
       return true;
     } catch (err) {
-      console.error('❌ Erro ao carregar polígono de cobertura:', err);
-      throw err;
+      console.warn('⚠️ Erro ao carregar polígono de cobertura:', err);
+      return false; // Não lançar erro, apenas retornar false
     }
   }
 
@@ -1030,8 +1032,12 @@
       
       // Etapa 3: Carregando Polígonos de Cobertura
       loadingMessage = 'Carregando Polígonos de Cobertura';
-      await loadCoveragePolygon();
-      console.log(`✅ Polígono de cobertura carregado`);
+      const polygonLoaded = await loadCoveragePolygon();
+      if (polygonLoaded) {
+        console.log(`✅ Polígono de cobertura carregado`);
+      } else {
+        console.warn('⚠️ Nenhum polígono de cobertura encontrado. A ferramenta funcionará sem visualização de cobertura.');
+      }
       
       // Pequeno delay para visualização
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -1097,7 +1103,7 @@
       // Aguardar um pouco para garantir que o mapa está renderizado
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Desenhar polígono de cobertura
+      // Desenhar polígono de cobertura (se disponível)
       if (coveragePolygonGeoJSON && map) {
         console.log(`🎨 Desenhando polígono de cobertura...`);
         
@@ -1112,7 +1118,12 @@
         // Aguardar um pouco para garantir que tudo foi renderizado
         await new Promise(resolve => setTimeout(resolve, 500));
       } else if (!coveragePolygonGeoJSON) {
-        console.warn('⚠️ Nenhum polígono de cobertura carregado');
+        console.warn('⚠️ Nenhum polígono de cobertura disponível. A ferramenta funcionará normalmente, mas sem visualização de cobertura.');
+        // Centralizar no Brasil mesmo sem polígonos
+        if (map) {
+          map.setCenter({ lat: -14.2350, lng: -51.9253 });
+          map.setZoom(5);
+        }
       } else if (!map) {
         console.error('❌ Mapa não foi inicializado, não é possível desenhar polígono');
       }
@@ -1122,7 +1133,12 @@
     } catch (err) {
       console.error('❌ Erro ao inicializar ferramenta:', err);
       console.error('Stack trace:', err.stack);
-      error = 'Erro ao inicializar ferramenta: ' + (err.message || 'Erro desconhecido');
+      // Não mostrar erro crítico se for apenas falta de polígonos
+      if (err.message && err.message.includes('polígono')) {
+        error = `Aviso: Nenhum polígono de cobertura encontrado. Execute o cálculo primeiro. A ferramenta funcionará normalmente para pesquisas.`;
+      } else {
+        error = 'Erro ao inicializar ferramenta: ' + (err.message || 'Erro desconhecido');
+      }
       isLoading = false;
       
       // Tentar inicializar o mapa mesmo com erro
