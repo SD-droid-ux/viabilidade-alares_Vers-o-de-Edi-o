@@ -264,8 +264,18 @@
         }
 
         // Se está processando, mostrar progresso
-        if (data.status === 'processing' && data.progress_percent !== undefined) {
-          calculationMessage = `Processando... ${data.processed_ctos?.toLocaleString('pt-BR') || 0}/${data.total_ctos?.toLocaleString('pt-BR') || 0} CTOs (${data.progress_percent?.toFixed(1) || 0}%)`;
+        if (data.status === 'processing') {
+          if (data.progress_percent !== undefined) {
+            calculationMessage = `Processando... ${data.processed_ctos?.toLocaleString('pt-BR') || 0}/${data.total_ctos?.toLocaleString('pt-BR') || 0} CTOs (${data.progress_percent?.toFixed(1) || 0}%)`;
+          } else {
+            calculationMessage = `Processando... (verificação ${attempts}/${maxAttempts})`;
+          }
+        } else if (data.status === 'not_calculated') {
+          // Nenhum cálculo encontrado, parar verificação
+          calculationStatus = 'error';
+          calculationMessage = 'Nenhum cálculo encontrado. Clique em "Calcular Polígonos" para iniciar.';
+          isCalculatingCoverage = false;
+          return;
         } else {
           calculationMessage = `Processando... (verificação ${attempts}/${maxAttempts})`;
         }
@@ -1184,7 +1194,8 @@
           if (calcResponse.ok) {
             const calcData = await calcResponse.json();
             if (calcData.success) {
-              console.log('✅ Cálculo iniciado automaticamente durante loading');
+              const calculationId = calcData.calculation_id || null;
+              console.log('✅ Cálculo iniciado automaticamente durante loading', calculationId ? `(ID: ${calculationId})` : '');
               calculationMessage = 'Cálculo iniciado em background. Aguardando conclusão...';
               
               // Aguardar um pouco e verificar se já concluiu (pode ser rápido se já estava calculando)
@@ -1197,7 +1208,12 @@
               while (quickChecks < maxQuickChecks && !polygonLoaded) {
                 await new Promise(resolve => setTimeout(resolve, 5000)); // 5 segundos entre verificações
                 
-                const statusResponse = await fetch(getApiUrl('/api/coverage/calculate-status'));
+                // Usar calculation_id se disponível
+                const statusUrl = calculationId 
+                  ? `/api/coverage/calculate-status?calculation_id=${calculationId}`
+                  : '/api/coverage/calculate-status';
+                
+                const statusResponse = await fetch(getApiUrl(statusUrl));
                 if (statusResponse.ok) {
                   const statusData = await statusResponse.json();
                   if (statusData.success && statusData.status === 'completed') {
@@ -1210,19 +1226,21 @@
                       isCalculatingCoverage = false;
                       break;
                     }
+                  } else if (statusData.status === 'processing' && statusData.progress_percent !== undefined) {
+                    // Mostrar progresso em tempo real
+                    calculationMessage = `Processando... ${statusData.processed_ctos?.toLocaleString('pt-BR') || 0}/${statusData.total_ctos?.toLocaleString('pt-BR') || 0} CTOs (${statusData.progress_percent?.toFixed(1) || 0}%)`;
                   }
                 }
                 quickChecks++;
                 loadingMessage = `Aguardando conclusão do cálculo... (${quickChecks}/${maxQuickChecks})`;
-                calculationMessage = `Processando... (verificação ${quickChecks}/${maxQuickChecks})`;
               }
               
               if (!polygonLoaded) {
                 // Cálculo ainda em andamento, continuar em background
                 console.log('⏳ Cálculo ainda em processamento. Continuará em background.');
                 // Iniciar verificação em background sem bloquear o loading
-                // Não resetar isCalculatingCoverage aqui - deixar a função checkCalculationStatus gerenciar
-                checkCalculationStatus();
+                // Passar calculation_id para verificação contínua
+                checkCalculationStatus(calculationId);
               }
             } else {
               // Erro ao iniciar cálculo
