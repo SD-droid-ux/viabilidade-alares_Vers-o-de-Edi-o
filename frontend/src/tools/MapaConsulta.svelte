@@ -24,18 +24,10 @@
   let googleMapsLoaded = false;
   let mapInitialized = false;
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-  let coverageCircles = []; // Array para armazenar círculos de cobertura (250m de cada CTO)
-  let coveragePolygons = []; // Array para armazenar polígonos de áreas densas
+  let coveragePolygons = []; // Array para armazenar polígonos de cobertura do backend
   let searchMarkers = []; // Array para armazenar marcadores de busca
-  let allCTOs = []; // Array para armazenar todas as CTOs carregadas
-  let loadingStats = {
-    cellsProcessed: 0,
-    totalCells: 0,
-    totalRequests: 0,
-    cellsWithLimit: 0,
-    cellsWithErrors: 0,
-    ctoCount: 0
-  };
+  let coverageData = null; // Dados do polígono de cobertura (metadados)
+  let coveragePolygonGeoJSON = null; // GeoJSON do polígono de cobertura
   
   // Campos de busca
   let enderecoInput = '';
@@ -150,7 +142,37 @@
     }
   }
 
-  // Carregar todas as CTOs da base de dados usando grade para garantir cobertura completa
+  // Carregar polígono de cobertura do backend (versão otimizada)
+  async function loadCoveragePolygon() {
+    try {
+      loadingMessage = 'Carregando polígonos de cobertura...';
+      console.log('📥 Carregando polígono de cobertura do backend...');
+      
+      const response = await fetch(getApiUrl('/api/coverage/polygon?simplified=true'));
+      
+      if (!response.ok) {
+        throw new Error(`Erro ao buscar polígono: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.message || 'Nenhum polígono de cobertura encontrado');
+      }
+      
+      coverageData = data;
+      coveragePolygonGeoJSON = data.geometry;
+      
+      console.log(`✅ Polígono de cobertura carregado: ${data.total_ctos} CTOs, ${data.area_km2?.toFixed(2)} km²`);
+      
+      return true;
+    } catch (err) {
+      console.error('❌ Erro ao carregar polígono de cobertura:', err);
+      throw err;
+    }
+  }
+
+  // Função antiga mantida para referência (não usada mais)
   async function loadAllCTOs() {
     try {
       loadingMessage = 'Criando grade de cobertura completa...';
@@ -729,7 +751,7 @@
     return intersections;
   }
 
-  // Desenhar mancha de cobertura no mapa (otimizado: polígonos para áreas densas, círculos para bordas)
+  // Desenhar polígono de cobertura no mapa (versão otimizada usando dados do backend)
   async function drawCoverageArea() {
     // Verificar se tudo está pronto
     if (!map) {
@@ -742,8 +764,8 @@
       return;
     }
     
-    if (!allCTOs || allCTOs.length === 0) {
-      console.warn('⚠️ Nenhuma CTO carregada para desenhar');
+    if (!coveragePolygonGeoJSON) {
+      console.warn('⚠️ Nenhum polígono de cobertura carregado');
       return;
     }
 
@@ -763,362 +785,76 @@
       await new Promise(resolve => setTimeout(resolve, 300));
     }
 
-    console.log(`🗺️ Desenhando mancha de cobertura com ${allCTOs.length} CTOs...`);
+    console.log(`🗺️ Desenhando polígono de cobertura (${coverageData?.total_ctos || 0} CTOs)...`);
     console.log(`📐 Dimensões do mapa: ${mapRect.width}x${mapRect.height}`);
 
-    // Limpar círculos anteriores
+    // Limpar polígonos anteriores
     clearCoverageCircles();
 
     // Aguardar um pouco para garantir que o mapa está totalmente renderizado
     await new Promise(resolve => setTimeout(resolve, 200));
 
     const bounds = new google.maps.LatLngBounds();
-    let circlesCreated = 0;
-    let skipped = 0;
 
-    // Otimização: renderizar em lotes para não travar o navegador
-    const BATCH_SIZE = 1000; // Processar 1000 círculos por vez
-    const DELAY_BETWEEN_BATCHES = 10; // 10ms entre lotes (permite que o navegador respire)
-    
-    // Filtrar CTOs válidas primeiro
-    const validCTOs = allCTOs.filter(cto => {
-      if (!cto.latitude || !cto.longitude) {
-        skipped++;
-        return false;
-      }
-      const lat = parseFloat(cto.latitude);
-      const lng = parseFloat(cto.longitude);
-      if (isNaN(lat) || isNaN(lng)) {
-        skipped++;
-        return false;
-      }
-      return true;
-    });
-
-    console.log(`📊 ${validCTOs.length} CTOs válidas para desenhar (${skipped} ignoradas)`);
-
-    // Estratégia OTIMIZADA: Usar Spatial Hash Grid para agrupamento O(n) em vez de O(n²)
-    // Isso é CRÍTICO para 220k CTOs - O(n²) seria impossível!
-    const OVERLAP_DISTANCE = 500; // Se duas CTOs estão a menos de 500m, elas se sobrepõem
-    
-    console.log('🔍 Criando spatial hash grid para agrupamento rápido...');
-    const startTime = performance.now();
-    
-    // Criar spatial hash grid (grid de células espaciais)
-    // Cada célula do grid tem ~500m (OVERLAP_DISTANCE) para capturar CTOs próximas
-    const GRID_CELL_SIZE = OVERLAP_DISTANCE; // 500m
-    const GRID_CELL_SIZE_DEG = GRID_CELL_SIZE / 111000; // Converter para graus
-    
-    // Encontrar bounds das CTOs para criar grid
-    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-    for (const cto of validCTOs) {
-      const lat = parseFloat(cto.latitude);
-      const lng = parseFloat(cto.longitude);
-      minLat = Math.min(minLat, lat);
-      maxLat = Math.max(maxLat, lat);
-      minLng = Math.min(minLng, lng);
-      maxLng = Math.max(maxLng, lng);
-    }
-    
-    // Criar grid
-    const gridCols = Math.ceil((maxLng - minLng) / GRID_CELL_SIZE_DEG) + 1;
-    const gridRows = Math.ceil((maxLat - minLat) / GRID_CELL_SIZE_DEG) + 1;
-    const spatialGrid = new Map(); // Map<gridKey, CTO[]>
-    
-    // Função para obter chave do grid para uma coordenada
-    function getGridKey(lat, lng) {
-      const col = Math.floor((lng - minLng) / GRID_CELL_SIZE_DEG);
-      const row = Math.floor((lat - minLat) / GRID_CELL_SIZE_DEG);
-      return `${row}_${col}`;
-    }
-    
-    // Adicionar cada CTO ao grid (O(n))
-    for (const cto of validCTOs) {
-      const lat = parseFloat(cto.latitude);
-      const lng = parseFloat(cto.longitude);
-      const key = getGridKey(lat, lng);
+    // Converter GeoJSON para formato do Google Maps
+    try {
+      // GeoJSON pode ter múltiplos polígonos (MultiPolygon) ou um único Polygon
+      let polygonsToRender = [];
       
-      if (!spatialGrid.has(key)) {
-        spatialGrid.set(key, []);
-      }
-      spatialGrid.get(key).push(cto);
-    }
-    
-    // Agrupar CTOs usando o grid (O(n) - muito mais rápido!)
-    const groups = [];
-    const processedCTOs = new Set();
-    
-    for (const cto of validCTOs) {
-      if (processedCTOs.has(cto)) continue;
-      
-      const lat = parseFloat(cto.latitude);
-      const lng = parseFloat(cto.longitude);
-      const gridKey = getGridKey(lat, lng);
-      
-      const group = [cto];
-      processedCTOs.add(cto);
-      
-      // Verificar células adjacentes (3x3 = 9 células) para encontrar CTOs próximas
-      const [row, col] = gridKey.split('_').map(Number);
-      for (let dr = -1; dr <= 1; dr++) {
-        for (let dc = -1; dc <= 1; dc++) {
-          const neighborKey = `${row + dr}_${col + dc}`;
-          const neighborCTOs = spatialGrid.get(neighborKey) || [];
-          
-          for (const neighborCto of neighborCTOs) {
-            if (processedCTOs.has(neighborCto)) continue;
-            
-            const neighborLat = parseFloat(neighborCto.latitude);
-            const neighborLng = parseFloat(neighborCto.longitude);
-            
-            // Verificar distância real (pode estar em célula adjacente mas não próxima o suficiente)
-            const distance = calculateDistance(lat, lng, neighborLat, neighborLng);
-            if (distance <= OVERLAP_DISTANCE) {
-              group.push(neighborCto);
-              processedCTOs.add(neighborCto);
-            }
-          }
-        }
+      if (coveragePolygonGeoJSON.type === 'Polygon') {
+        // Polígono simples
+        polygonsToRender = [coveragePolygonGeoJSON];
+      } else if (coveragePolygonGeoJSON.type === 'MultiPolygon') {
+        // Múltiplos polígonos - converter para array de polígonos
+        polygonsToRender = coveragePolygonGeoJSON.coordinates.map(coords => ({
+          type: 'Polygon',
+          coordinates: coords
+        }));
+      } else {
+        console.error('❌ Formato GeoJSON não suportado:', coveragePolygonGeoJSON.type);
+        return;
       }
       
-      groups.push(group);
-    }
-    
-    const groupingTime = performance.now() - startTime;
-    console.log(`✅ Agrupamento concluído em ${groupingTime.toFixed(0)}ms: ${groups.length} grupos identificados`);
-    console.log(`   Performance: ${(validCTOs.length / (groupingTime / 1000)).toFixed(0)} CTOs/segundo`);
-    
-    // Processar grupos - SEM sobreposição
-    // Primeiro, identificar quais CTOs já estão cobertas por polígonos
-    const coveredByPolygons = new Set(); // Índices de CTOs já cobertas por polígonos
-    
-    let groupsProcessed = 0;
-    let polygonsCreated = 0;
-    
-    // Criar Set de CTOs cobertas por polígonos (otimizado)
-    const coveredCTOsSet = new Set();
-    
-    // FASE 1: Criar polígonos para áreas densas (sem sobreposição)
-    // Processar em lotes MUITO maiores para máxima velocidade
-    const GROUP_BATCH_SIZE = 200; // Aumentado para 200 grupos por vez (processamento agressivo)
-    
-    // Separar grupos densos primeiro para processamento prioritário
-    const denseGroups = groups.filter(g => g.length >= 5);
-    const sparseGroups = groups.filter(g => g.length < 5);
-    
-    console.log(`🎯 Processando ${denseGroups.length} grupos densos primeiro (áreas prioritárias)`);
-    
-    // Processar grupos densos em lotes grandes
-    for (let i = 0; i < denseGroups.length; i += GROUP_BATCH_SIZE) {
-      const groupBatch = denseGroups.slice(i, i + GROUP_BATCH_SIZE);
+      console.log(`🎨 Renderizando ${polygonsToRender.length} polígono(s) de cobertura...`);
       
-      // Processar lote em paralelo quando possível
-      const batchPromises = groupBatch.map(async (group) => {
-        try {
-          const polygon = createUnionPolygon(group);
-          if (polygon) {
-            if (polygon instanceof google.maps.Polygon) {
-              coveragePolygons.push(polygon);
-              polygonsCreated++;
-            } else if (polygon instanceof google.maps.Circle) {
-              coverageCircles.push(polygon);
-              circlesCreated++;
-            }
-            
-            // Marcar CTOs como cobertas
-            for (const cto of group) {
-              coveredCTOsSet.add(cto);
-              bounds.extend({ 
-                lat: parseFloat(cto.latitude), 
-                lng: parseFloat(cto.longitude) 
-              });
-            }
-            return true;
-          }
-        } catch (err) {
-          // Silenciar erros
-        }
-        return false;
-      });
-      
-      await Promise.all(batchPromises);
-      groupsProcessed += groupBatch.length;
-      
-      // Yield mínimo apenas a cada 5 lotes
-      if (i + GROUP_BATCH_SIZE < denseGroups.length && i % (GROUP_BATCH_SIZE * 5) === 0) {
-        await new Promise(resolve => setTimeout(resolve, 0)); // Apenas yield ao event loop
-      }
-    }
-    
-    console.log(`✅ FASE 1 concluída: ${polygonsCreated} polígonos criados para áreas densas`);
-    
-    // FASE 2: Criar círculos individuais apenas para CTOs NÃO cobertas por polígonos (bordas/isoladas)
-    // Processar grupos esparsos em lotes grandes e paralelos
-    console.log(`🎯 Processando ${sparseGroups.length} grupos esparsos (bordas/isoladas)`);
-    let circlesPhase2Created = 0;
-    
-    for (let i = 0; i < sparseGroups.length; i += GROUP_BATCH_SIZE) {
-      const groupBatch = sparseGroups.slice(i, i + GROUP_BATCH_SIZE);
-      
-      // Processar lote em paralelo
-      const batchPromises = groupBatch.map(async (group) => {
-        // Verificar se grupo já está coberto (otimizado com Set)
-        let groupIsCovered = false;
-        for (const cto of group) {
-          if (coveredCTOsSet.has(cto)) {
-            groupIsCovered = true;
-            break;
-          }
-        }
+      // Renderizar cada polígono
+      for (const geoJsonPolygon of polygonsToRender) {
+        // Converter coordenadas GeoJSON para formato do Google Maps
+        const paths = geoJsonPolygon.coordinates[0].map(coord => ({
+          lat: coord[1], // GeoJSON usa [lng, lat], Google Maps usa {lat, lng}
+          lng: coord[0]
+        }));
         
-        if (groupIsCovered) return false;
-        
-        // Se o grupo tem 2-4 CTOs próximas, criar um polígono pequeno
-        if (group.length >= 2) {
-          try {
-            const polygon = createUnionPolygon(group);
-            if (polygon) {
-              if (polygon instanceof google.maps.Polygon) {
-                coveragePolygons.push(polygon);
-                polygonsCreated++;
-              } else if (polygon instanceof google.maps.Circle) {
-                coverageCircles.push(polygon);
-                circlesCreated++;
-                circlesPhase2Created++;
-              }
-              
-              // Marcar como cobertas e adicionar ao bounds
-              for (const cto of group) {
-                coveredCTOsSet.add(cto);
-                bounds.extend({ 
-                  lat: parseFloat(cto.latitude), 
-                  lng: parseFloat(cto.longitude) 
-                });
-              }
-              return true;
-            }
-          } catch (err) {
-            // Silenciar erros
-          }
-        } else {
-          // Grupo com apenas 1 CTO (isolada) - criar círculo individual
-          const cto = group[0];
-          const lat = parseFloat(cto.latitude);
-          const lng = parseFloat(cto.longitude);
-
-          bounds.extend({ lat, lng });
-
-          try {
-            const circle = new google.maps.Circle({
-              strokeColor: '#8B7AE8',
-              strokeOpacity: 0.8,
-              strokeWeight: 1.2,
-              fillColor: '#6B8DD6',
-              fillOpacity: coverageOpacity,
-              map: map,
-              center: { lat, lng },
-              radius: 250,
-              zIndex: 1,
-              optimized: false
-            });
-
-            coverageCircles.push(circle);
-            circlesCreated++;
-            circlesPhase2Created++;
-            return true;
-          } catch (circleErr) {
-            skipped++;
-          }
-        }
-        return false;
-      });
-      
-      await Promise.all(batchPromises);
-      groupsProcessed += groupBatch.length;
-      
-      // Yield mínimo apenas a cada 10 lotes
-      if (i + GROUP_BATCH_SIZE < sparseGroups.length && i % (GROUP_BATCH_SIZE * 10) === 0) {
-        await new Promise(resolve => setTimeout(resolve, 0)); // Apenas yield ao event loop
-      }
-    }
-    
-    const totalTime = performance.now() - startTime;
-    console.log(`✅ FASE 2 concluída: ${circlesPhase2Created} círculos individuais criados`);
-    console.log(`✅ RESUMO FINAL: ${coveragePolygons.length} polígonos + ${circlesCreated} círculos criados em ${totalTime.toFixed(0)}ms`);
-    console.log(`   - Performance: ${(validCTOs.length / (totalTime / 1000)).toFixed(0)} CTOs/segundo`);
-    console.log(`   - Total de elementos no mapa: ${coveragePolygons.length + circlesCreated}`);
-    
-    // Verificar se os elementos foram realmente adicionados ao mapa
-    if (coveragePolygons.length === 0 && circlesCreated === 0) {
-      console.error('❌ ERRO: Nenhum elemento foi criado! Verifique os dados das CTOs.');
-      
-      // TESTE: Tentar criar um círculo de teste para verificar se o problema é com a criação
-      console.log('🧪 Criando círculo de teste...');
-      try {
-        const testCircle = new google.maps.Circle({
-          strokeColor: '#FF0000', // Vermelho para teste
-          strokeOpacity: 1,
-          strokeWeight: 2,
-          fillColor: '#FF0000',
-          fillOpacity: 0.5,
+        // Criar polígono no Google Maps
+        const polygon = new google.maps.Polygon({
+          paths: paths,
+          strokeColor: '#8B7AE8',
+          strokeOpacity: 0.8,
+          strokeWeight: 1.2,
+          fillColor: '#6B8DD6',
+          fillOpacity: coverageOpacity,
           map: map,
-          center: { lat: -23.5505, lng: -46.6333 }, // São Paulo
-          radius: 1000,
-          zIndex: 999
+          zIndex: 1,
+          geodesic: true
         });
-        console.log('✅ Círculo de teste criado com sucesso! Se você vê um círculo vermelho em São Paulo, o problema é com os dados das CTOs.');
-      } catch (testErr) {
-        console.error('❌ Erro ao criar círculo de teste:', testErr);
-      }
-    } else {
-      // Verificar se os elementos estão visíveis no mapa
-      let visiblePolygons = 0;
-      let visibleCircles = 0;
-      
-      coveragePolygons.forEach(poly => {
-        if (poly && poly.getMap && poly.getMap() === map) {
-          visiblePolygons++;
-        }
-      });
-      
-      coverageCircles.forEach(circle => {
-        if (circle && circle.getMap && circle.getMap() === map) {
-          visibleCircles++;
-        }
-      });
-      
-      console.log(`✅ Verificação: ${visiblePolygons}/${coveragePolygons.length} polígonos visíveis, ${visibleCircles}/${circlesCreated} círculos visíveis`);
-      
-      // Se nenhum elemento está visível, pode ser um problema de renderização
-      if (visiblePolygons === 0 && visibleCircles === 0 && (coveragePolygons.length > 0 || circlesCreated > 0)) {
-        console.error('❌ ERRO: Elementos foram criados mas não estão visíveis no mapa!');
-        console.log('   Tentando forçar atualização do mapa...');
-        google.maps.event.trigger(map, 'resize');
-        await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Verificar novamente
-        let retryVisiblePolygons = 0;
-        let retryVisibleCircles = 0;
-        coveragePolygons.forEach(poly => {
-          if (poly && poly.getMap && poly.getMap() === map) {
-            retryVisiblePolygons++;
-          }
-        });
-        coverageCircles.forEach(circle => {
-          if (circle && circle.getMap && circle.getMap() === map) {
-            retryVisibleCircles++;
-          }
-        });
-        console.log(`   Após retry: ${retryVisiblePolygons} polígonos, ${retryVisibleCircles} círculos visíveis`);
+        coveragePolygons.push(polygon);
+        
+        // Adicionar ao bounds para ajustar zoom
+        for (const path of paths) {
+          bounds.extend(path);
+        }
       }
+      
+      console.log(`✅ ${coveragePolygons.length} polígono(s) renderizado(s) com sucesso!`);
+      
+    } catch (err) {
+      console.error('❌ Erro ao renderizar polígono:', err);
+      return;
     }
 
-    if (skipped > 0) {
-      console.warn(`⚠️ ${skipped} CTOs ignoradas (coordenadas inválidas)`);
-    }
-
-    // Ajustar zoom para mostrar toda a área coberta (todas as manchas)
-    if (circlesCreated > 0 || coveragePolygons.length > 0) {
+    // Ajustar zoom para mostrar toda a área coberta
+    if (coveragePolygons.length > 0) {
       try {
         // Forçar redimensionamento do mapa
         google.maps.event.trigger(map, 'resize');
@@ -1133,7 +869,7 @@
             bottom: 50,
             left: 50
           });
-          console.log(`✅ Zoom ajustado para mostrar toda a área de cobertura (${coveragePolygons.length} polígonos + ${circlesCreated} círculos)`);
+          console.log(`✅ Zoom ajustado para mostrar toda a área de cobertura`);
         } else {
           // Fallback: centralizar no Brasil se bounds estiver vazio
           map.setCenter({ lat: -14.2350, lng: -51.9253 }); // Centro geográfico do Brasil
@@ -1151,7 +887,7 @@
         }
       }
     } else {
-      console.error('❌ Nenhum círculo foi criado!');
+      console.warn('⚠️ Nenhum polígono foi renderizado!');
     }
   }
 
@@ -1163,13 +899,6 @@
       coverageOpacity = 0.4;
     }
     
-    // Atualizar opacidade de todos os círculos
-    coverageCircles.forEach(circle => {
-      if (circle && circle.setOptions) {
-        circle.setOptions({ fillOpacity: coverageOpacity });
-      }
-    });
-    
     // Atualizar opacidade de todos os polígonos
     coveragePolygons.forEach(polygon => {
       if (polygon && polygon.setOptions) {
@@ -1179,13 +908,7 @@
   }
   
   function clearCoverageCircles() {
-    coverageCircles.forEach(circle => {
-      if (circle && circle.setMap) {
-        circle.setMap(null);
-      }
-    });
-    coverageCircles = [];
-    
+    // Limpar polígonos de cobertura
     coveragePolygons.forEach(polygon => {
       if (polygon && polygon.setMap) {
         polygon.setMap(null);
@@ -1259,14 +982,14 @@
     if (coverageOpacity === undefined || coverageOpacity === null) {
       coverageOpacity = 0.4;
     }
-    if (!allCTOs) {
-      allCTOs = [];
-    }
-    if (!coverageCircles) {
-      coverageCircles = [];
-    }
     if (!coveragePolygons) {
       coveragePolygons = [];
+    }
+    if (!coverageData) {
+      coverageData = null;
+    }
+    if (!coveragePolygonGeoJSON) {
+      coveragePolygonGeoJSON = null;
     }
     
     try {
@@ -1295,10 +1018,10 @@
       // Pequeno delay para visualização
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Etapa 3: Carregando CTOs
-      loadingMessage = 'Carregando CTOs';
-      await loadAllCTOs();
-      console.log(`✅ ${allCTOs.length} CTOs carregadas`);
+      // Etapa 3: Carregando Polígonos de Cobertura
+      loadingMessage = 'Carregando Polígonos de Cobertura';
+      await loadCoveragePolygon();
+      console.log(`✅ Polígono de cobertura carregado`);
       
       // Pequeno delay para visualização
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -1364,24 +1087,24 @@
       // Aguardar um pouco para garantir que o mapa está renderizado
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Desenhar TODAS as manchas de cobertura
-      if (allCTOs.length > 0 && map) {
-        console.log(`🎨 Desenhando ${allCTOs.length} manchas de cobertura em todo o Brasil...`);
+      // Desenhar polígono de cobertura
+      if (coveragePolygonGeoJSON && map) {
+        console.log(`🎨 Desenhando polígono de cobertura...`);
         
         // Forçar redimensionamento do mapa
         google.maps.event.trigger(map, 'resize');
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Desenhar TODAS as manchas de cobertura
+        // Desenhar polígono de cobertura
         await drawCoverageArea();
-        console.log(`✅ ${coveragePolygons.length} polígonos + ${coverageCircles.length} círculos criados - manchas visíveis em todo o Brasil`);
+        console.log(`✅ ${coveragePolygons.length} polígono(s) renderizado(s) - mancha de cobertura visível`);
         
         // Aguardar um pouco para garantir que tudo foi renderizado
         await new Promise(resolve => setTimeout(resolve, 500));
-      } else if (allCTOs.length === 0) {
-        console.warn('⚠️ Nenhuma CTO carregada para desenhar');
+      } else if (!coveragePolygonGeoJSON) {
+        console.warn('⚠️ Nenhum polígono de cobertura carregado');
       } else if (!map) {
-        console.error('❌ Mapa não foi inicializado, não é possível desenhar manchas');
+        console.error('❌ Mapa não foi inicializado, não é possível desenhar polígono');
       }
       
       console.log('✅ Ferramenta totalmente carregada e pronta para uso');
@@ -1403,13 +1126,13 @@
           console.log('🔄 Tentando inicializar mapa após erro...');
           initMap();
           
-          // Se conseguiu inicializar, tentar desenhar manchas
-          if (map && allCTOs && allCTOs.length > 0) {
+          // Se conseguiu inicializar, tentar desenhar polígono
+          if (map && coveragePolygonGeoJSON) {
             await new Promise(resolve => setTimeout(resolve, 500));
             try {
               await drawCoverageArea();
             } catch (drawErr) {
-              console.error('❌ Erro ao desenhar manchas após erro:', drawErr);
+              console.error('❌ Erro ao desenhar polígono após erro:', drawErr);
             }
           }
         }
@@ -1440,13 +1163,32 @@
       const lat = location.lat();
       const lng = location.lng();
 
+      // Verificar se ponto está dentro da cobertura
+      let isCovered = false;
+      let distanceToCoverage = null;
+      
+      try {
+        const coverageCheckResponse = await fetch(getApiUrl(`/api/coverage/check-point?lat=${lat}&lng=${lng}`));
+        if (coverageCheckResponse.ok) {
+          const coverageCheckData = await coverageCheckResponse.json();
+          if (coverageCheckData.success) {
+            isCovered = coverageCheckData.is_covered;
+            distanceToCoverage = coverageCheckData.distance_to_coverage_meters;
+          }
+        }
+      } catch (coverageErr) {
+        console.warn('⚠️ Erro ao verificar cobertura:', coverageErr);
+      }
+
       // Criar marcador azul no ponto pesquisado
       const marker = new google.maps.Marker({
         position: { lat, lng },
         map: map,
-        title: `Endereço: ${enderecoInput}`,
+        title: `Endereço: ${enderecoInput}${isCovered ? ' (DENTRO da cobertura)' : ' (FORA da cobertura)'}`,
         icon: {
-          url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+          url: isCovered 
+            ? 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' 
+            : 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
           scaledSize: new google.maps.Size(32, 32)
         },
         zIndex: 999
@@ -1457,6 +1199,18 @@
       // Centralizar mapa no ponto pesquisado
       map.setCenter({ lat, lng });
       map.setZoom(16);
+
+      // Mostrar mensagem de status
+      if (isCovered) {
+        error = null;
+        console.log('✅ Endereço está DENTRO da área de cobertura');
+      } else {
+        const distanceKm = distanceToCoverage ? (distanceToCoverage / 1000).toFixed(2) : null;
+        error = distanceKm 
+          ? `⚠️ Endereço está FORA da área de cobertura (${distanceKm} km da cobertura mais próxima)`
+          : '⚠️ Endereço está FORA da área de cobertura';
+        console.log('⚠️ Endereço está FORA da área de cobertura');
+      }
 
       console.log('✅ Marcador adicionado para endereço:', enderecoInput);
     } catch (err) {
@@ -1493,13 +1247,32 @@
 
       const { lat, lng } = parsed;
 
-      // Criar marcador azul no ponto pesquisado
+      // Verificar se ponto está dentro da cobertura
+      let isCovered = false;
+      let distanceToCoverage = null;
+      
+      try {
+        const coverageCheckResponse = await fetch(getApiUrl(`/api/coverage/check-point?lat=${lat}&lng=${lng}`));
+        if (coverageCheckResponse.ok) {
+          const coverageCheckData = await coverageCheckResponse.json();
+          if (coverageCheckData.success) {
+            isCovered = coverageCheckData.is_covered;
+            distanceToCoverage = coverageCheckData.distance_to_coverage_meters;
+          }
+        }
+      } catch (coverageErr) {
+        console.warn('⚠️ Erro ao verificar cobertura:', coverageErr);
+      }
+
+      // Criar marcador no ponto pesquisado (verde se coberto, vermelho se não)
       const marker = new google.maps.Marker({
         position: { lat, lng },
         map: map,
-        title: `Coordenadas: ${lat}, ${lng}`,
+        title: `Coordenadas: ${lat}, ${lng}${isCovered ? ' (DENTRO da cobertura)' : ' (FORA da cobertura)'}`,
         icon: {
-          url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+          url: isCovered 
+            ? 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' 
+            : 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
           scaledSize: new google.maps.Size(32, 32)
         },
         zIndex: 999
@@ -1510,6 +1283,18 @@
       // Centralizar mapa no ponto pesquisado
       map.setCenter({ lat, lng });
       map.setZoom(16);
+
+      // Mostrar mensagem de status
+      if (isCovered) {
+        error = null;
+        console.log('✅ Coordenadas estão DENTRO da área de cobertura');
+      } else {
+        const distanceKm = distanceToCoverage ? (distanceToCoverage / 1000).toFixed(2) : null;
+        error = distanceKm 
+          ? `⚠️ Coordenadas estão FORA da área de cobertura (${distanceKm} km da cobertura mais próxima)`
+          : '⚠️ Coordenadas estão FORA da área de cobertura';
+        console.log('⚠️ Coordenadas estão FORA da área de cobertura');
+      }
 
       console.log('✅ Marcador adicionado para coordenadas:', lat, lng);
     } catch (err) {
@@ -1801,21 +1586,21 @@
             </div>
           {/if}
 
-          {#if allCTOs.length > 0}
+          {#if coverageData}
             <div class="results-summary">
               <div class="stats-card">
                 <div class="stats-header">
                   <span class="stats-icon">📍</span>
                   <div class="stats-content">
                     <div class="stats-title">
-                      {allCTOs.length.toLocaleString('pt-BR')} CTOs
+                      {coverageData.total_ctos?.toLocaleString('pt-BR') || 0} CTOs
                     </div>
-                    <div class="stats-subtitle">carregadas na base</div>
+                    <div class="stats-subtitle">na área de cobertura</div>
                   </div>
                 </div>
-                {#if loadingStats.totalCells > 0}
+                {#if coverageData.area_km2}
                   <div class="stats-detail">
-                    {loadingStats.cellsProcessed}/{loadingStats.totalCells} células analisadas
+                    Área total: {coverageData.area_km2.toFixed(2)} km²
                   </div>
                 {/if}
               </div>
@@ -1873,11 +1658,11 @@
                   setTimeout(() => {
                     if (map && google.maps) {
                       google.maps.event.trigger(map, 'resize');
-                      // Se temos CTOs carregadas mas não temos círculos, redesenhar
-                      if (allCTOs.length > 0 && coverageCircles.length === 0) {
-                        console.log('🔄 Redesenhando mancha após expandir mapa...');
-                        drawCoverageArea();
-                      }
+          // Se temos polígono carregado mas não está renderizado, redesenhar
+          if (coveragePolygonGeoJSON && coveragePolygons.length === 0) {
+            console.log('🔄 Redesenhando polígono após expandir mapa...');
+            drawCoverageArea();
+          }
                     }
                   }, 200);
                 }
@@ -1891,7 +1676,7 @@
           <div id="map-consulta" class="map" class:hidden={isMapMinimized} bind:this={mapElement}></div>
           
           <!-- Legenda Profissional -->
-          {#if showLegend && allCTOs.length > 0 && !isMapMinimized}
+          {#if showLegend && coverageData && !isMapMinimized}
             <div class="map-legend">
               <div class="legend-header">
                 <h4>Legenda</h4>
@@ -1908,27 +1693,34 @@
                   </div>
                 </div>
                 <div class="legend-item">
-                  <div class="legend-color" style="background: #4285F4; border: 2px solid #fff;"></div>
+                  <div class="legend-color" style="background: #34A853; border: 2px solid #fff;"></div>
                   <div class="legend-text">
-                    <strong>Localização Buscada</strong>
-                    <span>Marcador azul</span>
+                    <strong>Dentro da Cobertura</strong>
+                    <span>Marcador verde</span>
+                  </div>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-color" style="background: #EA4335; border: 2px solid #fff;"></div>
+                  <div class="legend-text">
+                    <strong>Fora da Cobertura</strong>
+                    <span>Marcador vermelho</span>
                   </div>
                 </div>
               </div>
               <div class="legend-footer">
                 <div class="legend-stats">
                   <div class="legend-stat">
-                    <span class="stat-number">{coveragePolygons.length}</span>
-                    <span class="stat-label">Polígonos</span>
+                    <span class="stat-number">{coverageData.total_ctos?.toLocaleString('pt-BR') || 0}</span>
+                    <span class="stat-label">CTOs</span>
                   </div>
                   <div class="legend-stat">
-                    <span class="stat-number">{coverageCircles.length}</span>
-                    <span class="stat-label">Círculos</span>
+                    <span class="stat-number">{coverageData.area_km2?.toFixed(0) || 0}</span>
+                    <span class="stat-label">km²</span>
                   </div>
                 </div>
               </div>
             </div>
-          {:else if !showLegend && allCTOs.length > 0 && !isMapMinimized}
+          {:else if !showLegend && coverageData && !isMapMinimized}
             <button class="legend-toggle-button" on:click={() => showLegend = true} title="Mostrar legenda">
               📊
             </button>
