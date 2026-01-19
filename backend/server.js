@@ -4608,28 +4608,92 @@ app.post('/api/upload-base', (req, res, next) => {
               // ============================================
               // CALCULAR POLÍGONOS DE COBERTURA AUTOMATICAMENTE
               // ============================================
-              // Após importar CTOs, recalcular polígonos de cobertura automaticamente
-              console.log('🗺️ [Background] Iniciando cálculo automático de polígonos de cobertura...');
+              // Após importar CTOs, recalcular polígonos de cobertura automaticamente (incremental)
+              console.log('🗺️ [Background] Iniciando cálculo automático de polígonos de cobertura (incremental)...');
               try {
-                const { data: coverageData, error: coverageError } = await supabase.rpc('recalculate_coverage_batched');
+                // Gerar ID único para este cálculo
+                const calculationId = `calc_auto_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                const batchSize = 5000;
                 
-                if (coverageError) {
-                  console.error('❌ [Background] Erro ao calcular polígonos de cobertura:', coverageError);
-                  console.warn('⚠️ [Background] Polígonos não foram atualizados, mas CTOs foram importadas com sucesso');
-                } else if (coverageData && coverageData.length > 0) {
-                  const result = coverageData[0];
-                  if (result.success) {
-                    console.log(`✅ [Background] Polígonos de cobertura calculados automaticamente!`);
-                    console.log(`   - ID: ${result.polygon_id}`);
-                    console.log(`   - CTOs: ${result.total_ctos}`);
-                    console.log(`   - Área: ${result.area_km2?.toFixed(2)} km²`);
-                    console.log(`   - Tempo: ${result.processing_time_seconds?.toFixed(2)}s`);
-                  } else {
-                    console.warn(`⚠️ [Background] Cálculo de polígonos retornou erro: ${result.message}`);
+                // Processar em background (não bloquear)
+                (async () => {
+                  try {
+                    let isComplete = false;
+                    let attempts = 0;
+                    const maxAttempts = 1000;
+                    
+                    while (!isComplete && attempts < maxAttempts) {
+                      attempts++;
+                      
+                      const { data, error } = await supabase.rpc('process_coverage_batch', {
+                        p_calculation_id: calculationId,
+                        p_batch_size: batchSize
+                      });
+                      
+                      if (error) {
+                        console.error(`❌ [Background] Erro ao processar lote ${attempts}:`, error);
+                        break;
+                      }
+                      
+                      if (!data || data.length === 0) {
+                        console.error(`❌ [Background] Nenhum resultado retornado do lote ${attempts}`);
+                        break;
+                      }
+                      
+                      const result = data[0];
+                      
+                      if (!result.success) {
+                        console.error(`❌ [Background] Erro no lote ${attempts}:`, result.message);
+                        break;
+                      }
+                      
+                      isComplete = result.is_complete;
+                      
+                      if (attempts % 10 === 0 || isComplete) {
+                        console.log(`📦 [Background] Lote ${attempts}: ${result.processed_ctos}/${result.total_ctos} CTOs (${result.progress_percent?.toFixed(1)}%)`);
+                      }
+                      
+                      if (isComplete) {
+                        console.log(`🎉 [Background] Processamento completo! Finalizando cálculo...`);
+                        
+                        const { data: finalData, error: finalError } = await supabase.rpc('finalize_coverage_calculation', {
+                          p_calculation_id: calculationId,
+                          p_simplification_tolerance: 0.0001
+                        });
+                        
+                        if (finalError) {
+                          console.error('❌ [Background] Erro ao finalizar cálculo:', finalError);
+                          return;
+                        }
+                        
+                        if (finalData && finalData.length > 0 && finalData[0].success) {
+                          const finalResult = finalData[0];
+                          console.log(`✅ [Background] Polígonos de cobertura calculados automaticamente!`);
+                          console.log(`   - ID: ${finalResult.polygon_id}`);
+                          console.log(`   - CTOs: ${finalResult.total_ctos}`);
+                          console.log(`   - Área: ${finalResult.area_km2?.toFixed(2)} km²`);
+                          console.log(`   - Tempo: ${finalResult.processing_time_seconds?.toFixed(2)}s`);
+                        } else {
+                          console.error('❌ [Background] Erro ao finalizar:', finalData);
+                        }
+                        
+                        break;
+                      }
+                      
+                      await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                    
+                    if (!isComplete && attempts >= maxAttempts) {
+                      console.error(`❌ [Background] Limite de tentativas atingido (${maxAttempts})`);
+                    }
+                  } catch (err) {
+                    console.error('❌ [Background] Erro no processamento em background:', err);
                   }
-                }
+                })();
+                
+                console.log('✅ [Background] Cálculo de polígonos iniciado em background (processamento incremental)');
               } catch (coverageErr) {
-                console.error('❌ [Background] Erro ao calcular polígonos de cobertura:', coverageErr);
+                console.error('❌ [Background] Erro ao iniciar cálculo de polígonos:', coverageErr);
                 console.warn('⚠️ [Background] Polígonos não foram atualizados, mas CTOs foram importadas com sucesso');
               }
               
