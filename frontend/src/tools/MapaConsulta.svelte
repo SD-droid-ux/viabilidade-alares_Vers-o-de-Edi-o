@@ -172,8 +172,17 @@
     }
   }
 
-  // Função antiga mantida para referência (não usada mais)
+  // Função antiga removida - não é mais usada (substituída por loadCoveragePolygon)
+  // Mantida apenas como placeholder para evitar erros de referência
   async function loadAllCTOs() {
+    // Função não é mais usada - polígonos são carregados via loadCoveragePolygon()
+    console.warn('⚠️ loadAllCTOs() não é mais usada. Use loadCoveragePolygon() em vez disso.');
+    return [];
+  }
+  
+  // Código antigo removido - não é mais necessário (comentado para evitar erros)
+  /*
+  async function loadAllCTOs_OLD() {
     try {
       loadingMessage = 'Criando grade de cobertura completa...';
       console.log('📥 Carregando TODAS as CTOs da base de dados usando grade otimizada...');
@@ -447,12 +456,13 @@
       
       loadingMessage = `✅ ${ctoWithCoords.length} CTOs carregadas com sucesso!`;
       
-      return allCTOs;
+      return [];
     } catch (err) {
       console.error('Erro ao carregar CTOs:', err);
-      throw err;
+      return [];
     }
   }
+  */
 
   // Função auxiliar para calcular distância entre duas coordenadas
   function calculateDistance(lat1, lng1, lat2, lng2) {
@@ -1450,14 +1460,14 @@
       if (coverageOpacity === undefined || coverageOpacity === null) {
         coverageOpacity = 0.4;
       }
-      if (!allCTOs) {
-        allCTOs = [];
-      }
-      if (!coverageCircles) {
-        coverageCircles = [];
-      }
       if (!coveragePolygons) {
         coveragePolygons = [];
+      }
+      if (!coverageData) {
+        coverageData = null;
+      }
+      if (!coveragePolygonGeoJSON) {
+        coveragePolygonGeoJSON = null;
       }
       
       loadResizePreferences();
