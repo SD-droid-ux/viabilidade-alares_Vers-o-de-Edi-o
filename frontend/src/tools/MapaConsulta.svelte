@@ -1064,12 +1064,16 @@
 
   // Limpar marcadores de busca
   function clearSearchMarkers() {
-    searchMarkers.forEach(marker => {
-      if (marker && marker.setMap) {
-        marker.setMap(null);
-      }
-    });
-    searchMarkers = [];
+    if (searchMarkers && searchMarkers.length > 0) {
+      console.log(`🧹 Limpando ${searchMarkers.length} marcador(es) anterior(es)...`);
+      searchMarkers.forEach(marker => {
+        if (marker && marker.setMap) {
+          marker.setMap(null);
+        }
+      });
+      searchMarkers = [];
+      console.log('✅ Marcadores anteriores removidos');
+    }
   }
 
   // Função para geocodificar endereço
@@ -1392,6 +1396,9 @@
 
   // Função para buscar por endereço
   async function searchByEndereco() {
+    // Limpar pesquisa anterior automaticamente (substituir marcadores) - SEMPRE primeiro
+    clearSearchMarkers();
+    
     if (!enderecoInput.trim()) {
       error = 'Por favor, insira um endereço';
       return;
@@ -1401,7 +1408,7 @@
       error = 'Google Maps não está carregado. Aguarde alguns instantes e tente novamente.';
       return;
     }
-
+    
     loadingCTOs = true;
     error = null;
 
@@ -1471,6 +1478,9 @@
 
   // Função para buscar por coordenadas
   async function searchByCoordenadas() {
+    // Limpar pesquisa anterior automaticamente (substituir marcadores) - SEMPRE primeiro
+    clearSearchMarkers();
+    
     if (!coordenadasInput.trim()) {
       error = 'Por favor, insira coordenadas (lat, lng)';
       return;
@@ -1480,7 +1490,7 @@
       error = 'Mapa não está carregado. Aguarde alguns instantes e tente novamente.';
       return;
     }
-
+    
     loadingCTOs = true;
     error = null;
 
@@ -1562,13 +1572,7 @@
     }
   }
 
-  // Função para limpar marcadores de busca
-  function clearSearch() {
-    clearSearchMarkers();
-    enderecoInput = '';
-    coordenadasInput = '';
-    error = null;
-  }
+  // Função clearSearch removida - cada nova pesquisa agora substitui automaticamente a anterior
 
   // Funções de redimensionamento
   function startResizeSidebar(e) {
@@ -1778,11 +1782,6 @@
                 Buscar
               {/if}
             </button>
-            {#if searchMarkers.length > 0}
-              <button class="clear-button" on:click={clearSearch}>
-                Limpar
-              </button>
-            {/if}
           </div>
 
           {#if loadingCTOs}
@@ -2130,21 +2129,7 @@
     transform: none;
   }
 
-  .clear-button {
-    padding: 0.875rem 1rem;
-    background: #e5e7eb;
-    color: #374151;
-    border: none;
-    border-radius: 8px;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .clear-button:hover {
-    background: #d1d5db;
-  }
+  /* CSS do botão "Limpar" removido - não é mais usado */
 
   .loading-inline {
     padding: 0.75rem;
