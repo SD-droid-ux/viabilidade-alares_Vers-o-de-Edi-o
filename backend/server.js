@@ -828,6 +828,328 @@ app.get('/api/ctos/nearby', async (req, res) => {
   }
 });
 
+// ============================================
+// ROTAS DE COBERTURA (Coverage Polygons)
+// ============================================
+
+// Rota para calcular polígonos de cobertura (processamento assíncrono)
+app.post('/api/coverage/calculate', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    console.log('🗺️ [API] Iniciando cálculo de polígonos de cobertura (assíncrono)...');
+    
+    if (!supabase || !isSupabaseAvailable()) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'Supabase não disponível' 
+      });
+    }
+    
+    // Retornar resposta imediata e processar em background
+    res.json({
+      success: true,
+      message: 'Cálculo iniciado em background. Use GET /api/coverage/calculate-status para verificar progresso.',
+      status: 'processing'
+    });
+    
+    // Processar em background (não bloquear resposta)
+    (async () => {
+      try {
+        console.log('🔄 [API] Processando polígonos em background...');
+        
+        // Executar função SQL via RPC com processamento em lotes
+        // Usar versão batched que processa em lotes menores
+        const { data, error } = await supabase.rpc('recalculate_coverage_batched');
+        
+        if (error) {
+          console.error('❌ [API] Erro ao calcular polígonos:', error);
+          return;
+        }
+        
+        if (!data || data.length === 0) {
+          console.error('❌ [API] Nenhum resultado retornado da função');
+          return;
+        }
+        
+        const result = data[0];
+        
+        console.log(`✅ [API] Polígono calculado: ID ${result.polygon_id}, ${result.total_ctos} CTOs, ${result.area_km2?.toFixed(2)} km²`);
+        console.log(`⏱️ [API] Tempo de processamento: ${result.processing_time_seconds?.toFixed(2)} segundos`);
+        
+      } catch (err) {
+        console.error('❌ [API] Erro no processamento em background:', err);
+      }
+    })();
+    
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/coverage/calculate:', err);
+    
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno', 
+      details: err.message 
+    });
+  }
+});
+
+// Rota para verificar status do cálculo
+app.get('/api/coverage/calculate-status', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    if (!supabase || !isSupabaseAvailable()) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'Supabase não disponível' 
+      });
+    }
+    
+    // Buscar polígono ativo mais recente
+    const { data, error } = await supabase
+      .from('coverage_polygons')
+      .select('id, version, total_ctos, area_km2, created_at, is_active')
+      .eq('is_active', true)
+      .order('version', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') {
+      console.error('❌ [API] Erro ao buscar status:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Erro ao buscar status' 
+      });
+    }
+    
+    if (!data) {
+      return res.json({
+        success: false,
+        status: 'not_calculated',
+        message: 'Nenhum polígono de cobertura encontrado. Execute POST /api/coverage/calculate primeiro.'
+      });
+    }
+    
+    res.json({
+      success: true,
+      status: 'completed',
+      polygon_id: data.id,
+      version: data.version,
+      total_ctos: data.total_ctos,
+      area_km2: data.area_km2,
+      created_at: data.created_at
+    });
+    
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/coverage/calculate-status:', err);
+    
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno', 
+      details: err.message 
+    });
+  }
+});
+
+// Rota para obter polígono de cobertura ativo
+app.get('/api/coverage/polygon', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    const useSimplified = req.query.simplified !== 'false'; // Default: usar simplificado
+    
+    if (!supabase || !isSupabaseAvailable()) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'Supabase não disponível' 
+      });
+    }
+    
+    // Buscar polígono ativo
+    const { data, error } = await supabase.rpc('get_active_coverage_polygon');
+    
+    if (error) {
+      console.error('❌ [API] Erro ao buscar polígono:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Erro ao buscar polígono de cobertura', 
+        details: error.message 
+      });
+    }
+    
+    if (!data || data.length === 0) {
+      return res.json({ 
+        success: false, 
+        message: 'Nenhum polígono de cobertura encontrado. Execute o cálculo primeiro.' 
+      });
+    }
+    
+    const polygon = data[0];
+    
+    // Converter geometria para GeoJSON usando função SQL
+    const { data: geoJsonData, error: geoJsonError } = await supabase.rpc('get_polygon_geojson', {
+      p_polygon_id: polygon.id,
+      p_use_simplified: useSimplified
+    });
+    
+    let geometry = null;
+    if (!geoJsonError && geoJsonData && geoJsonData.length > 0 && geoJsonData[0].geojson) {
+      try {
+        geometry = JSON.parse(geoJsonData[0].geojson);
+      } catch (parseError) {
+        console.warn('⚠️ [API] Erro ao fazer parse do GeoJSON:', parseError);
+      }
+    } else if (geoJsonError) {
+      console.warn('⚠️ [API] Erro ao buscar GeoJSON:', geoJsonError);
+    }
+    
+    res.json({
+      success: true,
+      id: polygon.id,
+      geometry: geometry,
+      total_ctos: polygon.total_ctos,
+      area_km2: polygon.area_km2,
+      version: polygon.version,
+      created_at: polygon.created_at,
+      is_simplified: useSimplified
+    });
+    
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/coverage/polygon:', err);
+    
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno', 
+      details: err.message 
+    });
+  }
+});
+
+// Rota para verificar se um ponto está dentro da cobertura
+app.get('/api/coverage/check-point', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    const lat = parseFloat(req.query.lat);
+    const lng = parseFloat(req.query.lng);
+    
+    if (isNaN(lat) || isNaN(lng)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Latitude e longitude são obrigatórios' 
+      });
+    }
+    
+    if (!supabase || !isSupabaseAvailable()) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'Supabase não disponível' 
+      });
+    }
+    
+    // Verificar se ponto está coberto
+    const { data, error } = await supabase.rpc('check_point_in_coverage', {
+      p_latitude: lat,
+      p_longitude: lng
+    });
+    
+    if (error) {
+      console.error('❌ [API] Erro ao verificar ponto:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Erro ao verificar ponto', 
+        details: error.message 
+      });
+    }
+    
+    if (!data || data.length === 0) {
+      return res.json({ 
+        success: false, 
+        is_covered: false, 
+        message: 'Nenhum polígono de cobertura encontrado' 
+      });
+    }
+    
+    const result = data[0];
+    
+    res.json({
+      success: true,
+      is_covered: result.is_covered,
+      polygon_id: result.polygon_id,
+      distance_to_coverage_meters: result.distance_to_coverage_meters
+    });
+    
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/coverage/check-point:', err);
+    
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno', 
+      details: err.message 
+    });
+  }
+});
+
 // Rota para buscar CTOs por nome
 app.get('/api/ctos/search', async (req, res) => {
   try {
@@ -4200,6 +4522,34 @@ app.post('/api/upload-base', (req, res, next) => {
                 }
               } catch (historyErr) {
                 console.warn('⚠️ [Background] Erro ao registrar histórico (não crítico):', historyErr.message);
+              }
+              
+              // ============================================
+              // CALCULAR POLÍGONOS DE COBERTURA AUTOMATICAMENTE
+              // ============================================
+              // Após importar CTOs, recalcular polígonos de cobertura automaticamente
+              console.log('🗺️ [Background] Iniciando cálculo automático de polígonos de cobertura...');
+              try {
+                const { data: coverageData, error: coverageError } = await supabase.rpc('recalculate_coverage_batched');
+                
+                if (coverageError) {
+                  console.error('❌ [Background] Erro ao calcular polígonos de cobertura:', coverageError);
+                  console.warn('⚠️ [Background] Polígonos não foram atualizados, mas CTOs foram importadas com sucesso');
+                } else if (coverageData && coverageData.length > 0) {
+                  const result = coverageData[0];
+                  if (result.success) {
+                    console.log(`✅ [Background] Polígonos de cobertura calculados automaticamente!`);
+                    console.log(`   - ID: ${result.polygon_id}`);
+                    console.log(`   - CTOs: ${result.total_ctos}`);
+                    console.log(`   - Área: ${result.area_km2?.toFixed(2)} km²`);
+                    console.log(`   - Tempo: ${result.processing_time_seconds?.toFixed(2)}s`);
+                  } else {
+                    console.warn(`⚠️ [Background] Cálculo de polígonos retornou erro: ${result.message}`);
+                  }
+                }
+              } catch (coverageErr) {
+                console.error('❌ [Background] Erro ao calcular polígonos de cobertura:', coverageErr);
+                console.warn('⚠️ [Background] Polígonos não foram atualizados, mas CTOs foram importadas com sucesso');
               }
               
               console.log(`✅ [Background] ===== IMPORTAÇÃO SUPABASE CONCLUÍDA =====`);
