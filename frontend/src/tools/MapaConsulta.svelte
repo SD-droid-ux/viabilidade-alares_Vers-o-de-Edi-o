@@ -44,7 +44,7 @@
   
   // Redimensionamento de boxes
   let sidebarWidth = 400;
-  let mapHeightPixels = 600;
+  // mapHeightPixels removido - mapa agora usa toda altura disponível
   let isResizingSidebar = false;
   let isResizingMap = false;
   let resizeStartX = 0;
@@ -63,7 +63,7 @@
   
   // Reactive statements
   $: sidebarWidthStyle = `${sidebarWidth}px`;
-  $: mapHeightStyle = `${mapHeightPixels}px`;
+  // mapHeightStyle removido - mapa agora usa toda altura disponível
   $: coverageOpacityPercent = Math.round(coverageOpacity * 100);
 
   // Função para abrir configurações
@@ -1619,45 +1619,15 @@
     document.body.style.userSelect = '';
   }
 
+  // Funções de redimensionamento do mapa desabilitadas - mapa agora usa toda altura disponível
   function startResizeMap(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    isResizingMap = true;
-    resizeStartY = e.clientY || e.touches?.[0]?.clientY || 0;
-    resizeStartMapHeight = mapHeightPixels;
-    document.addEventListener('mousemove', handleResizeMap, { passive: false, capture: true });
-    document.addEventListener('mouseup', stopResizeMap, { passive: false, capture: true });
-    document.addEventListener('touchmove', handleResizeMap, { passive: false, capture: true });
-    document.addEventListener('touchend', stopResizeMap, { passive: false, capture: true });
-    document.body.style.cursor = 'row-resize';
-    document.body.style.userSelect = 'none';
+    // Desabilitado - mapa usa toda altura disponível
     return false;
   }
 
   function handleResizeMap(e) {
-    if (!isResizingMap) return;
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const clientY = e.clientY || e.touches?.[0]?.clientY || resizeStartY;
-    const deltaY = clientY - resizeStartY;
-    const newHeight = resizeStartMapHeight + deltaY;
-    const clampedHeight = Math.max(300, Math.min(1000, newHeight));
-    
-    mapHeightPixels = clampedHeight;
-    
-    try {
-      localStorage.setItem('mapaConsulta_mapHeightPixels', clampedHeight.toString());
-    } catch (err) {
-      console.warn('Erro ao salvar altura do mapa:', err);
-    }
-    
-    // Redimensionar o mapa após ajuste
-    if (map) {
-      setTimeout(() => {
-        google.maps.event.trigger(map, 'resize');
-      }, 100);
-    }
+    // Desabilitado - mapa usa toda altura disponível
+    return;
   }
 
   function stopResizeMap() {
@@ -1680,14 +1650,7 @@
           sidebarWidth = 400;
         }
       }
-      
-      const savedMapHeight = localStorage.getItem('mapaConsulta_mapHeightPixels');
-      if (savedMapHeight) {
-        mapHeightPixels = parseInt(savedMapHeight, 10);
-        if (isNaN(mapHeightPixels) || mapHeightPixels < 300 || mapHeightPixels > 1000) {
-          mapHeightPixels = 600;
-        }
-      }
+      // Altura do mapa removida - agora usa toda altura disponível
     } catch (err) {
       console.warn('Erro ao carregar preferências de redimensionamento:', err);
     }
@@ -1929,7 +1892,7 @@
       <!-- Área Principal (Mapa) -->
       <main class="main-area">
         <!-- Mapa -->
-        <div class="map-container" class:minimized={isMapMinimized} style="height: {isMapMinimized ? '60px' : mapHeightStyle}; flex: 0 0 auto; min-height: {isMapMinimized ? '60px' : mapHeightStyle};">
+        <div class="map-container" class:minimized={isMapMinimized} style="height: {isMapMinimized ? '60px' : '100%'}; min-height: {isMapMinimized ? '60px' : '0'};">
           <div class="map-header">
             <h3>Mapa de Cobertura</h3>
             <button 
@@ -2585,8 +2548,9 @@
     background: white;
     display: flex;
     flex-direction: column;
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     width: 100%;
+    height: 100%;
   }
 
   .map-container.minimized {
