@@ -58,8 +58,6 @@
   
   // Controles de visualização
   let coverageOpacity = 0.4; // Opacidade das manchas (0-1)
-  let showLegend = true; // Mostrar legenda
-  let showStats = true; // Mostrar estatísticas
   
   // Reactive statements
   $: sidebarWidthStyle = `${sidebarWidth}px`;
@@ -1800,25 +1798,6 @@
           {/if}
 
           {#if coverageData}
-            <div class="results-summary">
-              <div class="stats-card">
-                <div class="stats-header">
-                  <span class="stats-icon">📍</span>
-                  <div class="stats-content">
-                    <div class="stats-title">
-                      {coverageData.total_ctos?.toLocaleString('pt-BR') || 0} CTOs
-                    </div>
-                    <div class="stats-subtitle">na área de cobertura</div>
-                  </div>
-                </div>
-                {#if coverageData.area_km2}
-                  <div class="stats-detail">
-                    Área total: {coverageData.area_km2.toFixed(2)} km²
-                  </div>
-                {/if}
-              </div>
-            </div>
-            
             <!-- Controles de Visualização -->
             <div class="visualization-controls">
               <div class="control-group">
@@ -1897,57 +1876,6 @@
             <h3>Mapa de Cobertura</h3>
           </div>
           <div id="map-consulta" class="map" bind:this={mapElement}></div>
-          
-          <!-- Legenda Profissional -->
-          {#if showLegend && coverageData}
-            <div class="map-legend">
-              <div class="legend-header">
-                <h4>Legenda</h4>
-                <button class="legend-toggle" on:click={() => showLegend = false} title="Ocultar legenda">
-                  ✕
-                </button>
-              </div>
-              <div class="legend-content">
-                <div class="legend-item">
-                  <div class="legend-color" style="background: linear-gradient(135deg, #6B8DD6 0%, #8B7AE8 100%); opacity: {coverageOpacity};"></div>
-                  <div class="legend-text">
-                    <strong>Área de Cobertura</strong>
-                    <span>Raio de 250m por CTO</span>
-                  </div>
-                </div>
-                <div class="legend-item">
-                  <div class="legend-color" style="background: #34A853; border: 2px solid #fff;"></div>
-                  <div class="legend-text">
-                    <strong>Dentro da Cobertura</strong>
-                    <span>Marcador verde</span>
-                  </div>
-                </div>
-                <div class="legend-item">
-                  <div class="legend-color" style="background: #EA4335; border: 2px solid #fff;"></div>
-                  <div class="legend-text">
-                    <strong>Fora da Cobertura</strong>
-                    <span>Marcador vermelho</span>
-                  </div>
-                </div>
-              </div>
-              <div class="legend-footer">
-                <div class="legend-stats">
-                  <div class="legend-stat">
-                    <span class="stat-number">{coverageData.total_ctos?.toLocaleString('pt-BR') || 0}</span>
-                    <span class="stat-label">CTOs</span>
-                  </div>
-                  <div class="legend-stat">
-                    <span class="stat-number">{coverageData.area_km2?.toFixed(0) || 0}</span>
-                    <span class="stat-label">km²</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          {:else if !showLegend && coverageData}
-            <button class="legend-toggle-button" on:click={() => showLegend = true} title="Mostrar legenda">
-              📊
-            </button>
-          {/if}
         </div>
       </main>
     </div>
