@@ -54,7 +54,7 @@
   
   // Estados de minimização
   let isSearchPanelMinimized = false;
-  let isMapMinimized = false;
+  // isMapMinimized removido - mapa não pode ser minimizado nesta ferramenta
   
   // Controles de visualização
   let coverageOpacity = 0.4; // Opacidade das manchas (0-1)
@@ -1716,7 +1716,7 @@
             {/if}
             <button 
               class="minimize-button" 
-              disabled={isResizingSidebar || isResizingMap}
+              disabled={isResizingSidebar}
               on:click={() => isSearchPanelMinimized = !isSearchPanelMinimized}
               aria-label={isSearchPanelMinimized ? 'Expandir painel de busca' : 'Minimizar painel de busca'}
               title={isSearchPanelMinimized ? 'Expandir' : 'Minimizar'}
@@ -1892,38 +1892,14 @@
       <!-- Área Principal (Mapa) -->
       <main class="main-area">
         <!-- Mapa -->
-        <div class="map-container" class:minimized={isMapMinimized} style="height: {isMapMinimized ? '60px' : '100%'}; min-height: {isMapMinimized ? '60px' : '0'};">
+        <div class="map-container" style="height: 100%; min-height: 0;">
           <div class="map-header">
             <h3>Mapa de Cobertura</h3>
-            <button 
-              class="minimize-button" 
-              disabled={isResizingSidebar || isResizingMap}
-              on:click={async () => {
-                isMapMinimized = !isMapMinimized;
-                if (!isMapMinimized && map && google?.maps) {
-                  await tick();
-                  setTimeout(() => {
-                    if (map && google.maps) {
-                      google.maps.event.trigger(map, 'resize');
-          // Se temos polígono carregado mas não está renderizado, redesenhar
-          if (coveragePolygonGeoJSON && coveragePolygons.length === 0) {
-            console.log('🔄 Redesenhando polígono após expandir mapa...');
-                        drawCoverageArea();
-                      }
-                    }
-                  }, 200);
-                }
-              }}
-              aria-label={isMapMinimized ? 'Expandir mapa' : 'Minimizar mapa'}
-              title={isMapMinimized ? 'Expandir' : 'Minimizar'}
-            >
-              {isMapMinimized ? '⬆️' : '⬇️'}
-            </button>
           </div>
-          <div id="map-consulta" class="map" class:hidden={isMapMinimized} bind:this={mapElement}></div>
+          <div id="map-consulta" class="map" bind:this={mapElement}></div>
           
           <!-- Legenda Profissional -->
-          {#if showLegend && coverageData && !isMapMinimized}
+          {#if showLegend && coverageData}
             <div class="map-legend">
               <div class="legend-header">
                 <h4>Legenda</h4>
@@ -1967,7 +1943,7 @@
                 </div>
               </div>
             </div>
-          {:else if !showLegend && coverageData && !isMapMinimized}
+          {:else if !showLegend && coverageData}
             <button class="legend-toggle-button" on:click={() => showLegend = true} title="Mostrar legenda">
               📊
             </button>
