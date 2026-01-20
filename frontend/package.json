@@ -24,8 +24,8 @@
     "xlsx": "^0.18.5",
     "html2canvas": "^1.4.1",
     "serve": "^14.2.0",
-    "ag-grid-community": "^32.0.0",
-    "ag-grid-svelte": "^32.0.0"
+    "ag-grid-community": "^31.3.2",
+    "ag-grid-svelte": "^31.3.2"
   }
 }
 
