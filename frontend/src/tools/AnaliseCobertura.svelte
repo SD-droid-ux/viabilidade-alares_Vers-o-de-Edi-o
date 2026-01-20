@@ -76,10 +76,17 @@
   let selectionMode = 'single'; // 'single', 'range', 'add'
   let currentHoverCell = null; // Célula atual do hover durante seleção
   
+  // Variável reativa para forçar atualização do DOM quando seleção mudar
+  $: selectionTrigger = selectedCellsVersion; // Reativo: quando selectedCellsVersion muda, força re-render
+  
   // Função auxiliar para atualizar selectedCells e forçar reatividade
   function updateSelectedCells(newSet) {
     selectedCells = newSet;
-    selectedCellsVersion++;
+    selectedCellsVersion = selectedCellsVersion + 1; // Incrementar para forçar reatividade
+    // Forçar atualização do DOM
+    tick().then(() => {
+      // DOM atualizado
+    });
   }
   
   // Ordem das colunas para cálculo de range
@@ -91,16 +98,12 @@
   }
   
   // Função auxiliar para verificar se célula está selecionada (reativa)
+  // IMPORTANTE: Esta função usa selectionTrigger para garantir reatividade
   function isCellSelected(ctoKey, columnName) {
-    // Usar selectedCellsVersion para forçar reatividade do Svelte
-    const version = selectedCellsVersion;
+    // Usar selectionTrigger para forçar reatividade - quando muda, todas as células são reavaliadas
+    const _trigger = selectionTrigger; // Variável reativa que força atualização
     const cellKey = getCellKey(ctoKey, columnName);
-    const isSelected = selectedCells.has(cellKey);
-    // Log para debug (remover depois se necessário)
-    if (isSelected && version > 0) {
-      // console.log(`✅ Célula ${cellKey} está selecionada (versão ${version})`);
-    }
-    return isSelected;
+    return selectedCells.has(cellKey);
   }
   
   // Função para obter índice da coluna
