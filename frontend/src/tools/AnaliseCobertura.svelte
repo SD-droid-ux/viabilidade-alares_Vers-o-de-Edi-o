@@ -3,6 +3,16 @@
   import { Loader } from '@googlemaps/js-api-loader';
   import Loading from '../Loading.svelte';
   import { getApiUrl } from '../config.js';
+  import { AgGridSvelte } from 'ag-grid-svelte';
+  import { ModuleRegistry } from 'ag-grid-community';
+  import { ClientSideRowModelModule } from 'ag-grid-community';
+  
+  // Importar CSS do AG Grid
+  import 'ag-grid-community/styles/ag-grid.css';
+  import 'ag-grid-community/styles/ag-theme-alpine.css';
+  
+  // Registrar módulos do AG Grid
+  ModuleRegistry.registerModules([ClientSideRowModelModule]);
 
   // Props do componente
   export let currentUser = '';
@@ -2022,6 +2032,229 @@
     }
   }
 
+  // ============================================
+  // CONFIGURAÇÃO AG GRID
+  // ============================================
+  
+  let gridApi = null;
+  let gridColumnApi = null;
+  
+  // Função para lidar com grid pronto
+  function onGridReady(params) {
+    gridApi = params.api;
+    gridColumnApi = params.columnApi;
+    console.log('✅ AG Grid pronto');
+  }
+  
+  // Definir colunas do AG Grid
+  function getColumnDefs() {
+    return [
+      {
+        headerName: '',
+        field: 'checkbox',
+        width: 50,
+        cellRenderer: function(params) {
+          const ctoKey = getCTOKey(params.data);
+          const isVisible = ctoVisibility.get(ctoKey) !== false;
+          
+          // Criar elemento checkbox
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = isVisible;
+          input.style.cursor = 'pointer';
+          input.style.width = '18px';
+          input.style.height = '18px';
+          
+          // Adicionar event listener
+          input.addEventListener('change', (e) => {
+            const ctoKey = getCTOKey(params.data);
+            ctoVisibility.set(ctoKey, e.target.checked);
+            ctoVisibility = ctoVisibility; // Forçar reatividade
+            displayResultsOnMap();
+            // Atualizar todas as células do checkbox
+            if (gridApi) {
+              gridApi.refreshCells({ columns: ['checkbox'] });
+            }
+          });
+          
+          return input;
+        },
+        cellClass: 'checkbox-cell',
+        suppressMovable: true,
+        lockPosition: true,
+        checkboxSelection: false,
+        sortable: false,
+        filter: false
+      },
+      {
+        headerName: 'CTO',
+        field: 'nome',
+        cellRenderer: (params) => `<strong>${params.value || ''}</strong>`,
+        width: 180,
+        pinned: false
+      },
+      {
+        headerName: 'Cidade',
+        field: 'cidade',
+        width: 120
+      },
+      {
+        headerName: 'POP',
+        field: 'pop',
+        width: 80,
+        cellRenderer: (params) => params.value || 'N/A'
+      },
+      {
+        headerName: 'CHASSE',
+        field: 'olt',
+        width: 100,
+        cellRenderer: (params) => params.value || 'N/A'
+      },
+      {
+        headerName: 'PLACA',
+        field: 'slot',
+        width: 80,
+        cellRenderer: (params) => params.value || 'N/A'
+      },
+      {
+        headerName: 'OLT',
+        field: 'pon',
+        width: 80,
+        cellRenderer: (params) => params.value || 'N/A'
+      },
+      {
+        headerName: 'ID CTO',
+        field: 'id_cto',
+        width: 100,
+        cellRenderer: (params) => params.value || params.data.id || 'N/A'
+      },
+      {
+        headerName: 'Portas Total',
+        field: 'vagas_total',
+        width: 110,
+        type: 'numericColumn'
+      },
+      {
+        headerName: 'Ocupadas',
+        field: 'clientes_conectados',
+        width: 100,
+        type: 'numericColumn'
+      },
+      {
+        headerName: 'Disponíveis',
+        field: 'disponiveis',
+        width: 110,
+        valueGetter: (params) => {
+          return (params.data.vagas_total || 0) - (params.data.clientes_conectados || 0);
+        },
+        type: 'numericColumn'
+      },
+      {
+        headerName: 'Ocupação',
+        field: 'ocupacao',
+        width: 110,
+        cellRenderer: (params) => {
+          const pctOcup = parseFloat(params.data.pct_ocup || 0);
+          const classes = [];
+          if (pctOcup < 50) classes.push('low');
+          else if (pctOcup >= 50 && pctOcup < 80) classes.push('medium');
+          else if (pctOcup >= 80) classes.push('high');
+          return `<span class="occupation-badge ${classes.join(' ')}">${pctOcup.toFixed(1)}%</span>`;
+        }
+      },
+      {
+        headerName: 'Status',
+        field: 'status_cto',
+        width: 110,
+        cellRenderer: (params) => params.value || 'N/A'
+      },
+      {
+        headerName: 'Total de Portas no Caminho de Rede',
+        field: 'total_caminho',
+        width: 250,
+        cellRenderer: (params) => {
+          const cto = params.data;
+          const caminhoKey = getCaminhoRedeKey(cto);
+          const total = caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0;
+          const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5;
+          
+          if (estaCarregando) {
+            return '<span style="color: #666; font-style: italic; font-size: 0.9em;">Carregando...</span>';
+          }
+          return `<strong>${total}</strong>`;
+        }
+      }
+    ];
+  }
+  
+  // Configurações do grid
+  let gridOptions = {
+    columnDefs: getColumnDefs(),
+    rowData: [],
+    defaultColDef: {
+      sortable: true,
+      resizable: true,
+      filter: false,
+      editable: false
+    },
+    // Seleção estilo Excel
+    enableRangeSelection: true,
+    enableRangeHandle: true,
+    enableFillHandle: false,
+    suppressMultiRangeSelection: false,
+    // Configurações de seleção
+    rowSelection: 'multiple',
+    suppressRowClickSelection: false,
+    // Estilo
+    suppressCellFocus: false,
+    suppressRowClickSelection: true,
+    // Performance
+    animateRows: true,
+    enableCellTextSelection: true,
+    ensureDomOrder: true,
+    // Eventos
+    onCellClicked: (params) => {
+      // Manter lógica de seleção se necessário
+      if (params.column.colId === 'checkbox') {
+        const ctoKey = getCTOKey(params.data);
+        const currentValue = ctoVisibility.get(ctoKey) !== false;
+        ctoVisibility.set(ctoKey, !currentValue);
+        ctoVisibility = ctoVisibility; // Forçar reatividade
+        displayResultsOnMap();
+      }
+    },
+    onSelectionChanged: (params) => {
+      // Atualizar seleção
+      console.log('Seleção mudou:', params.api.getSelectedRows());
+    },
+    // Estilos customizados
+    rowClassRules: {
+      'selected-row': (params) => {
+        // Lógica para destacar linhas selecionadas
+        return false;
+      }
+    },
+    getRowId: (params) => {
+      // Usar chave única para cada linha
+      return getCTOKey(params.data);
+    }
+  };
+  
+  // Atualizar rowData quando ctos mudar
+  $: if (ctos && ctos.length >= 0 && gridApi) {
+    gridApi.setGridOption('rowData', ctos);
+  }
+  
+  // Atualizar rowData inicial
+  $: if (ctos && ctos.length >= 0) {
+    gridOptions.rowData = ctos;
+  }
+  
+  // Atualizar checkboxes quando visibilidade mudar
+  $: if (ctoVisibility && gridApi) {
+    gridApi.refreshCells({ columns: ['checkbox'] });
+  }
+
   // Inicializar ferramenta
   onMount(async () => {
     try {
@@ -2241,8 +2474,17 @@
               </button>
             </div>
             {#if !isTableMinimized}
-            <div class="table-wrapper">
-              <table class="results-table">
+            <div class="table-wrapper ag-grid-wrapper">
+              <!-- AG Grid Component -->
+              <AgGridSvelte
+                class="ag-theme-alpine ag-grid-custom"
+                gridOptions={gridOptions}
+                on:gridReady={onGridReady}
+                style="width: 100%; height: 100%;"
+              />
+              
+              <!-- Tabela HTML antiga (oculta temporariamente para referência) -->
+              <table class="results-table" style="display: none;">
                 <thead>
                   <tr>
                     <th style="width: 50px; text-align: center; padding: 0.5rem;">
@@ -3226,6 +3468,76 @@
     }
   }
 
+  /* ============================================
+     ESTILOS AG GRID
+     ============================================ */
+  
+  .ag-grid-wrapper {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  
+  .ag-grid-custom {
+    width: 100%;
+    height: 100%;
+    font-size: 0.875rem;
+  }
+  
+  /* Personalizar estilo do AG Grid para combinar com o projeto */
+  .ag-theme-alpine {
+    --ag-foreground-color: #4b5563;
+    --ag-background-color: white;
+    --ag-header-background-color: #f9fafb;
+    --ag-odd-row-background-color: white;
+    --ag-row-hover-color: #f9fafb;
+    --ag-border-color: #e5e7eb;
+    --ag-selected-row-background-color: #D0E8F2;
+    --ag-range-selection-background-color: #D0E8F2;
+    --ag-range-selection-border-color: #00C853;
+  }
+  
+  /* Estilo para células selecionadas (Excel-like) */
+  .ag-theme-alpine .ag-cell-range-selected {
+    background-color: #D0E8F2 !important;
+  }
+  
+  /* Estilo para célula ativa */
+  .ag-theme-alpine .ag-cell-focus {
+    border: 2px solid #00C853 !important;
+  }
+  
+  /* Manter badges de ocupação */
+  .ag-cell .occupation-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.8125rem;
+  }
+  
+  .ag-cell .occupation-badge.low {
+    background: #dcfce7;
+    color: #166534;
+  }
+  
+  .ag-cell .occupation-badge.medium {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  
+  .ag-cell .occupation-badge.high {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+  
+  /* Checkbox cell customizado */
+  .ag-cell.checkbox-cell {
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   @media (max-width: 768px) {
     .main-layout {
       padding: 0.75rem;
@@ -3242,6 +3554,10 @@
     .results-table th,
     .results-table td {
       padding: 0.5rem;
+    }
+    
+    .ag-grid-custom {
+      font-size: 0.75rem;
     }
   }
 </style>
