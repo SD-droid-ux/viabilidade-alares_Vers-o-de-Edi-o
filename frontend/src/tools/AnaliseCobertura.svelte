@@ -72,8 +72,9 @@
   let selectedCells = new Set(); // Set de chaves "ctoKey|columnName" para células selecionadas
   let selectedCellsVersion = 0; // Versão para forçar reatividade do Svelte
   let isSelecting = false; // Flag para indicar se está em modo de seleção por arrasto
-  let selectionStart = null; // Célula inicial da seleção (para range)
+  let selectionStart = null; // Célula inicial da seleção (para range) - formato "ctoKey|columnName"
   let selectionMode = 'single'; // 'single', 'range', 'add'
+  let currentHoverCell = null; // Célula atual do hover durante seleção
   
   // Função auxiliar para atualizar selectedCells e forçar reatividade
   function updateSelectedCells(newSet) {
@@ -113,12 +114,19 @@
     const startCol = getColumnIndex(startColumn);
     const endCol = getColumnIndex(endColumn);
     
+    // Validar índices
+    if (startRow === -1 || endRow === -1 || startCol === -1 || endCol === -1) {
+      console.warn('⚠️ Índices inválidos para seleção de range:', { startRow, endRow, startCol, endCol });
+      return;
+    }
+    
     const minRow = Math.min(startRow, endRow);
     const maxRow = Math.max(startRow, endRow);
     const minCol = Math.min(startCol, endCol);
     const maxCol = Math.max(startCol, endCol);
     
-    const newSelection = new Set(selectedCells);
+    // Limpar seleção anterior se não estiver em modo adicionar
+    const newSelection = selectionMode === 'add' ? new Set(selectedCells) : new Set();
     
     for (let row = minRow; row <= maxRow; row++) {
       if (row >= 0 && row < ctos.length) {
@@ -133,6 +141,7 @@
       }
     }
     
+    console.log(`📦 Selecionando range: ${minRow}-${maxRow} linhas, ${minCol}-${maxCol} colunas (${newSelection.size} células)`);
     updateSelectedCells(newSelection);
   }
   
@@ -175,16 +184,77 @@
   
   // Função para lidar com movimento do mouse durante seleção
   function handleCellMouseEnter(ctoKey, columnName, event) {
-    if (isSelecting && selectionStart) {
+    if (isSelecting && selectionStart && selectionMode === 'single') {
       const cellKey = getCellKey(ctoKey, columnName);
+      currentHoverCell = { ctoKey, columnName };
       const [startCtoKey, startColumn] = selectionStart.split('|');
+      console.log('🖱️ MouseEnter durante seleção:', cellKey);
       selectRange(startCtoKey, startColumn, ctoKey, columnName);
     }
   }
   
   // Função para lidar com fim de seleção (mouse up)
   function handleCellMouseUp(ctoKey, columnName, event) {
-    isSelecting = false;
+    if (isSelecting) {
+      isSelecting = false;
+      currentHoverCell = null;
+    }
+  }
+  
+  // Função global para lidar com movimento do mouse durante seleção (mesmo fora das células)
+  function handleGlobalMouseMove(event) {
+    if (!isSelecting || !selectionStart) return;
+    
+    // Encontrar a célula sob o mouse
+    const target = event.target;
+    const td = target.closest('td.cell-selectable, td[class*="cell-selected"]');
+    if (!td) {
+      // Tentar encontrar pela posição do mouse
+      const table = target.closest('table.results-table');
+      if (table) {
+        const rect = table.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        
+        // Encontrar célula pela posição (aproximado)
+        const rows = table.querySelectorAll('tbody tr');
+        let foundCell = null;
+        
+        for (const row of rows) {
+          const rowRect = row.getBoundingClientRect();
+          if (y >= rowRect.top && y <= rowRect.bottom) {
+            const cells = row.querySelectorAll('td');
+            for (const cell of cells) {
+              const cellRect = cell.getBoundingClientRect();
+              if (x >= cellRect.left && x <= cellRect.right) {
+                // Encontrar qual coluna é
+                const cellIndex = Array.from(cells).indexOf(cell);
+                if (cellIndex > 0) { // Ignorar checkbox
+                  const columnNames = ['nome', 'cidade', 'pop', 'olt', 'slot', 'pon', 'id_cto', 'vagas_total', 'clientes_conectados', 'disponiveis', 'ocupacao', 'status', 'total_caminho'];
+                  const columnIndex = cellIndex - 1; // -1 porque primeiro td é checkbox
+                  if (columnIndex >= 0 && columnIndex < columnNames.length) {
+                    const rowIndex = Array.from(rows).indexOf(row);
+                    if (rowIndex >= 0 && rowIndex < ctos.length) {
+                      const cto = ctos[rowIndex];
+                      const ctoKey = getCTOKey(cto);
+                      const columnName = columnNames[columnIndex];
+                      foundCell = { ctoKey, columnName };
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+            if (foundCell) break;
+          }
+        }
+        
+        if (foundCell) {
+          const [startCtoKey, startColumn] = selectionStart.split('|');
+          selectRange(startCtoKey, startColumn, foundCell.ctoKey, foundCell.columnName);
+        }
+      }
+    }
   }
   
   
@@ -2172,6 +2242,7 @@
                         <strong>{cto.nome}</strong>
                       </td>
                       <td 
+                        class="cell-selectable"
                         class:cell-selected={isCellSelected(ctoKey, 'cidade')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'cidade', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'cidade', e)}
