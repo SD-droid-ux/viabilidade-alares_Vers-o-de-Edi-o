@@ -35,8 +35,8 @@ export const toolsRegistry = [
   },
   {
     id: 'analise-cobertura',
-    title: 'Análise de Cobertura',
-    description: 'Análise de cobertura de rede e infraestrutura',
+    title: 'Consulta de Alívio de Rede',
+    description: 'Consulta de CTOs para análise de alívio de rede e infraestrutura',
     icon: '📡',
     color: '#6495ED',
     component: AnaliseCobertura,
