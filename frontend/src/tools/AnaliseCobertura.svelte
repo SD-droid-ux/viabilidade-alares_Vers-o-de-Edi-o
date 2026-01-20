@@ -2255,10 +2255,10 @@
     ];
   }
   
-  // Configurações do grid
-  let gridOptions = {
+  // Configurações do grid - usando reactive statement para garantir reatividade
+  $: gridOptions = {
     columnDefs: getColumnDefs(),
-    rowData: [],
+    rowData: ctos || [],
     defaultColDef: {
       sortable: true,
       resizable: true,
@@ -2321,33 +2321,24 @@
     }
   };
   
-  // Atualizar rowData quando ctos mudar
-  $: if (ctos && ctos.length >= 0) {
-    if (gridApi) {
-      gridApi.setGridOption('rowData', ctos);
-      // Ajustar tamanho das colunas automaticamente após dados carregarem
-      setTimeout(() => {
-        if (gridApi) {
+  // Atualizar rowData quando ctos mudar - usar API quando disponível
+  $: if (ctos && gridApi) {
+    gridApi.setGridOption('rowData', ctos);
+    // Ajustar tamanho das colunas automaticamente após dados carregarem
+    setTimeout(() => {
+      if (gridApi) {
+        try {
           gridApi.sizeColumnsToFit();
+        } catch (e) {
+          console.warn('Erro ao ajustar colunas:', e);
         }
-      }, 100);
-    } else {
-      gridOptions.rowData = ctos;
-    }
+      }
+    }, 100);
   }
   
   // Atualizar checkboxes quando visibilidade mudar
   $: if (ctoVisibility && gridApi) {
     gridApi.refreshCells({ columns: ['checkbox'] });
-    // Atualizar checkbox do cabeçalho
-    const headerRow = gridApi.getHeaderRowAtIndex(0);
-    if (headerRow) {
-      const headerCheckbox = headerRow.querySelector('input[type="checkbox"]');
-      if (headerCheckbox) {
-        headerCheckbox.checked = allCTOsVisible;
-        headerCheckbox.indeterminate = someCTOsVisible;
-      }
-    }
   }
   
   // Atualizar células quando caminhoRedeTotalsVersion mudar
