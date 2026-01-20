@@ -63,6 +63,8 @@
   let caminhoRedeTotals = new Map();
   let caminhoRedeLoading = new Set(); // Caminhos que estão sendo carregados
   let caminhosCarregando = false; // Flag para indicar se ainda está carregando totais
+  let calculandoTotais = false; // Flag para evitar múltiplas execuções simultâneas
+  let ultimosCaminhosCalculados = new Set(); // Rastrear quais caminhos já foram calculados
   
   // Função para buscar total de portas do caminho de rede da base de dados
   async function fetchCaminhoRedeTotal(olt, slot, pon) {
@@ -121,12 +123,14 @@
     }
   }
   
-  // Função para calcular e buscar totais de todos os caminhos de rede únicos
+  // Função OTIMIZADA para calcular e buscar totais de todos os caminhos de rede únicos
+  // Usa uma única requisição batch em vez de múltiplas requisições individuais
   async function calculateCaminhoRedeTotals() {
-    // Limpar valores antigos
-    caminhoRedeTotals = new Map();
-    caminhoRedeLoading.clear();
-    caminhosCarregando = true; // Indicar que está carregando
+    // Evitar execuções simultâneas
+    if (calculandoTotais) {
+      console.log('⏸️ Cálculo já em andamento, ignorando chamada duplicada');
+      return;
+    }
     
     // Coletar todos os caminhos de rede únicos das CTOs
     const caminhosUnicos = new Set();
@@ -138,53 +142,127 @@
       }
     }
     
+    // Verificar se os caminhos mudaram
+    const caminhosString = Array.from(caminhosUnicos).sort().join(',');
+    const ultimosCaminhosString = Array.from(ultimosCaminhosCalculados).sort().join(',');
+    
+    if (caminhosString === ultimosCaminhosString && caminhoRedeTotals.size > 0) {
+      console.log('✅ Caminhos não mudaram e já temos os valores, pulando recálculo');
+      return;
+    }
+    
+    // Marcar como calculando
+    calculandoTotais = true;
+    caminhosCarregando = true;
+    
+    // Limpar apenas os caminhos que não estão mais presentes
+    const novosCaminhos = new Set(caminhosUnicos);
+    const caminhosParaRemover = [];
+    for (const key of caminhoRedeTotals.keys()) {
+      if (!novosCaminhos.has(key)) {
+        caminhosParaRemover.push(key);
+      }
+    }
+    for (const key of caminhosParaRemover) {
+      caminhoRedeTotals.delete(key);
+    }
+    
+    caminhoRedeLoading.clear();
+    
     console.log(`🔍 Calculando totais para ${caminhosUnicos.size} caminhos de rede únicos:`, Array.from(caminhosUnicos));
     
     if (caminhosUnicos.size === 0) {
       console.warn('⚠️ Nenhum caminho de rede válido encontrado nas CTOs');
+      calculandoTotais = false;
+      caminhosCarregando = false;
       return;
     }
     
-    // Processar em lotes para evitar ERR_INSUFFICIENT_RESOURCES
-    const caminhosArray = Array.from(caminhosUnicos);
-    const batchSize = 3; // Processar apenas 3 caminhos por vez para evitar sobrecarga
-    const batches = [];
+    // Filtrar apenas caminhos que ainda não foram calculados
+    const todosCaminhos = Array.from(caminhosUnicos);
+    const caminhosParaCalcular = todosCaminhos.filter(key => !caminhoRedeTotals.has(key));
     
-    for (let i = 0; i < caminhosArray.length; i += batchSize) {
-      batches.push(caminhosArray.slice(i, i + batchSize));
+    if (caminhosParaCalcular.length === 0) {
+      console.log('✅ Todos os caminhos já foram calculados');
+      ultimosCaminhosCalculados = novosCaminhos;
+      calculandoTotais = false;
+      caminhosCarregando = false;
+      caminhoRedeTotalsVersion++;
+      return;
     }
     
-    console.log(`📦 Processando ${caminhosArray.length} caminhos em ${batches.length} lotes de até ${batchSize} requisições simultâneas`);
+    console.log(`📦 Buscando ${caminhosParaCalcular.length} novos caminhos de ${todosCaminhos.length} totais em uma única requisição batch`);
     
-    // Processar cada lote sequencialmente, mas os itens dentro do lote em paralelo
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-      const batch = batches[batchIndex];
-      console.log(`📡 Processando lote ${batchIndex + 1}/${batches.length} com ${batch.length} caminhos`);
-      
-      const promises = batch.map(caminhoKey => {
+    try {
+      // Preparar array de caminhos para a requisição batch
+      const caminhosArray = caminhosParaCalcular.map(caminhoKey => {
         const [olt, slot, pon] = caminhoKey.split('|');
-        console.log(`📡 Buscando total para caminho: ${olt} / ${slot} / ${pon}`);
-        return fetchCaminhoRedeTotal(olt, slot, pon);
+        return { olt, slot, pon };
       });
       
-      // Aguardar o lote atual completar antes de processar o próximo
-      await Promise.all(promises);
+      // Fazer uma única requisição POST com todos os caminhos
+      const url = getApiUrl('/api/ctos/caminhos-rede-batch');
+      console.log(`🚀 Fazendo requisição batch para ${caminhosArray.length} caminhos`);
       
-      // Incrementar versão após cada lote para atualizar a UI progressivamente
-      caminhoRedeTotalsVersion++;
-      await tick();
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ caminhos: caminhosArray })
+      });
       
-      // Delay maior entre lotes para evitar sobrecarga (exceto no último lote)
-      if (batchIndex < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 300)); // 300ms de delay
+      if (!response.ok) {
+        console.error(`❌ Resposta HTTP não OK: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.error(`Erro: ${errorText}`);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
+      
+      const data = await response.json();
+      
+      if (data.success && data.resultados) {
+        // Atualizar o Map com todos os resultados de uma vez
+        const newTotals = new Map(caminhoRedeTotals);
+        
+        for (const caminhoKey of caminhosParaCalcular) {
+          const resultado = data.resultados[caminhoKey];
+          if (resultado && resultado.total_portas !== undefined) {
+            newTotals.set(caminhoKey, resultado.total_portas);
+            console.log(`✅ ${caminhoKey}: ${resultado.total_portas} portas (${resultado.total_ctos} CTOs)`);
+          } else {
+            console.warn(`⚠️ Sem resultado para ${caminhoKey}`);
+            newTotals.set(caminhoKey, 0);
+          }
+        }
+        
+        caminhoRedeTotals = newTotals;
+        ultimosCaminhosCalculados = novosCaminhos;
+        
+        console.log(`✅ Batch completo! ${Object.keys(data.resultados).length} caminhos processados`);
+        console.log(`📊 Map atualizado. Tamanho: ${caminhoRedeTotals.size}, Chaves:`, Array.from(caminhoRedeTotals.keys()));
+      } else {
+        console.error('❌ Resposta da API não tem success=true ou resultados:', data);
+        throw new Error('Resposta inválida da API');
+      }
+    } catch (err) {
+      console.error('❌ Erro ao buscar totais em batch:', err);
+      // Em caso de erro, marcar todos como 0 para não ficar travado
+      const newTotals = new Map(caminhoRedeTotals);
+      for (const caminhoKey of caminhosParaCalcular) {
+        newTotals.set(caminhoKey, 0);
+      }
+      caminhoRedeTotals = newTotals;
+    } finally {
+      // Marcar como concluído
+      calculandoTotais = false;
+      caminhosCarregando = false;
+      caminhoRedeTotalsVersion++;
+      await tick(); // Garantir atualização do DOM
     }
     
-    console.log(`✅ Totais calculados para ${caminhosArray.length} caminhos de rede`);
-    console.log(`🔄 Versão final: ${caminhoRedeTotalsVersion}. Map final tem ${caminhoRedeTotals.size} entradas:`, Array.from(caminhoRedeTotals.entries()));
-    
-    // Marcar como concluído
-    caminhosCarregando = false;
+    console.log(`✅ Totais calculados para ${todosCaminhos.length} caminhos de rede`);
+    console.log(`🔄 Versão final: ${caminhoRedeTotalsVersion}. Map final tem ${caminhoRedeTotals.size} entradas`);
   }
   
   // Função para obter total de portas do caminho de rede de uma CTO
@@ -204,28 +282,42 @@
   // Variável reativa para forçar atualização quando os totais mudarem
   let caminhoRedeTotalsVersion = 0;
   
-  // Recalcular quando a lista de CTOs mudar
+  // Recalcular quando a lista de CTOs mudar (com debounce para evitar loops)
+  let timeoutId = null;
   $: if (ctos && ctos.length > 0) {
-    // Chamar função async de forma adequada
-    (async () => {
+    // Cancelar timeout anterior se existir
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    
+    // Aguardar um pouco antes de calcular para evitar múltiplas execuções
+    timeoutId = setTimeout(async () => {
       try {
-        console.log(`🔄 Iniciando cálculo de totais para ${ctos.length} CTOs`);
-        await calculateCaminhoRedeTotals();
-        // Incrementar versão para forçar re-render
-        caminhoRedeTotalsVersion++;
-        console.log(`✅ Cálculo concluído. Versão: ${caminhoRedeTotalsVersion}, Map size: ${caminhoRedeTotals.size}`);
-        // Forçar atualização após cálculo
-        await tick();
+        // Verificar novamente se ainda há CTOs (pode ter mudado durante o timeout)
+        if (ctos && ctos.length > 0 && !calculandoTotais) {
+          console.log(`🔄 Iniciando cálculo de totais para ${ctos.length} CTOs`);
+          await calculateCaminhoRedeTotals();
+          console.log(`✅ Cálculo concluído. Versão: ${caminhoRedeTotalsVersion}, Map size: ${caminhoRedeTotals.size}`);
+          await tick();
+        }
       } catch (err) {
         console.error('❌ Erro ao calcular totais do caminho de rede:', err);
-        caminhosCarregando = false; // Garantir que o flag seja limpo mesmo em caso de erro
+        calculandoTotais = false;
+        caminhosCarregando = false;
       }
-    })();
+    }, 300); // Debounce de 300ms
   } else {
+    // Limpar quando não há CTOs
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
     caminhoRedeTotals = new Map();
     caminhoRedeLoading.clear();
     caminhoRedeTotalsVersion = 0;
     caminhosCarregando = false;
+    calculandoTotais = false;
+    ultimosCaminhosCalculados = new Set();
   }
   
   // Estados reativos para checkbox "marcar todos"
