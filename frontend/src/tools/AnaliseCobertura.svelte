@@ -68,8 +68,14 @@
   let calculandoTotais = false; // Flag para evitar múltiplas execuções simultâneas
   let ultimosCaminhosCalculados = new Set(); // Rastrear quais caminhos já foram calculados
   
-  // Seleção de células individuais
+  // Seleção de células individuais (estilo Excel)
   let selectedCells = new Set(); // Set de chaves "ctoKey|columnName" para células selecionadas
+  let isSelecting = false; // Flag para indicar se está em modo de seleção por arrasto
+  let selectionStart = null; // Célula inicial da seleção (para range)
+  let selectionMode = 'single'; // 'single', 'range', 'add'
+  
+  // Ordem das colunas para cálculo de range
+  const columnOrder = ['nome', 'cidade', 'pop', 'olt', 'slot', 'pon', 'id_cto', 'vagas_total', 'clientes_conectados', 'disponiveis', 'ocupacao', 'status', 'total_caminho'];
   
   // Função auxiliar para obter chave da célula
   function getCellKey(ctoKey, columnName) {
@@ -81,24 +87,89 @@
     return selectedCells.has(getCellKey(ctoKey, columnName));
   }
   
-  // Função para lidar com clique em célula
-  function handleCellClick(ctoKey, columnName, event) {
+  // Função para obter índice da coluna
+  function getColumnIndex(columnName) {
+    return columnOrder.indexOf(columnName);
+  }
+  
+  // Função para obter índice da linha (CTO)
+  function getRowIndex(ctoKey) {
+    return ctos.findIndex(c => getCTOKey(c) === ctoKey);
+  }
+  
+  // Função para selecionar range de células
+  function selectRange(startCtoKey, startColumn, endCtoKey, endColumn) {
+    const startRow = getRowIndex(startCtoKey);
+    const endRow = getRowIndex(endCtoKey);
+    const startCol = getColumnIndex(startColumn);
+    const endCol = getColumnIndex(endColumn);
+    
+    const minRow = Math.min(startRow, endRow);
+    const maxRow = Math.max(startRow, endRow);
+    const minCol = Math.min(startCol, endCol);
+    const maxCol = Math.max(startCol, endCol);
+    
+    const newSelection = new Set(selectedCells);
+    
+    for (let row = minRow; row <= maxRow; row++) {
+      if (row >= 0 && row < ctos.length) {
+        const cto = ctos[row];
+        const ctoKey = getCTOKey(cto);
+        for (let col = minCol; col <= maxCol; col++) {
+          if (col >= 0 && col < columnOrder.length) {
+            const columnName = columnOrder[col];
+            newSelection.add(getCellKey(ctoKey, columnName));
+          }
+        }
+      }
+    }
+    
+    selectedCells = newSelection;
+  }
+  
+  // Função para lidar com início de seleção (mouse down)
+  function handleCellMouseDown(ctoKey, columnName, event) {
     event.stopPropagation();
     const cellKey = getCellKey(ctoKey, columnName);
+    
     if (event.ctrlKey || event.metaKey) {
-      // Seleção múltipla com Ctrl/Cmd
+      // Modo adicionar (Ctrl/Cmd): adiciona ou remove célula da seleção
+      selectionMode = 'add';
       if (selectedCells.has(cellKey)) {
         selectedCells.delete(cellKey);
       } else {
         selectedCells.add(cellKey);
       }
+      selectedCells = selectedCells;
+    } else if (event.shiftKey && selectionStart) {
+      // Modo range (Shift): seleciona range da célula inicial até esta
+      selectionMode = 'range';
+      const [startCtoKey, startColumn] = selectionStart.split('|');
+      selectRange(startCtoKey, startColumn, ctoKey, columnName);
     } else {
-      // Seleção única (limpa outras e seleciona esta)
+      // Modo normal: inicia nova seleção
+      selectionMode = 'single';
+      isSelecting = true;
+      selectionStart = cellKey;
       selectedCells.clear();
       selectedCells.add(cellKey);
+      selectedCells = selectedCells;
     }
-    selectedCells = selectedCells; // Forçar reatividade
   }
+  
+  // Função para lidar com movimento do mouse durante seleção
+  function handleCellMouseEnter(ctoKey, columnName, event) {
+    if (isSelecting && selectionStart) {
+      const [startCtoKey, startColumn] = selectionStart.split('|');
+      selectRange(startCtoKey, startColumn, ctoKey, columnName);
+    }
+  }
+  
+  // Função para lidar com fim de seleção (mouse up)
+  function handleCellMouseUp(ctoKey, columnName, event) {
+    isSelecting = false;
+  }
+  
   
   // Função para obter o conteúdo de uma célula
   function getCellContent(ctoKey, columnName) {
@@ -1805,6 +1876,11 @@
       // Adicionar listener para Ctrl+C (copiar células selecionadas)
       document.addEventListener('keydown', handleKeyDown);
       
+      // Adicionar listener global para mouseup (para finalizar seleção mesmo fora da tabela)
+      document.addEventListener('mouseup', () => {
+        isSelecting = false;
+      });
+      
       // Registrar função de pré-carregamento no hover
       if (onSettingsHover && typeof onSettingsHover === 'function') {
         onSettingsHover(preloadSettingsData);
@@ -2071,78 +2147,100 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'nome')}
-                        on:click={(e) => handleCellClick(ctoKey, 'nome', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'nome', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'nome', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'nome', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         <strong>{cto.nome}</strong>
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'cidade')}
-                        on:click={(e) => handleCellClick(ctoKey, 'cidade', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'cidade', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'cidade', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'cidade', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         {cto.cidade}
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'pop')}
-                        on:click={(e) => handleCellClick(ctoKey, 'pop', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'pop', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'pop', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'pop', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         {cto.pop || 'N/A'}
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'olt')}
-                        on:click={(e) => handleCellClick(ctoKey, 'olt', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'olt', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'olt', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'olt', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         {cto.olt || 'N/A'}
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'slot')}
-                        on:click={(e) => handleCellClick(ctoKey, 'slot', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'slot', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'slot', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'slot', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         {cto.slot || 'N/A'}
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'pon')}
-                        on:click={(e) => handleCellClick(ctoKey, 'pon', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'pon', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'pon', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'pon', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         {cto.pon || 'N/A'}
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'id_cto')}
-                        on:click={(e) => handleCellClick(ctoKey, 'id_cto', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'id_cto', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'id_cto', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'id_cto', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         {cto.id_cto || cto.id || 'N/A'}
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'vagas_total')}
-                        on:click={(e) => handleCellClick(ctoKey, 'vagas_total', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'vagas_total', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'vagas_total', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'vagas_total', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         {cto.vagas_total}
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'clientes_conectados')}
-                        on:click={(e) => handleCellClick(ctoKey, 'clientes_conectados', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'clientes_conectados', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'clientes_conectados', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'clientes_conectados', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         {cto.clientes_conectados}
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'disponiveis')}
-                        on:click={(e) => handleCellClick(ctoKey, 'disponiveis', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'disponiveis', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'disponiveis', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'disponiveis', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         {cto.vagas_total - cto.clientes_conectados}
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'ocupacao')}
-                        on:click={(e) => handleCellClick(ctoKey, 'ocupacao', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'ocupacao', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'ocupacao', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'ocupacao', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         <span class="occupation-badge" 
                           class:low={parseFloat(cto.pct_ocup || 0) < 50}
@@ -2154,15 +2252,19 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'status')}
-                        on:click={(e) => handleCellClick(ctoKey, 'status', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'status', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'status', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'status', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         {cto.status_cto || 'N/A'}
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'total_caminho')}
-                        on:click={(e) => handleCellClick(ctoKey, 'total_caminho', e)}
-                        style="cursor: pointer; user-select: none;"
+                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'total_caminho', e)}
+                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'total_caminho', e)}
+                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'total_caminho', e)}
+                        style="cursor: cell; user-select: none;"
                       >
                         {#if estaCarregando}
                           <span style="color: #666; font-style: italic; font-size: 0.9em;">Carregando...</span>
