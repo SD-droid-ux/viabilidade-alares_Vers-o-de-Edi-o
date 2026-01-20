@@ -1672,6 +1672,7 @@
                   {#each ctos as cto}
                     {@const ctoKey = getCTOKey(cto)}
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
+                    {@const caminhoTotal = getCaminhoRedeTotal(cto)}
                     <tr>
                       <td style="text-align: center; padding: 0.5rem;">
                         <input 
@@ -1707,7 +1708,6 @@
                       </td>
                       <td>{cto.status_cto || 'N/A'}</td>
                       <td>
-                        {@const caminhoTotal = getCaminhoRedeTotal(cto)}
                         <strong>{caminhoTotal}</strong>
                       </td>
                     </tr>
