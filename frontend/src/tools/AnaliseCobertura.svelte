@@ -59,27 +59,74 @@
     return `${chasse}|${placa}|${olt}`;
   }
   
-  // Map para armazenar o total de portas por caminho de rede
+  // Map para armazenar o total de portas por caminho de rede (busca da base de dados)
   let caminhoRedeTotals = new Map();
+  let caminhoRedeLoading = new Set(); // Caminhos que estão sendo carregados
   
-  // Função para calcular total de portas por caminho de rede
-  function calculateCaminhoRedeTotals() {
-    const newTotals = new Map();
+  // Função para buscar total de portas do caminho de rede da base de dados
+  async function fetchCaminhoRedeTotal(olt, slot, pon) {
+    const caminhoKey = `${olt}|${slot}|${pon}`;
     
-    // Agrupar CTOs por caminho de rede e somar portas
-    for (const cto of ctos) {
-      const caminhoKey = getCaminhoRedeKey(cto);
-      const portas = parseInt(cto.vagas_total || 0) || 0;
-      
-      if (!newTotals.has(caminhoKey)) {
-        newTotals.set(caminhoKey, 0);
-      }
-      
-      newTotals.set(caminhoKey, newTotals.get(caminhoKey) + portas);
+    // Se já está carregando ou já tem o valor, retornar
+    if (caminhoRedeLoading.has(caminhoKey) || caminhoRedeTotals.has(caminhoKey)) {
+      return caminhoRedeTotals.get(caminhoKey) || 0;
     }
     
-    // Atribuir novo Map para garantir reatividade do Svelte
-    caminhoRedeTotals = newTotals;
+    // Se algum valor é N/A, não buscar
+    if (olt === 'N/A' || slot === 'N/A' || pon === 'N/A' || !olt || !slot || !pon) {
+      return 0;
+    }
+    
+    // Marcar como carregando
+    caminhoRedeLoading.add(caminhoKey);
+    
+    try {
+      const response = await fetch(getApiUrl(`/api/ctos/caminho-rede?olt=${encodeURIComponent(olt)}&slot=${encodeURIComponent(slot)}&pon=${encodeURIComponent(pon)}`));
+      const data = await response.json();
+      
+      if (data.success && data.total_portas !== undefined) {
+        // Atualizar o Map (criar novo para garantir reatividade)
+        const newTotals = new Map(caminhoRedeTotals);
+        newTotals.set(caminhoKey, data.total_portas);
+        caminhoRedeTotals = newTotals;
+        
+        console.log(`✅ Total de portas para ${olt} / ${slot} / ${pon}: ${data.total_portas} (${data.total_ctos} CTOs)`);
+        return data.total_portas;
+      } else {
+        console.warn(`⚠️ Erro ao buscar total de portas para ${olt} / ${slot} / ${pon}:`, data.error);
+        return 0;
+      }
+    } catch (err) {
+      console.error(`❌ Erro ao buscar total de portas para ${olt} / ${slot} / ${pon}:`, err);
+      return 0;
+    } finally {
+      caminhoRedeLoading.delete(caminhoKey);
+    }
+  }
+  
+  // Função para calcular e buscar totais de todos os caminhos de rede únicos
+  async function calculateCaminhoRedeTotals() {
+    // Limpar valores antigos
+    caminhoRedeTotals = new Map();
+    caminhoRedeLoading.clear();
+    
+    // Coletar todos os caminhos de rede únicos das CTOs
+    const caminhosUnicos = new Set();
+    for (const cto of ctos) {
+      const caminhoKey = getCaminhoRedeKey(cto);
+      if (caminhoKey && !caminhoKey.includes('N/A')) {
+        caminhosUnicos.add(caminhoKey);
+      }
+    }
+    
+    // Buscar total de portas para cada caminho de rede único em paralelo
+    const promises = Array.from(caminhosUnicos).map(caminhoKey => {
+      const [olt, slot, pon] = caminhoKey.split('|');
+      return fetchCaminhoRedeTotal(olt, slot, pon);
+    });
+    
+    // Aguardar todas as buscas completarem
+    await Promise.all(promises);
   }
   
   // Função para obter total de portas do caminho de rede de uma CTO
@@ -94,6 +141,7 @@
     calculateCaminhoRedeTotals();
   } else {
     caminhoRedeTotals = new Map();
+    caminhoRedeLoading.clear();
   }
   
   // Estados reativos para checkbox "marcar todos"
