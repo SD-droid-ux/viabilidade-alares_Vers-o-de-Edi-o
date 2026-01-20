@@ -2935,13 +2935,45 @@
   }
   
   .results-table td.cell-selected {
-    background: linear-gradient(135deg, rgba(100, 149, 237, 0.25) 0%, rgba(123, 104, 238, 0.25) 100%) !important; /* Gradiente roxo/azul (cor do projeto) */
-    outline: 2px solid rgba(123, 104, 238, 0.7) !important; /* Roxo mais escuro para borda */
-    outline-offset: -2px;
+    background: linear-gradient(135deg, rgba(100, 149, 237, 0.15) 0%, rgba(123, 104, 238, 0.15) 100%) !important; /* Gradiente roxo/azul suave */
+    border: 2px solid rgba(123, 104, 238, 1) !important; /* Borda roxa sólida e bem visível */
     color: #4c1d95 !important; /* Texto roxo escuro para melhor contraste */
     font-weight: 600;
     position: relative;
-    box-shadow: inset 0 2px 4px rgba(123, 104, 238, 0.1);
+    box-shadow: 0 0 0 1px rgba(123, 104, 238, 0.2) inset;
+    z-index: 1;
+  }
+  
+  /* Quando múltiplas células adjacentes estão selecionadas na mesma linha, ajustar borda esquerda para parecer contínuo */
+  .results-table td.cell-selected + td.cell-selected {
+    border-left: 1px solid rgba(123, 104, 238, 1) !important;
+    margin-left: -1px; /* Sobrepor bordas para parecer contínuo */
+  }
+  
+  /* Quando múltiplas células adjacentes estão selecionadas na mesma coluna, ajustar borda superior */
+  .results-table tbody tr:not(:first-child) td.cell-selected {
+    border-top: 1px solid rgba(123, 104, 238, 1) !important;
+    margin-top: -1px; /* Sobrepor bordas verticais */
+  }
+  
+  /* Primeira célula selecionada em uma linha - borda esquerda completa */
+  .results-table td.cell-selected:not(.cell-selected + .cell-selected) {
+    border-left: 2px solid rgba(123, 104, 238, 1) !important;
+  }
+  
+  /* Primeira linha com células selecionadas - borda superior completa */
+  .results-table tbody tr:first-child td.cell-selected {
+    border-top: 2px solid rgba(123, 104, 238, 1) !important;
+  }
+  
+  /* Última célula selecionada em uma linha - borda direita completa */
+  .results-table td.cell-selected:not(+ .cell-selected) {
+    border-right: 2px solid rgba(123, 104, 238, 1) !important;
+  }
+  
+  /* Última linha com células selecionadas - borda inferior completa */
+  .results-table tbody tr:last-child td.cell-selected {
+    border-bottom: 2px solid rgba(123, 104, 238, 1) !important;
   }
   
   .results-table td.cell-selected::before {
@@ -2951,10 +2983,9 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, rgba(100, 149, 237, 0.1) 0%, rgba(123, 104, 238, 0.05) 100%);
+    background: linear-gradient(135deg, rgba(100, 149, 237, 0.08) 0%, rgba(123, 104, 238, 0.05) 100%);
     pointer-events: none;
     z-index: 0;
-    border-radius: 2px;
   }
   
   .results-table td.cell-selected > * {
@@ -2963,12 +2994,14 @@
   }
   
   .results-table td {
-    transition: background-color 0.2s ease, outline 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+    transition: background-color 0.2s ease, border 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
     position: relative;
+    border: 1px solid transparent; /* Borda transparente por padrão para evitar "pulo" visual */
   }
   
   .results-table td:hover:not(.cell-selected) {
-    background-color: rgba(123, 104, 238, 0.1);
+    background-color: rgba(123, 104, 238, 0.08);
+    border-color: rgba(123, 104, 238, 0.2);
   }
   
   .results-table th {
