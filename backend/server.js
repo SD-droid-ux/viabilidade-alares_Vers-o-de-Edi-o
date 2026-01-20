@@ -1436,15 +1436,29 @@ app.post('/api/ctos/caminhos-rede-batch', async (req, res) => {
         
         // Para cada caminho no batch, fazer uma query separada (mais simples e confiável)
         const batchPromises = batch.map(async (caminho) => {
-          const caminhoKey = `${caminho.olt}|${caminho.slot}|${caminho.pon}`;
+          // Construir chave incluindo CIDADE e POP para garantir unicidade completa
+          const caminhoKey = `${caminho.cidade || 'N/A'}|${caminho.pop || 'N/A'}|${caminho.olt}|${caminho.slot}|${caminho.pon}`;
           
           try {
-            const { data, error } = await supabase
+            // Filtrar por CIDADE (cid_rede), POP, OLT, SLOT e PON para garantir precisão e performance
+            let query = supabase
               .from('ctos')
               .select('portas')
               .eq('olt', caminho.olt)
               .eq('slot', caminho.slot)
               .eq('pon', caminho.pon);
+            
+            // Adicionar filtro por CIDADE (cid_rede) se fornecido (melhora performance e precisão)
+            if (caminho.cidade && caminho.cidade !== 'N/A') {
+              query = query.eq('cid_rede', caminho.cidade);
+            }
+            
+            // Adicionar filtro por POP se fornecido
+            if (caminho.pop && caminho.pop !== 'N/A') {
+              query = query.eq('pop', caminho.pop);
+            }
+            
+            const { data, error } = await query;
             
             if (error) {
               console.error(`❌ [API] Erro ao buscar caminho ${caminhoKey}:`, error);
