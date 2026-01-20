@@ -792,6 +792,10 @@ app.get('/api/ctos/nearby', async (req, res) => {
             cidade: row.cid_rede || '',
             pop: row.pop || '',
             id: row.id_cto || row.id?.toString() || '',
+            id_cto: row.id_cto || row.id?.toString() || '',
+            olt: row.olt || '',
+            slot: row.slot || '',
+            pon: row.pon || '',
             distancia_metros: Math.round(distance * 100) / 100,
             is_condominio: false, // Garantir que não é prédio
             condominio_data: null,
