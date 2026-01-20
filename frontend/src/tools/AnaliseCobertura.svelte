@@ -2044,6 +2044,19 @@
     gridApi = params.api;
     gridColumnApi = params.columnApi;
     console.log('✅ AG Grid pronto');
+    
+    // Atualizar dados iniciais
+    if (ctos && ctos.length > 0) {
+      gridApi.setGridOption('rowData', ctos);
+      // Ajustar tamanho das colunas
+      setTimeout(() => {
+        if (gridApi) {
+          gridApi.sizeColumnsToFit();
+        }
+      }, 100);
+    }
+    
+    // Configurar cópia customizada se necessário (Ctrl+C já funciona automaticamente)
   }
   
   // Definir colunas do AG Grid
@@ -2053,6 +2066,8 @@
         headerName: '',
         field: 'checkbox',
         width: 50,
+        headerCheckboxSelection: true,
+        headerCheckboxSelectionFilteredOnly: false,
         cellRenderer: function(params) {
           const ctoKey = getCTOKey(params.data);
           const isVisible = ctoVisibility.get(ctoKey) !== false;
@@ -2064,6 +2079,8 @@
           input.style.cursor = 'pointer';
           input.style.width = '18px';
           input.style.height = '18px';
+          input.style.margin = '0 auto';
+          input.style.display = 'block';
           
           // Adicionar event listener
           input.addEventListener('change', (e) => {
@@ -2084,7 +2101,58 @@
         lockPosition: true,
         checkboxSelection: false,
         sortable: false,
-        filter: false
+        filter: false,
+        headerComponent: function(params) {
+          const wrapper = document.createElement('div');
+          wrapper.style.textAlign = 'center';
+          wrapper.style.display = 'flex';
+          wrapper.style.alignItems = 'center';
+          wrapper.style.justifyContent = 'center';
+          wrapper.style.height = '100%';
+          
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = allCTOsVisible;
+          checkbox.indeterminate = someCTOsVisible;
+          checkbox.style.cursor = 'pointer';
+          checkbox.style.width = '18px';
+          checkbox.style.height = '18px';
+          checkbox.style.margin = '0';
+          
+          // Função para atualizar checkbox do cabeçalho
+          const updateHeaderCheckbox = () => {
+            checkbox.checked = allCTOsVisible;
+            checkbox.indeterminate = someCTOsVisible;
+          };
+          
+          // Atualizar quando visibilidade mudar
+          const interval = setInterval(() => {
+            updateHeaderCheckbox();
+          }, 100);
+          
+          checkbox.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            const newVisibility = new Map();
+            for (const cto of ctos) {
+              const ctoKey = getCTOKey(cto);
+              newVisibility.set(ctoKey, isChecked);
+            }
+            ctoVisibility = newVisibility;
+            displayResultsOnMap();
+            if (gridApi) {
+              gridApi.refreshCells({ columns: ['checkbox'] });
+            }
+            updateHeaderCheckbox();
+          });
+          
+          // Limpar intervalo quando componente for destruído
+          params.api.addEventListener('destroy', () => {
+            clearInterval(interval);
+          });
+          
+          wrapper.appendChild(checkbox);
+          return wrapper;
+        }
       },
       {
         headerName: 'CTO',
@@ -2197,17 +2265,19 @@
       filter: false,
       editable: false
     },
-    // Seleção estilo Excel
-    enableRangeSelection: true,
-    enableRangeHandle: true,
-    enableFillHandle: false,
-    suppressMultiRangeSelection: false,
+    // Seleção estilo Excel - CONFIGURAÇÃO PRINCIPAL
+    enableRangeSelection: true, // Permitir seleção de range (bloco de células)
+    enableRangeHandle: true, // Mostrar handle para arrastar seleção
+    enableFillHandle: false, // Desabilitar fill handle (arrastar para preencher)
+    suppressMultiRangeSelection: false, // Permitir múltiplos ranges
+    suppressCopyRowsToClipboard: false, // Permitir copiar linhas
+    enableClipboard: true, // Habilitar clipboard (Ctrl+C, Ctrl+V)
+    clipboardDelimiter: '\t', // Delimitador para cópia (tab para Excel)
     // Configurações de seleção
-    rowSelection: 'multiple',
-    suppressRowClickSelection: false,
+    rowSelection: 'multiple', // Seleção múltipla de linhas (não usado para seleção de células)
+    suppressRowClickSelection: true, // Não selecionar linha ao clicar
     // Estilo
-    suppressCellFocus: false,
-    suppressRowClickSelection: true,
+    suppressCellFocus: false, // Permitir foco em células
     // Performance
     animateRows: true,
     enableCellTextSelection: true,
@@ -2227,6 +2297,17 @@
       // Atualizar seleção
       console.log('Seleção mudou:', params.api.getSelectedRows());
     },
+    // Evento de cópia para personalizar comportamento
+    onCellKeyDown: (params) => {
+      // Capturar Ctrl+C ou Cmd+C
+      if ((params.event.ctrlKey || params.event.metaKey) && params.event.key === 'c') {
+        const ranges = params.api.getCellRanges();
+        if (ranges && ranges.length > 0) {
+          // AG Grid já cuida da cópia automaticamente com enableClipboard
+          console.log('Células copiadas:', ranges);
+        }
+      }
+    },
     // Estilos customizados
     rowClassRules: {
       'selected-row': (params) => {
@@ -2241,18 +2322,37 @@
   };
   
   // Atualizar rowData quando ctos mudar
-  $: if (ctos && ctos.length >= 0 && gridApi) {
-    gridApi.setGridOption('rowData', ctos);
-  }
-  
-  // Atualizar rowData inicial
   $: if (ctos && ctos.length >= 0) {
-    gridOptions.rowData = ctos;
+    if (gridApi) {
+      gridApi.setGridOption('rowData', ctos);
+      // Ajustar tamanho das colunas automaticamente após dados carregarem
+      setTimeout(() => {
+        if (gridApi) {
+          gridApi.sizeColumnsToFit();
+        }
+      }, 100);
+    } else {
+      gridOptions.rowData = ctos;
+    }
   }
   
   // Atualizar checkboxes quando visibilidade mudar
   $: if (ctoVisibility && gridApi) {
     gridApi.refreshCells({ columns: ['checkbox'] });
+    // Atualizar checkbox do cabeçalho
+    const headerRow = gridApi.getHeaderRowAtIndex(0);
+    if (headerRow) {
+      const headerCheckbox = headerRow.querySelector('input[type="checkbox"]');
+      if (headerCheckbox) {
+        headerCheckbox.checked = allCTOsVisible;
+        headerCheckbox.indeterminate = someCTOsVisible;
+      }
+    }
+  }
+  
+  // Atualizar células quando caminhoRedeTotalsVersion mudar
+  $: if (caminhoRedeTotalsVersion >= 0 && gridApi) {
+    gridApi.refreshCells({ columns: ['total_caminho'] });
   }
 
   // Inicializar ferramenta
@@ -2483,217 +2583,7 @@
                 style="width: 100%; height: 100%;"
               />
               
-              <!-- Tabela HTML antiga (oculta temporariamente para referência) -->
-              <table class="results-table" style="display: none;">
-                <thead>
-                  <tr>
-                    <th style="width: 50px; text-align: center; padding: 0.5rem;">
-                      <input 
-                        type="checkbox" 
-                        checked={allCTOsVisible}
-                        indeterminate={someCTOsVisible}
-                        on:change={(e) => {
-                          const isChecked = e.target.checked;
-                          // Marcar/desmarcar todas as CTOs
-                          // Criar um novo Map para forçar reatividade do Svelte
-                          const newVisibility = new Map();
-                          for (const cto of ctos) {
-                            const ctoKey = getCTOKey(cto);
-                            newVisibility.set(ctoKey, isChecked);
-                          }
-                          // Substituir completamente o Map para forçar reatividade
-                          ctoVisibility = newVisibility;
-                          // Atualizar mapa
-                          displayResultsOnMap();
-                        }}
-                        style="cursor: pointer; width: 18px; height: 18px;"
-                        aria-label="Marcar/desmarcar todas as CTOs"
-                        title="Marcar/desmarcar todas as CTOs"
-                      />
-                    </th>
-                    <th>CTO</th>
-                    <th>Cidade</th>
-                    <th>POP</th>
-                    <th>CHASSE</th>
-                    <th>PLACA</th>
-                    <th>OLT</th>
-                    <th>ID CTO</th>
-                    <th>Portas Total</th>
-                    <th>Ocupadas</th>
-                    <th>Disponíveis</th>
-                    <th>Ocupação</th>
-                    <th>Status</th>
-                    <th>Total de Portas no Caminho de Rede</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each ctos as cto}
-                    {@const ctoKey = getCTOKey(cto)}
-                    {@const isVisible = ctoVisibility.get(ctoKey) !== false}
-                    {@const caminhoKey = getCaminhoRedeKey(cto)}
-                    {@const total = caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0}
-                    {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5}
-                    {@const _selectionTrigger = selectionTrigger} <!-- OPÇÃO 1: Forçar dependência reativa da seleção -->
-                    {@const _selectedCellsArray = selectedCellsArraySorted} <!-- OPÇÃO 2: Forçar dependência reativa do Array -->
-                    <tr>
-                      <td style="text-align: center; padding: 0.5rem;">
-                        <input 
-                          type="checkbox" 
-                          checked={isVisible}
-                          on:change={(e) => {
-                            ctoVisibility.set(ctoKey, e.target.checked);
-                            // Atualizar mapa quando checkbox mudar
-                            displayResultsOnMap();
-                          }}
-                          style="cursor: pointer; width: 18px; height: 18px;"
-                          aria-label="Mostrar/ocultar CTO no mapa"
-                        />
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'nome')}
-                        class:cell-active={isCellActive(ctoKey, 'nome')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'nome', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'nome', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'nome', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        <strong>{cto.nome}</strong>
-                      </td>
-                      <td 
-                        class="cell-selectable"
-                        class:cell-selected={isCellSelected(ctoKey, 'cidade')}
-                        class:cell-active={isCellActive(ctoKey, 'cidade')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'cidade', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'cidade', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'cidade', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        {cto.cidade}
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'pop')}
-                        class:cell-active={isCellActive(ctoKey, 'pop')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'pop', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'pop', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'pop', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        {cto.pop || 'N/A'}
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'olt')}
-                        class:cell-active={isCellActive(ctoKey, 'olt')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'olt', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'olt', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'olt', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        {cto.olt || 'N/A'}
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'slot')}
-                        class:cell-active={isCellActive(ctoKey, 'slot')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'slot', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'slot', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'slot', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        {cto.slot || 'N/A'}
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'pon')}
-                        class:cell-active={isCellActive(ctoKey, 'pon')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'pon', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'pon', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'pon', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        {cto.pon || 'N/A'}
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'id_cto')}
-                        class:cell-active={isCellActive(ctoKey, 'id_cto')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'id_cto', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'id_cto', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'id_cto', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        {cto.id_cto || cto.id || 'N/A'}
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'vagas_total')}
-                        class:cell-active={isCellActive(ctoKey, 'vagas_total')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'vagas_total', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'vagas_total', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'vagas_total', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        {cto.vagas_total}
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'clientes_conectados')}
-                        class:cell-active={isCellActive(ctoKey, 'clientes_conectados')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'clientes_conectados', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'clientes_conectados', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'clientes_conectados', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        {cto.clientes_conectados}
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'disponiveis')}
-                        class:cell-active={isCellActive(ctoKey, 'disponiveis')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'disponiveis', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'disponiveis', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'disponiveis', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        {cto.vagas_total - cto.clientes_conectados}
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'ocupacao')}
-                        class:cell-active={isCellActive(ctoKey, 'ocupacao')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'ocupacao', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'ocupacao', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'ocupacao', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        <span class="occupation-badge" 
-                          class:low={parseFloat(cto.pct_ocup || 0) < 50}
-                          class:medium={parseFloat(cto.pct_ocup || 0) >= 50 && parseFloat(cto.pct_ocup || 0) < 80}
-                          class:high={parseFloat(cto.pct_ocup || 0) >= 80}
-                        >
-                          {formatPercentage(cto.pct_ocup)}
-                        </span>
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'status')}
-                        class:cell-active={isCellActive(ctoKey, 'status')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'status', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'status', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'status', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        {cto.status_cto || 'N/A'}
-                      </td>
-                      <td 
-                        class:cell-selected={isCellSelected(ctoKey, 'total_caminho')}
-                        class:cell-active={isCellActive(ctoKey, 'total_caminho')}
-                        on:mousedown={(e) => handleCellMouseDown(ctoKey, 'total_caminho', e)}
-                        on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'total_caminho', e)}
-                        on:mouseup={(e) => handleCellMouseUp(ctoKey, 'total_caminho', e)}
-                        style="cursor: cell; user-select: none;"
-                      >
-                        {#if estaCarregando}
-                          <span style="color: #666; font-style: italic; font-size: 0.9em;">Carregando...</span>
-                        {:else}
-                          <strong>{total}</strong>
-                        {/if}
-                      </td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
+              <!-- Tabela HTML antiga removida - agora usando apenas AG Grid -->
             </div>
             {/if}
           </div>
