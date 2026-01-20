@@ -23,7 +23,9 @@
     "@googlemaps/js-api-loader": "^1.16.2",
     "xlsx": "^0.18.5",
     "html2canvas": "^1.4.1",
-    "serve": "^14.2.0"
+    "serve": "^14.2.0",
+    "ag-grid-community": "^31.1.0",
+    "ag-grid-svelte": "^31.1.0"
   }
 }
 
