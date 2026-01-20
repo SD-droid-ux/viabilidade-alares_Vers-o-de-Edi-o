@@ -2935,17 +2935,40 @@
   }
   
   .results-table td.cell-selected {
-    background-color: rgba(255, 182, 193, 0.3) !important; /* Light red/pink background */
-    outline: 2px solid rgba(255, 0, 0, 0.5);
+    background: linear-gradient(135deg, rgba(100, 149, 237, 0.25) 0%, rgba(123, 104, 238, 0.25) 100%) !important; /* Gradiente roxo/azul (cor do projeto) */
+    outline: 2px solid rgba(123, 104, 238, 0.7) !important; /* Roxo mais escuro para borda */
     outline-offset: -2px;
+    color: #4c1d95 !important; /* Texto roxo escuro para melhor contraste */
+    font-weight: 600;
+    position: relative;
+    box-shadow: inset 0 2px 4px rgba(123, 104, 238, 0.1);
+  }
+  
+  .results-table td.cell-selected::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(100, 149, 237, 0.1) 0%, rgba(123, 104, 238, 0.05) 100%);
+    pointer-events: none;
+    z-index: 0;
+    border-radius: 2px;
+  }
+  
+  .results-table td.cell-selected > * {
+    position: relative;
+    z-index: 1;
   }
   
   .results-table td {
-    transition: background-color 0.15s ease, outline 0.15s ease;
+    transition: background-color 0.2s ease, outline 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
   }
   
   .results-table td:hover:not(.cell-selected) {
-    background-color: rgba(0, 0, 0, 0.05);
+    background-color: rgba(123, 104, 238, 0.1);
   }
   
   .results-table th {
@@ -2969,15 +2992,6 @@
     transition: background-color 0.15s ease, outline 0.15s ease;
   }
   
-  .results-table td.cell-selected {
-    background-color: rgba(255, 182, 193, 0.3) !important; /* Light red/pink background */
-    outline: 2px solid rgba(255, 0, 0, 0.5);
-    outline-offset: -2px;
-  }
-  
-  .results-table td:hover:not(.cell-selected) {
-    background-color: rgba(0, 0, 0, 0.05);
-  }
 
   .results-table tbody tr:hover {
     background: #f9fafb;
