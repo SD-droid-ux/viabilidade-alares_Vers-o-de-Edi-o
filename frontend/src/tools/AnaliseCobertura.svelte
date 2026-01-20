@@ -51,6 +51,45 @@
     return `${cto.nome || 'UNKNOWN'}_${lat}_${lng}`;
   }
   
+  // Função para gerar chave do caminho de rede (CHASSE/PLACA/OLT)
+  function getCaminhoRedeKey(cto) {
+    const chasse = (cto.olt || 'N/A').trim();
+    const placa = (cto.slot || 'N/A').trim();
+    const olt = (cto.pon || 'N/A').trim();
+    return `${chasse}|${placa}|${olt}`;
+  }
+  
+  // Map para armazenar o total de portas por caminho de rede
+  let caminhoRedeTotals = new Map();
+  
+  // Função para calcular total de portas por caminho de rede
+  function calculateCaminhoRedeTotals() {
+    caminhoRedeTotals.clear();
+    
+    // Agrupar CTOs por caminho de rede e somar portas
+    for (const cto of ctos) {
+      const caminhoKey = getCaminhoRedeKey(cto);
+      const portas = parseInt(cto.vagas_total || 0) || 0;
+      
+      if (!caminhoRedeTotals.has(caminhoKey)) {
+        caminhoRedeTotals.set(caminhoKey, 0);
+      }
+      
+      caminhoRedeTotals.set(caminhoKey, caminhoRedeTotals.get(caminhoKey) + portas);
+    }
+  }
+  
+  // Função para obter total de portas do caminho de rede de uma CTO
+  function getCaminhoRedeTotal(cto) {
+    const caminhoKey = getCaminhoRedeKey(cto);
+    return caminhoRedeTotals.get(caminhoKey) || 0;
+  }
+  
+  // Recalcular quando a lista de CTOs mudar
+  $: if (ctos.length > 0) {
+    calculateCaminhoRedeTotals();
+  }
+  
   // Estados reativos para checkbox "marcar todos"
   $: allCTOsVisible = ctos.length > 0 && ctos.every(cto => {
     const ctoKey = getCTOKey(cto);
@@ -1109,7 +1148,8 @@
               <strong>Total de Portas:</strong> ${Number(cto.vagas_total || 0)}<br>
               <strong>Portas Conectadas:</strong> ${Number(cto.clientes_conectados || 0)}<br>
               <strong>Portas Disponíveis:</strong> ${Number((cto.vagas_total || 0) - (cto.clientes_conectados || 0))}<br>
-              <strong>Ocupação:</strong> ${pctOcup.toFixed(1)}%
+              <strong>Ocupação:</strong> ${pctOcup.toFixed(1)}%<br>
+              <strong>Total de Portas no Caminho de Rede:</strong> ${getCaminhoRedeTotal(cto)} (${String(cto.olt || 'N/A')} / ${String(cto.slot || 'N/A')} / ${String(cto.pon || 'N/A')})
             </div>
           `;
         }
@@ -1619,6 +1659,7 @@
                     <th>Disponíveis</th>
                     <th>Ocupação</th>
                     <th>Status</th>
+                    <th>Total de Portas no Caminho de Rede</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1659,6 +1700,10 @@
                         </span>
                       </td>
                       <td>{cto.status_cto || 'N/A'}</td>
+                      <td>
+                        {@const caminhoTotal = getCaminhoRedeTotal(cto)}
+                        <strong>{caminhoTotal}</strong>
+                      </td>
                     </tr>
                   {/each}
                 </tbody>
