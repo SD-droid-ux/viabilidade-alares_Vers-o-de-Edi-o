@@ -1288,7 +1288,7 @@
   });
 </script>
 
-<!-- Conteúdo da Ferramenta de Análise de Cobertura -->
+<!-- Conteúdo da Ferramenta de Consulta de Alívio de Rede -->
 <div class="analise-cobertura-content">
   {#if isLoading}
     <Loading message={loadingMessage} />
@@ -1299,7 +1299,7 @@
         <div class="panel-header">
           <div class="panel-header-content">
             {#if !isSearchPanelMinimized}
-              <h2>Análise de Cobertura</h2>
+              <h2>Consulta de Alívio de Rede</h2>
             {:else}
               <h2 class="vertical-title"></h2>
             {/if}
