@@ -100,6 +100,121 @@
     selectedCells = selectedCells; // Forçar reatividade
   }
   
+  // Função para obter o conteúdo de uma célula
+  function getCellContent(ctoKey, columnName) {
+    const cto = ctos.find(c => getCTOKey(c) === ctoKey);
+    if (!cto) return '';
+    
+    switch (columnName) {
+      case 'nome':
+        return cto.nome || '';
+      case 'cidade':
+        return cto.cidade || '';
+      case 'pop':
+        return cto.pop || 'N/A';
+      case 'olt':
+        return cto.olt || 'N/A';
+      case 'slot':
+        return cto.slot || 'N/A';
+      case 'pon':
+        return cto.pon || 'N/A';
+      case 'id_cto':
+        return cto.id_cto || cto.id || 'N/A';
+      case 'vagas_total':
+        return String(cto.vagas_total || 0);
+      case 'clientes_conectados':
+        return String(cto.clientes_conectados || 0);
+      case 'disponiveis':
+        return String((cto.vagas_total || 0) - (cto.clientes_conectados || 0));
+      case 'ocupacao':
+        return formatPercentage(cto.pct_ocup);
+      case 'status':
+        return cto.status_cto || 'N/A';
+      case 'total_caminho':
+        const caminhoKey = getCaminhoRedeKey(cto);
+        const total = caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0;
+        return String(total);
+      default:
+        return '';
+    }
+  }
+  
+  // Função para copiar células selecionadas
+  async function copySelectedCells() {
+    if (selectedCells.size === 0) {
+      return;
+    }
+    
+    try {
+      // Agrupar células por linha (CTO) para manter organização
+      const cellsByRow = new Map();
+      
+      for (const cellKey of selectedCells) {
+        const [ctoKey, columnName] = cellKey.split('|');
+        if (!cellsByRow.has(ctoKey)) {
+          cellsByRow.set(ctoKey, []);
+        }
+        cellsByRow.get(ctoKey).push({ columnName, content: getCellContent(ctoKey, columnName) });
+      }
+      
+      // Ordenar colunas para manter ordem consistente
+      const columnOrder = ['nome', 'cidade', 'pop', 'olt', 'slot', 'pon', 'id_cto', 'vagas_total', 'clientes_conectados', 'disponiveis', 'ocupacao', 'status', 'total_caminho'];
+      
+      // Formatar como texto separado por tabulação (para colar em Excel)
+      const lines = [];
+      
+      // Se houver múltiplas células da mesma linha, criar uma linha com todas
+      for (const [ctoKey, cells] of cellsByRow.entries()) {
+        const sortedCells = cells.sort((a, b) => {
+          const indexA = columnOrder.indexOf(a.columnName);
+          const indexB = columnOrder.indexOf(b.columnName);
+          return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+        });
+        const values = sortedCells.map(cell => cell.content);
+        lines.push(values.join('\t'));
+      }
+      
+      const textToCopy = lines.join('\n');
+      
+      // Copiar para área de transferência
+      await navigator.clipboard.writeText(textToCopy);
+      console.log(`✅ ${selectedCells.size} célula(s) copiada(s) para área de transferência`);
+    } catch (err) {
+      console.error('❌ Erro ao copiar células:', err);
+      // Fallback para navegadores mais antigos
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = Array.from(selectedCells).map(cellKey => {
+          const [ctoKey, columnName] = cellKey.split('|');
+          return getCellContent(ctoKey, columnName);
+        }).join('\t');
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        console.log(`✅ ${selectedCells.size} célula(s) copiada(s) (fallback)`);
+      } catch (fallbackErr) {
+        console.error('❌ Erro no fallback de cópia:', fallbackErr);
+      }
+    }
+  }
+  
+  // Função para lidar com teclas de atalho
+  function handleKeyDown(event) {
+    // Ctrl+C ou Cmd+C
+    if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
+      // Verificar se há células selecionadas
+      if (selectedCells.size > 0) {
+        // Verificar se não está em um input ou textarea
+        const target = event.target;
+        if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA' && !target.isContentEditable) {
+          event.preventDefault();
+          copySelectedCells();
+        }
+      }
+    }
+  }
+  
   // Função para buscar total de portas do caminho de rede da base de dados
   async function fetchCaminhoRedeTotal(olt, slot, pon) {
     const caminhoKey = `${olt}|${slot}|${pon}`;
@@ -1687,6 +1802,9 @@
         onSettingsRequest(openSettings);
       }
       
+      // Adicionar listener para Ctrl+C (copiar células selecionadas)
+      document.addEventListener('keydown', handleKeyDown);
+      
       // Registrar função de pré-carregamento no hover
       if (onSettingsHover && typeof onSettingsHover === 'function') {
         onSettingsHover(preloadSettingsData);
@@ -1703,6 +1821,9 @@
 
   // Cleanup ao desmontar
   onDestroy(() => {
+    // Remover listener de teclado
+    document.removeEventListener('keydown', handleKeyDown);
+    
     // Limpar observer do mapa se existir
     if (mapObserver) {
       mapObserver.disconnect();
