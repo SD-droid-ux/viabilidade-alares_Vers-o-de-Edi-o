@@ -82,7 +82,9 @@
   
   // Função auxiliar para atualizar selectedCells e forçar reatividade
   function updateSelectedCells(newSet) {
-    selectedCells = newSet;
+    // IMPORTANTE: Criar um novo Set para garantir que o Svelte detecte a mudança
+    // Em JavaScript, mudar o conteúdo de um Set não dispara reatividade
+    selectedCells = new Set(newSet); // Criar novo Set para garantir reatividade
     
     // Se a seleção estiver vazia, limpar célula ativa também
     if (newSet.size === 0) {
@@ -92,10 +94,12 @@
       activeCell = Array.from(newSet)[0];
     }
     
-    selectedCellsVersion = selectedCellsVersion + 1; // Incrementar para forçar reatividade
-    // Forçar atualização do DOM
+    // Incrementar versão para forçar re-render de todas as células
+    selectedCellsVersion = selectedCellsVersion + 1;
+    
+    // Forçar atualização do DOM de forma assíncrona
     tick().then(() => {
-      // DOM atualizado
+      // DOM atualizado - isso garante que todas as atualizações reativas sejam processadas
     });
   }
   
@@ -109,18 +113,24 @@
   
   // Função auxiliar para verificar se célula está selecionada (reativa)
   // IMPORTANTE: Esta função usa selectionTrigger para garantir reatividade
+  // CRÍTICO: Esta função deve ser chamada dentro do template para que o Svelte rastreie a dependência
   function isCellSelected(ctoKey, columnName) {
     // Usar selectionTrigger para forçar reatividade - quando muda, todas as células são reavaliadas
+    // A leitura de selectionTrigger aqui faz o Svelte rastrear a dependência
     const _trigger = selectionTrigger; // Variável reativa que força atualização
     const cellKey = getCellKey(ctoKey, columnName);
+    // Usar Array.from para garantir que o Svelte rastreie a mudança no Set
+    // Mas isso é custoso, então vamos manter o Set mas garantir que selectionTrigger seja acessado
     return selectedCells.has(cellKey);
   }
   
   // Função auxiliar para verificar se célula é a ativa (reativa)
   function isCellActive(ctoKey, columnName) {
+    // A leitura de selectionTrigger e activeCell aqui faz o Svelte rastrear as dependências
     const _trigger = selectionTrigger; // Variável reativa que força atualização
+    const _active = activeCell; // Variável reativa
     const cellKey = getCellKey(ctoKey, columnName);
-    return activeCell === cellKey;
+    return _active === cellKey;
   }
   
   // Função para obter índice da coluna
@@ -2268,6 +2278,7 @@
                     {@const caminhoKey = getCaminhoRedeKey(cto)}
                     {@const total = caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0}
                     {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5}
+                    {@const _selectionTrigger = selectionTrigger} <!-- Forçar dependência reativa da seleção -->
                     <tr>
                       <td style="text-align: center; padding: 0.5rem;">
                         <input 
