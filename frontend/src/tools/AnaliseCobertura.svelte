@@ -73,6 +73,7 @@
   let selectedCellsVersion = 0; // Versão para forçar reatividade do Svelte
   let isSelecting = false; // Flag para indicar se está em modo de seleção por arrasto
   let selectionStart = null; // Célula inicial da seleção (para range) - formato "ctoKey|columnName"
+  let activeCell = null; // Célula ativa (última clicada ou primeira da seleção) - formato "ctoKey|columnName"
   let selectionMode = 'single'; // 'single', 'range', 'add'
   let currentHoverCell = null; // Célula atual do hover durante seleção
   
@@ -82,6 +83,15 @@
   // Função auxiliar para atualizar selectedCells e forçar reatividade
   function updateSelectedCells(newSet) {
     selectedCells = newSet;
+    
+    // Se a seleção estiver vazia, limpar célula ativa também
+    if (newSet.size === 0) {
+      activeCell = null;
+    } else if (activeCell && !newSet.has(activeCell)) {
+      // Se a célula ativa não está mais na seleção, definir a primeira célula selecionada como ativa
+      activeCell = Array.from(newSet)[0];
+    }
+    
     selectedCellsVersion = selectedCellsVersion + 1; // Incrementar para forçar reatividade
     // Forçar atualização do DOM
     tick().then(() => {
@@ -104,6 +114,13 @@
     const _trigger = selectionTrigger; // Variável reativa que força atualização
     const cellKey = getCellKey(ctoKey, columnName);
     return selectedCells.has(cellKey);
+  }
+  
+  // Função auxiliar para verificar se célula é a ativa (reativa)
+  function isCellActive(ctoKey, columnName) {
+    const _trigger = selectionTrigger; // Variável reativa que força atualização
+    const cellKey = getCellKey(ctoKey, columnName);
+    return activeCell === cellKey;
   }
   
   // Função para obter índice da coluna
@@ -151,6 +168,22 @@
     }
     
     console.log(`📦 Selecionando range: ${minRow}-${maxRow} linhas, ${minCol}-${maxCol} colunas (${newSelection.size} células)`);
+    
+    // Definir a célula inicial (start) como ativa durante seleção de range
+    // Se não houver startCtoKey/startColumn explícitos, usar a primeira célula do range
+    if (startCtoKey && startColumn) {
+      const startCellKey = getCellKey(startCtoKey, startColumn);
+      if (newSelection.has(startCellKey)) {
+        activeCell = startCellKey;
+      } else if (newSelection.size > 0) {
+        // Se a célula inicial não está no range (caso raro), usar a primeira célula selecionada
+        activeCell = Array.from(newSelection)[0];
+      }
+    } else if (newSelection.size > 0) {
+      // Fallback: primeira célula selecionada é a ativa
+      activeCell = Array.from(newSelection)[0];
+    }
+    
     updateSelectedCells(newSelection);
   }
   
@@ -167,9 +200,14 @@
       const newSet = new Set(selectedCells);
       if (newSet.has(cellKey)) {
         newSet.delete(cellKey);
+        // Se removida era a ativa, definir nova ativa ou limpar
+        if (activeCell === cellKey) {
+          activeCell = newSet.size > 0 ? Array.from(newSet)[0] : null;
+        }
         console.log('➖ Removendo célula da seleção');
       } else {
         newSet.add(cellKey);
+        activeCell = cellKey; // Célula recém-adicionada vira ativa
         console.log('➕ Adicionando célula à seleção');
       }
       updateSelectedCells(newSet);
@@ -178,12 +216,15 @@
       selectionMode = 'range';
       const [startCtoKey, startColumn] = selectionStart.split('|');
       console.log('📏 Selecionando range:', selectionStart, 'até', cellKey);
+      // Manter a célula inicial como ativa durante seleção por Shift
+      activeCell = selectionStart;
       selectRange(startCtoKey, startColumn, ctoKey, columnName);
     } else {
       // Modo normal: inicia nova seleção
       selectionMode = 'single';
       isSelecting = true;
       selectionStart = cellKey;
+      activeCell = cellKey; // Célula clicada é a ativa
       const newSet = new Set();
       newSet.add(cellKey);
       console.log('🆕 Nova seleção iniciada:', cellKey);
@@ -2243,6 +2284,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'nome')}
+                        class:cell-active={isCellActive(ctoKey, 'nome')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'nome', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'nome', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'nome', e)}
@@ -2253,6 +2295,7 @@
                       <td 
                         class="cell-selectable"
                         class:cell-selected={isCellSelected(ctoKey, 'cidade')}
+                        class:cell-active={isCellActive(ctoKey, 'cidade')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'cidade', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'cidade', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'cidade', e)}
@@ -2262,6 +2305,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'pop')}
+                        class:cell-active={isCellActive(ctoKey, 'pop')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'pop', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'pop', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'pop', e)}
@@ -2271,6 +2315,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'olt')}
+                        class:cell-active={isCellActive(ctoKey, 'olt')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'olt', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'olt', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'olt', e)}
@@ -2280,6 +2325,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'slot')}
+                        class:cell-active={isCellActive(ctoKey, 'slot')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'slot', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'slot', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'slot', e)}
@@ -2289,6 +2335,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'pon')}
+                        class:cell-active={isCellActive(ctoKey, 'pon')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'pon', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'pon', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'pon', e)}
@@ -2298,6 +2345,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'id_cto')}
+                        class:cell-active={isCellActive(ctoKey, 'id_cto')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'id_cto', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'id_cto', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'id_cto', e)}
@@ -2307,6 +2355,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'vagas_total')}
+                        class:cell-active={isCellActive(ctoKey, 'vagas_total')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'vagas_total', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'vagas_total', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'vagas_total', e)}
@@ -2316,6 +2365,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'clientes_conectados')}
+                        class:cell-active={isCellActive(ctoKey, 'clientes_conectados')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'clientes_conectados', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'clientes_conectados', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'clientes_conectados', e)}
@@ -2325,6 +2375,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'disponiveis')}
+                        class:cell-active={isCellActive(ctoKey, 'disponiveis')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'disponiveis', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'disponiveis', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'disponiveis', e)}
@@ -2334,6 +2385,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'ocupacao')}
+                        class:cell-active={isCellActive(ctoKey, 'ocupacao')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'ocupacao', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'ocupacao', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'ocupacao', e)}
@@ -2349,6 +2401,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'status')}
+                        class:cell-active={isCellActive(ctoKey, 'status')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'status', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'status', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'status', e)}
@@ -2358,6 +2411,7 @@
                       </td>
                       <td 
                         class:cell-selected={isCellSelected(ctoKey, 'total_caminho')}
+                        class:cell-active={isCellActive(ctoKey, 'total_caminho')}
                         on:mousedown={(e) => handleCellMouseDown(ctoKey, 'total_caminho', e)}
                         on:mouseenter={(e) => handleCellMouseEnter(ctoKey, 'total_caminho', e)}
                         on:mouseup={(e) => handleCellMouseUp(ctoKey, 'total_caminho', e)}
@@ -2945,76 +2999,78 @@
   }
   
   .results-table td.cell-selected {
-    /* FUNDO ROXO BEM VISÍVEL - COR DO PROJETO (adaptado do Streamlit com bordas vermelhas) */
-    background-color: rgba(123, 104, 238, 0.25) !important; /* Fundo roxo claro - similar ao Streamlit */
+    /* ESTILO EXCEL: Fundo cinza/azul claro nas células selecionadas */
+    background-color: #D0E8F2 !important; /* Azul claro similar ao Excel */
     
-    /* BORDAS ROXAS BEM VISÍVEIS - 2px SÓLIDAS (adaptado das bordas vermelhas do Streamlit) */
-    border-top: 2px solid rgba(123, 104, 238, 1) !important;
-    border-right: 2px solid rgba(123, 104, 238, 1) !important;
-    border-bottom: 2px solid rgba(123, 104, 238, 1) !important;
-    border-left: 2px solid rgba(123, 104, 238, 1) !important;
+    /* BORDAS PADRÃO PARA CÉLULAS SELECIONADAS */
+    border-top: 1px solid #e5e7eb !important;
+    border-right: 1px solid #e5e7eb !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    border-left: 1px solid #e5e7eb !important;
     
-    /* TEXTO DESTACADO */
-    color: #4c1d95 !important;
-    font-weight: 600 !important;
+    /* TEXTO NORMAL */
+    color: inherit !important;
+    font-weight: normal !important;
     
     /* EFEITOS VISUAIS */
     position: relative !important;
-    z-index: 10 !important;
+    z-index: 1 !important;
   }
   
-  /* Quando múltiplas células adjacentes estão selecionadas na mesma linha, ajustar borda esquerda para parecer contínuo */
+  /* ESTILO EXCEL: Célula ativa tem borda destacada (verde no Excel moderno) */
+  .results-table td.cell-active {
+    /* BORDA VERDE DESTACADA NA CÉLULA ATIVA (estilo Excel) */
+    border-top: 2px solid #00C853 !important; /* Verde do Excel */
+    border-right: 2px solid #00C853 !important;
+    border-bottom: 2px solid #00C853 !important;
+    border-left: 2px solid #00C853 !important;
+    
+    /* Z-index mais alto para borda ficar acima de outras células */
+    z-index: 2 !important;
+    position: relative !important;
+  }
+  
+  /* Quando célula está selecionada E ativa, combinar estilos */
+  .results-table td.cell-selected.cell-active {
+    background-color: #D0E8F2 !important; /* Mantém fundo azul claro */
+    border-top: 2px solid #00C853 !important; /* Borda verde destacada */
+    border-right: 2px solid #00C853 !important;
+    border-bottom: 2px solid #00C853 !important;
+    border-left: 2px solid #00C853 !important;
+    z-index: 3 !important;
+  }
+  
+  /* ESTILO EXCEL: Remover bordas internas entre células selecionadas adjacentes */
+  /* Borda esquerda: remover entre células selecionadas adjacentes na mesma linha */
   .results-table td.cell-selected + td.cell-selected {
-    border-left: 1px solid rgba(123, 104, 238, 1) !important;
-    margin-left: -1px; /* Sobrepor bordas para parecer contínuo */
+    border-left: none !important;
   }
   
-  /* Quando múltiplas células adjacentes estão selecionadas na mesma coluna, ajustar borda superior */
+  /* Borda superior: remover entre células selecionadas adjacentes na mesma coluna */
   .results-table tbody tr:not(:first-child) td.cell-selected {
-    border-top: 1px solid rgba(123, 104, 238, 1) !important;
-    margin-top: -1px; /* Sobrepor bordas verticais */
+    border-top: none !important;
   }
   
-  /* Primeira célula selecionada em uma linha - borda esquerda completa */
-  .results-table td.cell-selected:not(.cell-selected + .cell-selected) {
-    border-left: 2px solid rgba(123, 104, 238, 1) !important;
+  /* EXCEÇÃO: Célula ativa sempre mostra borda verde completa, mesmo quando adjacente a outras células selecionadas */
+  .results-table td.cell-active {
+    border-top: 2px solid #00C853 !important;
+    border-right: 2px solid #00C853 !important;
+    border-bottom: 2px solid #00C853 !important;
+    border-left: 2px solid #00C853 !important;
   }
   
-  /* Primeira linha com células selecionadas - borda superior completa */
-  .results-table tbody tr:first-child td.cell-selected {
-    border-top: 2px solid rgba(123, 104, 238, 1) !important;
+  /* Quando célula ativa está adjacente a células selecionadas, garantir que a borda verde se destaque */
+  /* A célula seguinte à ativa não deve ter borda esquerda se for selecionada */
+  .results-table td.cell-active + td.cell-selected:not(.cell-active) {
+    border-left: none !important;
   }
   
-  /* Última célula selecionada em uma linha - borda direita completa */
-  .results-table td.cell-selected:not(+ .cell-selected) {
-    border-right: 2px solid rgba(123, 104, 238, 1) !important;
-  }
-  
-  /* Última linha com células selecionadas - borda inferior completa */
-  .results-table tbody tr:last-child td.cell-selected {
-    border-bottom: 2px solid rgba(123, 104, 238, 1) !important;
-  }
-  
-  .results-table td.cell-selected::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(100, 149, 237, 0.08) 0%, rgba(123, 104, 238, 0.05) 100%);
-    pointer-events: none;
-    z-index: 0;
-  }
-  
-  .results-table td.cell-selected > * {
-    position: relative;
-    z-index: 1;
-  }
+  /* A célula anterior à ativa: a borda direita dela será coberta pela borda verde esquerda da ativa */
+  /* Isso já está coberto pela regra geral de remover bordas entre selecionadas */
   
   .results-table td:hover:not(.cell-selected) {
-    background-color: rgba(123, 104, 238, 0.08);
-    border-color: rgba(123, 104, 238, 0.2);
+    background-color: rgba(208, 232, 242, 0.5); /* Hover suave similar ao Excel */
+    border-color: #e5e7eb;
   }
   
   .results-table th {
@@ -3042,9 +3098,9 @@
     background-color: white; /* Fundo branco padrão */
   }
   
-  /* Garantir que células selecionadas tenham fundo roxo bem visível */
+  /* Garantir que células selecionadas tenham fundo azul claro (estilo Excel) */
   .results-table td.cell-selected {
-    background-color: rgba(123, 104, 238, 0.4) !important;
+    background-color: #D0E8F2 !important;
   }
   
   /* Primeira linha - adicionar borda superior */
