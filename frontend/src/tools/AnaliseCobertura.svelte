@@ -51,12 +51,14 @@
     return `${cto.nome || 'UNKNOWN'}_${lat}_${lng}`;
   }
   
-  // Função para gerar chave do caminho de rede (CHASSE/PLACA/OLT)
+  // Função para gerar chave do caminho de rede (CIDADE|POP|CHASSE|PLACA|OLT)
   function getCaminhoRedeKey(cto) {
+    const cidade = (cto.cidade || 'N/A').trim();
+    const pop = (cto.pop || 'N/A').trim();
     const chasse = (cto.olt || 'N/A').trim();
     const placa = (cto.slot || 'N/A').trim();
     const olt = (cto.pon || 'N/A').trim();
-    return `${chasse}|${placa}|${olt}`;
+    return `${cidade}|${pop}|${chasse}|${placa}|${olt}`;
   }
   
   // Map para armazenar o total de portas por caminho de rede (busca da base de dados)
@@ -137,7 +139,8 @@
     for (const cto of ctos) {
       const caminhoKey = getCaminhoRedeKey(cto);
       // Verificar se o caminho é válido (não é N/A e não está vazio)
-      if (caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||') {
+      // Formato da chave: CIDADE|POP|CHASSE|PLACA|OLT (5 partes separadas por |)
+      if (caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5) {
         caminhosUnicos.add(caminhoKey);
       }
     }
@@ -196,8 +199,8 @@
     try {
       // Preparar array de caminhos para a requisição batch
       const caminhosArray = caminhosParaCalcular.map(caminhoKey => {
-        const [olt, slot, pon] = caminhoKey.split('|');
-        return { olt, slot, pon };
+        const [cidade, pop, olt, slot, pon] = caminhoKey.split('|');
+        return { cidade, pop, olt, slot, pon };
       });
       
       // Fazer uma única requisição POST com todos os caminhos
@@ -1898,7 +1901,7 @@
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
                     {@const caminhoKey = getCaminhoRedeKey(cto)}
                     {@const total = caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0}
-                    {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||'}
+                    {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5}
                     <tr>
                       <td style="text-align: center; padding: 0.5rem;">
                         <input 
