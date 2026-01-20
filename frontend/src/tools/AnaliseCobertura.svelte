@@ -2313,6 +2313,7 @@
     border-collapse: collapse;
     font-size: 0.875rem;
     table-layout: auto;
+    min-width: max-content; /* Garantir largura mínima suficiente para evitar quebras */
   }
   
   /* Garantir que o tbody não tenha restrições de altura */
@@ -2333,12 +2334,18 @@
     font-weight: 600;
     color: #374151;
     border-bottom: 2px solid #e5e7eb;
+    white-space: nowrap; /* Evitar quebra de linha nos cabeçalhos */
+    vertical-align: middle;
   }
 
   .results-table td {
     padding: 0.75rem;
     border-bottom: 1px solid #e5e7eb;
     color: #4b5563;
+    white-space: nowrap; /* Evitar quebra de linha nas células - mantém texto em uma linha */
+    vertical-align: middle; /* Alinhamento vertical centralizado */
+    overflow: hidden;
+    text-overflow: ellipsis; /* Mostrar "..." se o texto for muito longo */
   }
 
   .results-table tbody tr:hover {
