@@ -612,19 +612,58 @@
   function parseCoordinatesOrAddress(input) {
     const trimmed = input.trim();
     
-    // Tentar detectar formato de coordenadas: "lat, lng" ou "lat,lng"
-    const coordPattern = /^-?\d+\.?\d*\s*,\s*-?\d+\.?\d*$/;
+    // Tentar detectar formato de coordenadas com múltiplos separadores:
+    // - "lat, lng" ou "lat,lng" (vírgula)
+    // - "lat; lng" ou "lat;lng" (ponto e vírgula)
+    // - "lat lng" (espaço) - NOVO!
+    // Suporta números decimais com ponto ou vírgula
+    // Padrão: número opcionalmente com decimais, separador (vírgula/ponto e vírgula/espaço), número opcionalmente com decimais
+    const coordPatternWithComma = /^-?\d+([.,]\d+)?\s*[,;]\s*-?\d+([.,]\d+)?$/;
+    const coordPatternWithSpace = /^-?\d+([.,]\d+)?\s+-?\d+([.,]\d+)?$/;
     
-    if (coordPattern.test(trimmed)) {
-      const parts = trimmed.split(',').map(p => p.trim());
-      const lat = parseFloat(parts[0]);
-      const lng = parseFloat(parts[1]);
-      
-      // Validar se são coordenadas válidas
-      if (!isNaN(lat) && !isNaN(lng) && 
-          lat >= -90 && lat <= 90 && 
-          lng >= -180 && lng <= 180) {
-        return { isCoordinates: true, lat, lng };
+    // Tentar primeiro com vírgula ou ponto e vírgula
+    if (coordPatternWithComma.test(trimmed)) {
+      // Dividir pela primeira vírgula ou ponto e vírgula encontrada (separador entre lat e lng)
+      const separatorIndex = trimmed.search(/[,;]/);
+      if (separatorIndex > 0) {
+        const latStr = trimmed.substring(0, separatorIndex).trim().replace(',', '.');
+        const lngStr = trimmed.substring(separatorIndex + 1).trim().replace(',', '.');
+        
+        const lat = parseFloat(latStr);
+        const lng = parseFloat(lngStr);
+        
+        // Validar se são coordenadas válidas
+        if (!isNaN(lat) && !isNaN(lng) && 
+            lat >= -90 && lat <= 90 && 
+            lng >= -180 && lng <= 180) {
+          console.log(`✅ Coordenadas parseadas (com vírgula): "${trimmed}" → lat: ${lat}, lng: ${lng}`);
+          return { isCoordinates: true, lat, lng };
+        } else {
+          console.warn(`⚠️ Coordenadas inválidas: "${trimmed}" → lat: ${lat}, lng: ${lng}`);
+        }
+      }
+    }
+    // Tentar com espaço como separador
+    else if (coordPatternWithSpace.test(trimmed)) {
+      // Dividir por espaço (um ou mais espaços)
+      const parts = trimmed.split(/\s+/).filter(p => p.length > 0);
+      if (parts.length >= 2) {
+        // Pegar os dois primeiros números (lat e lng)
+        const latStr = parts[0].replace(',', '.');
+        const lngStr = parts[1].replace(',', '.');
+        
+        const lat = parseFloat(latStr);
+        const lng = parseFloat(lngStr);
+        
+        // Validar se são coordenadas válidas
+        if (!isNaN(lat) && !isNaN(lng) && 
+            lat >= -90 && lat <= 90 && 
+            lng >= -180 && lng <= 180) {
+          console.log(`✅ Coordenadas parseadas (com espaço): "${trimmed}" → lat: ${lat}, lng: ${lng}`);
+          return { isCoordinates: true, lat, lng };
+        } else {
+          console.warn(`⚠️ Coordenadas inválidas (espaço): "${trimmed}" → lat: ${lat}, lng: ${lng}`);
+        }
       }
     }
     
@@ -652,24 +691,96 @@
         await new Promise(resolve => setTimeout(resolve, 200));
       }
 
-      // Verificar se o Google Maps está carregado (necessário para geocodificação)
-      if (!googleMapsLoaded || !google.maps || !google.maps.Geocoder) {
-        error = 'Google Maps não está carregado. Aguarde alguns instantes e tente novamente.';
-        loadingCTOs = false;
-        return;
+      // Separar múltiplos endereços/coordenadas de forma inteligente
+      // Estratégia: primeiro dividir por separadores seguros (quebra de linha, ponto e vírgula)
+      // Depois, para cada linha, verificar se é uma coordenada completa
+      let addressesInputs = [];
+      
+      // Dividir por quebra de linha ou ponto e vírgula primeiro (separadores seguros)
+      const lines = enderecoInput.split(/[;\n]/).map(line => line.trim()).filter(line => line.length > 0);
+      
+      // Se não encontrou separadores seguros, tratar o input inteiro como uma única entrada
+      if (lines.length === 0) {
+        lines.push(enderecoInput.trim());
       }
-
-      // Separar múltiplos endereços/coordenadas (aceita vírgula, ponto e vírgula, ou quebra de linha)
-      const addressesInputs = enderecoInput
-        .split(/[,;\n]/)
-        .map(addr => addr.trim())
-        .filter(addr => addr.length > 0);
+      
+      for (const line of lines) {
+        // Verificar se a linha inteira é uma coordenada válida
+        const parsed = parseCoordinatesOrAddress(line);
+        if (parsed.isCoordinates) {
+          // É uma coordenada completa, adicionar como está
+          addressesInputs.push(line);
+          console.log(`✅ Linha identificada como coordenada: "${line}"`);
+        } else {
+          // Não é coordenada completa, pode ser:
+          // 1. Um endereço textual
+          // 2. Múltiplas coordenadas na mesma linha separadas por vírgula ou espaço
+          // Tentar detectar se são múltiplas coordenadas (padrão: números, vírgulas, pontos, espaços, hífens)
+          if (/^[\d\s,.-]+$/.test(line)) {
+            let parts = [];
+            let hasComma = line.includes(',');
+            
+            if (hasComma) {
+              // Dividir por vírgula
+              parts = line.split(',').map(p => p.trim()).filter(p => p.length > 0);
+            } else {
+              // Dividir por espaço (um ou mais espaços)
+              parts = line.split(/\s+/).filter(p => p.length > 0);
+            }
+            
+            if (parts.length >= 2 && parts.length % 2 === 0) {
+              // Número par de partes, agrupar em pares (lat, lng)
+              let allValid = true;
+              const validPairs = [];
+              
+              for (let i = 0; i < parts.length; i += 2) {
+                // Criar par usando o separador original (vírgula ou espaço)
+                const coordPair = hasComma 
+                  ? `${parts[i]},${parts[i + 1]}`
+                  : `${parts[i]} ${parts[i + 1]}`;
+                
+                // Verificar se o par é uma coordenada válida
+                const pairParsed = parseCoordinatesOrAddress(coordPair);
+                if (pairParsed.isCoordinates) {
+                  validPairs.push(coordPair);
+                  console.log(`✅ Par de coordenadas identificado: "${coordPair}"`);
+                } else {
+                  // Par inválido
+                  allValid = false;
+                  console.log(`⚠️ Par inválido: "${coordPair}"`);
+                  break; // Parar de processar pares
+                }
+              }
+              
+              if (allValid && validPairs.length > 0) {
+                // Todos os pares são válidos, adicionar todos
+                addressesInputs.push(...validPairs);
+                console.log(`✅ ${validPairs.length} par(es) de coordenadas identificado(s)`);
+              } else {
+                // Algum par inválido, tratar como endereço
+                addressesInputs.push(line);
+                console.log(`⚠️ Algum par inválido, tratando linha inteira como endereço: "${line}"`);
+              }
+            } else {
+              // Número ímpar de partes ou formato inválido, tratar como endereço único
+              addressesInputs.push(line);
+              console.log(`ℹ️ Linha tratada como endereço (número ímpar de partes): "${line}"`);
+            }
+          } else {
+            // Parece ser um endereço textual, adicionar como está
+            addressesInputs.push(line);
+            console.log(`ℹ️ Linha tratada como endereço textual: "${line}"`);
+          }
+        }
+      }
 
       if (addressesInputs.length === 0) {
         error = 'Por favor, insira pelo menos um endereço ou coordenadas';
         loadingCTOs = false;
         return;
       }
+      
+      console.log(`📋 Total de entradas processadas: ${addressesInputs.length}`, addressesInputs);
 
       console.log(`🔍 Buscando ${addressesInputs.length} endereço(s)/coordenada(s):`, addressesInputs);
 
@@ -684,19 +795,24 @@
             // É coordenadas - usar diretamente
             lat = parsed.lat;
             lng = parsed.lng;
-            title = `Coordenadas: ${lat}, ${lng}`;
+            title = `Coordenadas: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            console.log(`✅ Coordenadas detectadas: ${lat}, ${lng}`);
           } else {
-            // É endereço - geocodificar
+            // É endereço - geocodificar (precisa do Google Maps carregado)
+            if (!googleMapsLoaded || !google.maps || !google.maps.Geocoder) {
+              throw new Error('Google Maps não está carregado. Aguarde alguns instantes e tente novamente.');
+            }
             const result = await geocodeAddress(parsed.address);
             const location = result.geometry.location;
             lat = location.lat();
             lng = location.lng();
             title = `Endereço: ${parsed.address}`;
+            console.log(`✅ Endereço geocodificado: ${parsed.address} → ${lat}, ${lng}`);
           }
 
           return { lat, lng, title, input };
         } catch (err) {
-          console.error(`Erro ao processar "${input}":`, err);
+          console.error(`❌ Erro ao processar "${input}":`, err);
           return null;
         }
       });
