@@ -2912,7 +2912,8 @@
 
   .results-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate; /* Separar bordas para permitir bordas visíveis nas células selecionadas */
+    border-spacing: 0; /* Remover espaçamento entre células */
     font-size: 0.875rem;
     table-layout: auto;
     min-width: max-content; /* Garantir largura mínima suficiente para evitar quebras */
@@ -2935,13 +2936,17 @@
   }
   
   .results-table td.cell-selected {
-    background: linear-gradient(135deg, rgba(100, 149, 237, 0.15) 0%, rgba(123, 104, 238, 0.15) 100%) !important; /* Gradiente roxo/azul suave */
-    border: 2px solid rgba(123, 104, 238, 1) !important; /* Borda roxa sólida e bem visível */
+    background: linear-gradient(135deg, rgba(100, 149, 237, 0.25) 0%, rgba(123, 104, 238, 0.25) 100%) !important; /* Gradiente roxo/azul mais visível */
+    border-top: 2px solid rgba(123, 104, 238, 1) !important; /* Borda roxa sólida e bem visível - TOP */
+    border-right: 2px solid rgba(123, 104, 238, 1) !important; /* Borda roxa sólida e bem visível - RIGHT */
+    border-bottom: 2px solid rgba(123, 104, 238, 1) !important; /* Borda roxa sólida e bem visível - BOTTOM */
+    border-left: 2px solid rgba(123, 104, 238, 1) !important; /* Borda roxa sólida e bem visível - LEFT */
     color: #4c1d95 !important; /* Texto roxo escuro para melhor contraste */
-    font-weight: 600;
+    font-weight: 600 !important;
     position: relative;
-    box-shadow: 0 0 0 1px rgba(123, 104, 238, 0.2) inset;
-    z-index: 1;
+    box-shadow: 0 0 0 1px rgba(123, 104, 238, 0.4) inset, 0 2px 4px rgba(123, 104, 238, 0.2) !important;
+    z-index: 2 !important; /* Z-index maior para garantir que fique acima */
+    outline: none !important; /* Remover qualquer outline */
   }
   
   /* Quando múltiplas células adjacentes estão selecionadas na mesma linha, ajustar borda esquerda para parecer contínuo */
@@ -2993,11 +2998,7 @@
     z-index: 1;
   }
   
-  .results-table td {
-    transition: background-color 0.2s ease, border 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-    position: relative;
-    border: 1px solid transparent; /* Borda transparente por padrão para evitar "pulo" visual */
-  }
+  /* Remover esta definição duplicada - já está definida acima */
   
   .results-table td:hover:not(.cell-selected) {
     background-color: rgba(123, 104, 238, 0.08);
@@ -3016,13 +3017,21 @@
 
   .results-table td {
     padding: 0.75rem;
-    border-bottom: 1px solid #e5e7eb;
+    border-right: 1px solid #e5e7eb; /* Borda direita padrão */
+    border-bottom: 1px solid #e5e7eb; /* Borda inferior padrão */
+    border-left: 1px solid #e5e7eb; /* Borda esquerda padrão */
+    border-top: 1px solid #e5e7eb; /* Borda superior padrão */
     color: #4b5563;
     white-space: nowrap; /* Evitar quebra de linha nas células - mantém texto em uma linha */
     vertical-align: middle; /* Alinhamento vertical centralizado */
     overflow: hidden;
     text-overflow: ellipsis; /* Mostrar "..." se o texto for muito longo */
-    transition: background-color 0.15s ease, outline 0.15s ease;
+    transition: background-color 0.15s ease, border 0.15s ease;
+  }
+  
+  /* Primeira linha - adicionar borda superior */
+  .results-table tbody tr:first-child td {
+    border-top: 1px solid #e5e7eb;
   }
   
 
