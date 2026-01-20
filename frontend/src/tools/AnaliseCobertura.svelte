@@ -1813,7 +1813,6 @@
                       </td>
                       <td>{cto.status_cto || 'N/A'}</td>
                       <td>
-                        {@const caminhoKey = getCaminhoRedeKey(cto)}
                         <strong>{caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0}</strong>
                       </td>
                     </tr>
