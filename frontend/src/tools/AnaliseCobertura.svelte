@@ -3,6 +3,7 @@
   import { Loader } from '@googlemaps/js-api-loader';
   import Loading from '../Loading.svelte';
   import { getApiUrl } from '../config.js';
+  // Importar AG Grid
   import { AgGridSvelte } from 'ag-grid-svelte';
   import { ModuleRegistry } from 'ag-grid-community';
   import { ClientSideRowModelModule } from 'ag-grid-community';
@@ -220,125 +221,9 @@
     updateSelectedCells(newSelection);
   }
   
-  // Função para lidar com início de seleção (mouse down)
-  function handleCellMouseDown(ctoKey, columnName, event) {
-    event.preventDefault(); // Prevenir seleção de texto
-    event.stopPropagation();
-    const cellKey = getCellKey(ctoKey, columnName);
-    console.log('🖱️ MouseDown na célula:', cellKey, { ctrlKey: event.ctrlKey, shiftKey: event.shiftKey });
-    
-    if (event.ctrlKey || event.metaKey) {
-      // Modo adicionar (Ctrl/Cmd): adiciona ou remove célula da seleção
-      selectionMode = 'add';
-      const newSet = new Set(selectedCells);
-      if (newSet.has(cellKey)) {
-        newSet.delete(cellKey);
-        // Se removida era a ativa, definir nova ativa ou limpar
-        if (activeCell === cellKey) {
-          activeCell = newSet.size > 0 ? Array.from(newSet)[0] : null;
-        }
-        console.log('➖ Removendo célula da seleção');
-      } else {
-        newSet.add(cellKey);
-        activeCell = cellKey; // Célula recém-adicionada vira ativa
-        console.log('➕ Adicionando célula à seleção');
-      }
-      updateSelectedCells(newSet);
-    } else if (event.shiftKey && selectionStart) {
-      // Modo range (Shift): seleciona range da célula inicial até esta
-      selectionMode = 'range';
-      const [startCtoKey, startColumn] = selectionStart.split('|');
-      console.log('📏 Selecionando range:', selectionStart, 'até', cellKey);
-      // Manter a célula inicial como ativa durante seleção por Shift
-      activeCell = selectionStart;
-      selectRange(startCtoKey, startColumn, ctoKey, columnName);
-    } else {
-      // Modo normal: inicia nova seleção
-      selectionMode = 'single';
-      isSelecting = true;
-      selectionStart = cellKey;
-      activeCell = cellKey; // Célula clicada é a ativa
-      const newSet = new Set();
-      newSet.add(cellKey);
-      console.log('🆕 Nova seleção iniciada:', cellKey);
-      updateSelectedCells(newSet);
-    }
-  }
-  
-  // Função para lidar com movimento do mouse durante seleção
-  function handleCellMouseEnter(ctoKey, columnName, event) {
-    if (isSelecting && selectionStart && selectionMode === 'single') {
-      const cellKey = getCellKey(ctoKey, columnName);
-      currentHoverCell = { ctoKey, columnName };
-      const [startCtoKey, startColumn] = selectionStart.split('|');
-      console.log('🖱️ MouseEnter durante seleção:', cellKey);
-      selectRange(startCtoKey, startColumn, ctoKey, columnName);
-    }
-  }
-  
-  // Função para lidar com fim de seleção (mouse up)
-  function handleCellMouseUp(ctoKey, columnName, event) {
-    if (isSelecting) {
-      isSelecting = false;
-      currentHoverCell = null;
-    }
-  }
-  
-  // Função global para lidar com movimento do mouse durante seleção (mesmo fora das células)
-  function handleGlobalMouseMove(event) {
-    if (!isSelecting || !selectionStart) return;
-    
-    // Encontrar a célula sob o mouse
-    const target = event.target;
-    const td = target.closest('td.cell-selectable, td[class*="cell-selected"]');
-    if (!td) {
-      // Tentar encontrar pela posição do mouse
-      const table = target.closest('table.results-table');
-      if (table) {
-        const rect = table.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
-        
-        // Encontrar célula pela posição (aproximado)
-        const rows = table.querySelectorAll('tbody tr');
-        let foundCell = null;
-        
-        for (const row of rows) {
-          const rowRect = row.getBoundingClientRect();
-          if (y >= rowRect.top && y <= rowRect.bottom) {
-            const cells = row.querySelectorAll('td');
-            for (const cell of cells) {
-              const cellRect = cell.getBoundingClientRect();
-              if (x >= cellRect.left && x <= cellRect.right) {
-                // Encontrar qual coluna é
-                const cellIndex = Array.from(cells).indexOf(cell);
-                if (cellIndex > 0) { // Ignorar checkbox
-                  const columnNames = ['nome', 'cidade', 'pop', 'olt', 'slot', 'pon', 'id_cto', 'vagas_total', 'clientes_conectados', 'disponiveis', 'ocupacao', 'status', 'total_caminho'];
-                  const columnIndex = cellIndex - 1; // -1 porque primeiro td é checkbox
-                  if (columnIndex >= 0 && columnIndex < columnNames.length) {
-                    const rowIndex = Array.from(rows).indexOf(row);
-                    if (rowIndex >= 0 && rowIndex < ctos.length) {
-                      const cto = ctos[rowIndex];
-                      const ctoKey = getCTOKey(cto);
-                      const columnName = columnNames[columnIndex];
-                      foundCell = { ctoKey, columnName };
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-            if (foundCell) break;
-          }
-        }
-        
-        if (foundCell) {
-          const [startCtoKey, startColumn] = selectionStart.split('|');
-          selectRange(startCtoKey, startColumn, foundCell.ctoKey, foundCell.columnName);
-        }
-      }
-    }
-  }
+  // NOTA: Código antigo de seleção manual removido - AG Grid cuida disso automaticamente
+  // As funções handleCellMouseDown, handleCellMouseEnter, handleCellMouseUp e handleGlobalMouseMove
+  // foram removidas porque o AG Grid tem seleção estilo Excel nativa
   
   
   // Função para obter o conteúdo de uma célula
@@ -2043,20 +1928,32 @@
   function onGridReady(params) {
     gridApi = params.api;
     gridColumnApi = params.columnApi;
-    console.log('✅ AG Grid pronto');
+    console.log('✅ AG Grid pronto e inicializado');
     
     // Atualizar dados iniciais
     if (ctos && ctos.length > 0) {
       gridApi.setGridOption('rowData', ctos);
+      console.log(`✅ ${ctos.length} linhas carregadas no AG Grid`);
+      
       // Ajustar tamanho das colunas
       setTimeout(() => {
         if (gridApi) {
-          gridApi.sizeColumnsToFit();
+          try {
+            gridApi.sizeColumnsToFit();
+            console.log('✅ Colunas ajustadas automaticamente');
+          } catch (e) {
+            console.warn('⚠️ Erro ao ajustar colunas:', e);
+          }
         }
-      }, 100);
+      }, 200);
     }
     
-    // Configurar cópia customizada se necessário (Ctrl+C já funciona automaticamente)
+    // Forçar redimensionamento do grid após renderização
+    setTimeout(() => {
+      if (gridApi) {
+        gridApi.sizeColumnsToFit();
+      }
+    }, 500);
   }
   
   // Definir colunas do AG Grid
@@ -2256,9 +2153,11 @@
   }
   
   // Configurações do grid - usando reactive statement para garantir reatividade
-  $: gridOptions = {
-    columnDefs: getColumnDefs(),
-    rowData: ctos || [],
+  $: {
+    console.log('🔄 gridOptions sendo recalculado, ctos.length:', ctos?.length || 0);
+    gridOptions = {
+      columnDefs: getColumnDefs(),
+      rowData: ctos || [],
     defaultColDef: {
       sortable: true,
       resizable: true,
@@ -2319,6 +2218,8 @@
       // Usar chave única para cada linha
       return getCTOKey(params.data);
     }
+    };
+    console.log('✅ gridOptions atualizado');
   };
   
   // Atualizar rowData quando ctos mudar - usar API quando disponível
@@ -2357,13 +2258,11 @@
         onSettingsRequest(openSettings);
       }
       
-      // Adicionar listener para Ctrl+C (copiar células selecionadas)
-      document.addEventListener('keydown', handleKeyDown);
+      // NOTA: AG Grid cuida de Ctrl+C automaticamente com enableClipboard
+      // Não precisamos mais do handleKeyDown manual
       
-      // Adicionar listener global para mouseup (para finalizar seleção mesmo fora da tabela)
-      document.addEventListener('mouseup', () => {
-        isSelecting = false;
-      });
+      // NOTA: AG Grid cuida da seleção automaticamente
+      // Não precisamos mais do listener de mouseup manual
       
       // Registrar função de pré-carregamento no hover
       if (onSettingsHover && typeof onSettingsHover === 'function') {
@@ -2381,15 +2280,16 @@
 
   // Cleanup ao desmontar
   onDestroy(() => {
-    // Remover listener de teclado
-    document.removeEventListener('keydown', handleKeyDown);
-    
     // Limpar observer do mapa se existir
     if (mapObserver) {
       mapObserver.disconnect();
       mapObserver = null;
     }
-    // Limpar recursos
+    // Limpar recursos do AG Grid
+    if (gridApi) {
+      gridApi.destroy();
+      gridApi = null;
+    }
   });
 </script>
 
@@ -2567,14 +2467,18 @@
             {#if !isTableMinimized}
             <div class="table-wrapper ag-grid-wrapper">
               <!-- AG Grid Component -->
-              <AgGridSvelte
-                class="ag-theme-alpine ag-grid-custom"
-                gridOptions={gridOptions}
-                on:gridReady={onGridReady}
-                style="width: 100%; height: 100%;"
-              />
-              
-              <!-- Tabela HTML antiga removida - agora usando apenas AG Grid -->
+              {#if gridOptions}
+                <AgGridSvelte
+                  class="ag-theme-alpine ag-grid-custom"
+                  gridOptions={gridOptions}
+                  on:gridReady={onGridReady}
+                  style="width: 100%; height: 100%; min-height: 400px;"
+                />
+              {:else}
+                <div style="padding: 2rem; text-align: center; color: #666;">
+                  <p>Carregando tabela...</p>
+                </div>
+              {/if}
             </div>
             {/if}
           </div>
