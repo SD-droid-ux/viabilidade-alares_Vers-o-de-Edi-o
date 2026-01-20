@@ -90,11 +90,17 @@
     return `${ctoKey}|${columnName}`;
   }
   
-  // Função auxiliar para verificar se célula está selecionada
+  // Função auxiliar para verificar se célula está selecionada (reativa)
   function isCellSelected(ctoKey, columnName) {
     // Usar selectedCellsVersion para forçar reatividade do Svelte
-    const _ = selectedCellsVersion;
-    return selectedCells.has(getCellKey(ctoKey, columnName));
+    const version = selectedCellsVersion;
+    const cellKey = getCellKey(ctoKey, columnName);
+    const isSelected = selectedCells.has(cellKey);
+    // Log para debug (remover depois se necessário)
+    if (isSelected && version > 0) {
+      // console.log(`✅ Célula ${cellKey} está selecionada (versão ${version})`);
+    }
+    return isSelected;
   }
   
   // Função para obter índice da coluna
@@ -2936,17 +2942,30 @@
   }
   
   .results-table td.cell-selected {
-    background: linear-gradient(135deg, rgba(100, 149, 237, 0.25) 0%, rgba(123, 104, 238, 0.25) 100%) !important; /* Gradiente roxo/azul mais visível */
-    border-top: 2px solid rgba(123, 104, 238, 1) !important; /* Borda roxa sólida e bem visível - TOP */
-    border-right: 2px solid rgba(123, 104, 238, 1) !important; /* Borda roxa sólida e bem visível - RIGHT */
-    border-bottom: 2px solid rgba(123, 104, 238, 1) !important; /* Borda roxa sólida e bem visível - BOTTOM */
-    border-left: 2px solid rgba(123, 104, 238, 1) !important; /* Borda roxa sólida e bem visível - LEFT */
-    color: #4c1d95 !important; /* Texto roxo escuro para melhor contraste */
-    font-weight: 600 !important;
-    position: relative;
-    box-shadow: 0 0 0 1px rgba(123, 104, 238, 0.4) inset, 0 2px 4px rgba(123, 104, 238, 0.2) !important;
-    z-index: 2 !important; /* Z-index maior para garantir que fique acima */
-    outline: none !important; /* Remover qualquer outline */
+    /* FUNDO ROXO BEM VISÍVEL - COR DO PROJETO - MÁXIMA VISIBILIDADE */
+    background-color: rgba(123, 104, 238, 0.45) !important; /* Fundo roxo sólido bem visível */
+    background-image: linear-gradient(135deg, rgba(100, 149, 237, 0.5) 0%, rgba(123, 104, 238, 0.5) 100%) !important;
+    
+    /* BORDAS ROXAS BEM VISÍVEIS - 2px SÓLIDAS */
+    border-top: 2px solid rgba(123, 104, 238, 1) !important;
+    border-right: 2px solid rgba(123, 104, 238, 1) !important;
+    border-bottom: 2px solid rgba(123, 104, 238, 1) !important;
+    border-left: 2px solid rgba(123, 104, 238, 1) !important;
+    border-color: rgba(123, 104, 238, 1) !important;
+    
+    /* TEXTO DESTACADO */
+    color: #4c1d95 !important;
+    font-weight: 700 !important; /* Mais negrito para destacar */
+    
+    /* EFEITOS VISUAIS */
+    position: relative !important;
+    box-shadow: 0 0 0 2px rgba(123, 104, 238, 0.7) inset, 0 2px 8px rgba(123, 104, 238, 0.5) !important;
+    z-index: 10 !important; /* Z-index alto para garantir visibilidade */
+    outline: 2px solid rgba(123, 104, 238, 0.9) !important; /* Outline adicional para garantir visibilidade */
+    outline-offset: -2px !important;
+    
+    /* GARANTIR QUE NÃO SEJA SOBRESCRITO POR NENHUM OUTRO ESTILO */
+    background: rgba(123, 104, 238, 0.45) linear-gradient(135deg, rgba(100, 149, 237, 0.5) 0%, rgba(123, 104, 238, 0.5) 100%) !important;
   }
   
   /* Quando múltiplas células adjacentes estão selecionadas na mesma linha, ajustar borda esquerda para parecer contínuo */
@@ -2998,8 +3017,6 @@
     z-index: 1;
   }
   
-  /* Remover esta definição duplicada - já está definida acima */
-  
   .results-table td:hover:not(.cell-selected) {
     background-color: rgba(123, 104, 238, 0.08);
     border-color: rgba(123, 104, 238, 0.2);
@@ -3026,7 +3043,13 @@
     vertical-align: middle; /* Alinhamento vertical centralizado */
     overflow: hidden;
     text-overflow: ellipsis; /* Mostrar "..." se o texto for muito longo */
-    transition: background-color 0.15s ease, border 0.15s ease;
+    transition: background-color 0.2s ease, border 0.2s ease, box-shadow 0.2s ease;
+    background-color: white; /* Fundo branco padrão */
+  }
+  
+  /* Garantir que células selecionadas tenham fundo roxo bem visível */
+  .results-table td.cell-selected {
+    background-color: rgba(123, 104, 238, 0.4) !important;
   }
   
   /* Primeira linha - adicionar borda superior */
