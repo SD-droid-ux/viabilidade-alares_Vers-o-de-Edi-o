@@ -70,9 +70,16 @@
   
   // Seleção de células individuais (estilo Excel)
   let selectedCells = new Set(); // Set de chaves "ctoKey|columnName" para células selecionadas
+  let selectedCellsVersion = 0; // Versão para forçar reatividade do Svelte
   let isSelecting = false; // Flag para indicar se está em modo de seleção por arrasto
   let selectionStart = null; // Célula inicial da seleção (para range)
   let selectionMode = 'single'; // 'single', 'range', 'add'
+  
+  // Função auxiliar para atualizar selectedCells e forçar reatividade
+  function updateSelectedCells(newSet) {
+    selectedCells = newSet;
+    selectedCellsVersion++;
+  }
   
   // Ordem das colunas para cálculo de range
   const columnOrder = ['nome', 'cidade', 'pop', 'olt', 'slot', 'pon', 'id_cto', 'vagas_total', 'clientes_conectados', 'disponiveis', 'ocupacao', 'status', 'total_caminho'];
@@ -84,6 +91,8 @@
   
   // Função auxiliar para verificar se célula está selecionada
   function isCellSelected(ctoKey, columnName) {
+    // Usar selectedCellsVersion para forçar reatividade do Svelte
+    const _ = selectedCellsVersion;
     return selectedCells.has(getCellKey(ctoKey, columnName));
   }
   
@@ -124,42 +133,50 @@
       }
     }
     
-    selectedCells = newSelection;
+    updateSelectedCells(newSelection);
   }
   
   // Função para lidar com início de seleção (mouse down)
   function handleCellMouseDown(ctoKey, columnName, event) {
+    event.preventDefault(); // Prevenir seleção de texto
     event.stopPropagation();
     const cellKey = getCellKey(ctoKey, columnName);
+    console.log('🖱️ MouseDown na célula:', cellKey, { ctrlKey: event.ctrlKey, shiftKey: event.shiftKey });
     
     if (event.ctrlKey || event.metaKey) {
       // Modo adicionar (Ctrl/Cmd): adiciona ou remove célula da seleção
       selectionMode = 'add';
-      if (selectedCells.has(cellKey)) {
-        selectedCells.delete(cellKey);
+      const newSet = new Set(selectedCells);
+      if (newSet.has(cellKey)) {
+        newSet.delete(cellKey);
+        console.log('➖ Removendo célula da seleção');
       } else {
-        selectedCells.add(cellKey);
+        newSet.add(cellKey);
+        console.log('➕ Adicionando célula à seleção');
       }
-      selectedCells = selectedCells;
+      updateSelectedCells(newSet);
     } else if (event.shiftKey && selectionStart) {
       // Modo range (Shift): seleciona range da célula inicial até esta
       selectionMode = 'range';
       const [startCtoKey, startColumn] = selectionStart.split('|');
+      console.log('📏 Selecionando range:', selectionStart, 'até', cellKey);
       selectRange(startCtoKey, startColumn, ctoKey, columnName);
     } else {
       // Modo normal: inicia nova seleção
       selectionMode = 'single';
       isSelecting = true;
       selectionStart = cellKey;
-      selectedCells.clear();
-      selectedCells.add(cellKey);
-      selectedCells = selectedCells;
+      const newSet = new Set();
+      newSet.add(cellKey);
+      console.log('🆕 Nova seleção iniciada:', cellKey);
+      updateSelectedCells(newSet);
     }
   }
   
   // Função para lidar com movimento do mouse durante seleção
   function handleCellMouseEnter(ctoKey, columnName, event) {
     if (isSelecting && selectionStart) {
+      const cellKey = getCellKey(ctoKey, columnName);
       const [startCtoKey, startColumn] = selectionStart.split('|');
       selectRange(startCtoKey, startColumn, ctoKey, columnName);
     }
