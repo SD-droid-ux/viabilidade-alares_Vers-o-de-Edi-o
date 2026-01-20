@@ -82,12 +82,26 @@
     caminhoRedeLoading.add(caminhoKey);
     
     try {
-      const response = await fetch(getApiUrl(`/api/ctos/caminho-rede?olt=${encodeURIComponent(olt)}&slot=${encodeURIComponent(slot)}&pon=${encodeURIComponent(pon)}`));
+      const url = getApiUrl(`/api/ctos/caminho-rede?olt=${encodeURIComponent(olt)}&slot=${encodeURIComponent(slot)}&pon=${encodeURIComponent(pon)}`);
+      console.log(`🌐 Fazendo requisição para: ${url}`);
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        console.error(`❌ Resposta HTTP não OK: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.error(`Erro: ${errorText}`);
+        return 0;
+      }
+      
       const data = await response.json();
+      console.log(`📥 Resposta da API para ${olt} / ${slot} / ${pon}:`, data);
       
       if (data.success && data.total_portas !== undefined) {
         // Atualizar o Map (criar novo para garantir reatividade)
-        const newTotals = new Map(caminhoRedeTotals);
+        // IMPORTANTE: Usar o Map atual para não perder valores já carregados
+        const currentTotals = caminhoRedeTotals || new Map();
+        const newTotals = new Map(currentTotals);
         newTotals.set(caminhoKey, data.total_portas);
         caminhoRedeTotals = newTotals;
         
@@ -95,7 +109,7 @@
         console.log(`📊 Map atualizado. Tamanho: ${caminhoRedeTotals.size}, Chaves:`, Array.from(caminhoRedeTotals.keys()));
         return data.total_portas;
       } else {
-        console.warn(`⚠️ Erro ao buscar total de portas para ${olt} / ${slot} / ${pon}:`, data);
+        console.warn(`⚠️ Resposta da API não tem success=true ou total_portas:`, data);
         return 0;
       }
     } catch (err) {
@@ -139,6 +153,13 @@
     // Aguardar todas as buscas completarem
     const results = await Promise.all(promises);
     console.log(`✅ Totais calculados para ${results.length} caminhos de rede`);
+    
+    // Incrementar versão UMA VEZ após todas as buscas para forçar re-render
+    caminhoRedeTotalsVersion++;
+    console.log(`🔄 Versão incrementada para ${caminhoRedeTotalsVersion}. Map final tem ${caminhoRedeTotals.size} entradas:`, Array.from(caminhoRedeTotals.entries()));
+    
+    // Forçar atualização do Svelte
+    await tick();
   }
   
   // Função para obter total de portas do caminho de rede de uma CTO
@@ -1757,7 +1778,6 @@
                     {@const ctoKey = getCTOKey(cto)}
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
                     {@const caminhoKey = getCaminhoRedeKey(cto)}
-                    {@const caminhoTotal = caminhoRedeTotalsVersion >= 0 ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0}
                     <tr>
                       <td style="text-align: center; padding: 0.5rem;">
                         <input 
@@ -1793,7 +1813,8 @@
                       </td>
                       <td>{cto.status_cto || 'N/A'}</td>
                       <td>
-                        <strong>{caminhoTotal}</strong>
+                        {@const caminhoKey = getCaminhoRedeKey(cto)}
+                        <strong>{caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0}</strong>
                       </td>
                     </tr>
                   {/each}
