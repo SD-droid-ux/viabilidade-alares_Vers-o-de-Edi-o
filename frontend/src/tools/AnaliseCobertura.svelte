@@ -1805,6 +1805,8 @@
                     {@const ctoKey = getCTOKey(cto)}
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
                     {@const caminhoKey = getCaminhoRedeKey(cto)}
+                    {@const total = caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0}
+                    {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||'}
                     <tr>
                       <td style="text-align: center; padding: 0.5rem;">
                         <input 
@@ -1840,8 +1842,6 @@
                       </td>
                       <td>{cto.status_cto || 'N/A'}</td>
                       <td>
-                        {@const total = caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0}
-                        {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||'}
                         {#if estaCarregando}
                           <span style="color: #666; font-style: italic; font-size: 0.9em;">Carregando...</span>
                         {:else}
