@@ -64,30 +64,36 @@
   
   // Função para calcular total de portas por caminho de rede
   function calculateCaminhoRedeTotals() {
-    caminhoRedeTotals.clear();
+    const newTotals = new Map();
     
     // Agrupar CTOs por caminho de rede e somar portas
     for (const cto of ctos) {
       const caminhoKey = getCaminhoRedeKey(cto);
       const portas = parseInt(cto.vagas_total || 0) || 0;
       
-      if (!caminhoRedeTotals.has(caminhoKey)) {
-        caminhoRedeTotals.set(caminhoKey, 0);
+      if (!newTotals.has(caminhoKey)) {
+        newTotals.set(caminhoKey, 0);
       }
       
-      caminhoRedeTotals.set(caminhoKey, caminhoRedeTotals.get(caminhoKey) + portas);
+      newTotals.set(caminhoKey, newTotals.get(caminhoKey) + portas);
     }
+    
+    // Atribuir novo Map para garantir reatividade do Svelte
+    caminhoRedeTotals = newTotals;
   }
   
   // Função para obter total de portas do caminho de rede de uma CTO
   function getCaminhoRedeTotal(cto) {
+    if (!cto || !caminhoRedeTotals) return 0;
     const caminhoKey = getCaminhoRedeKey(cto);
     return caminhoRedeTotals.get(caminhoKey) || 0;
   }
   
   // Recalcular quando a lista de CTOs mudar
-  $: if (ctos.length > 0) {
+  $: if (ctos && ctos.length > 0) {
     calculateCaminhoRedeTotals();
+  } else {
+    caminhoRedeTotals = new Map();
   }
   
   // Estados reativos para checkbox "marcar todos"
