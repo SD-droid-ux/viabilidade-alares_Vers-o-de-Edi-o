@@ -2945,30 +2945,22 @@
   }
   
   .results-table td.cell-selected {
-    /* FUNDO ROXO BEM VISÍVEL - COR DO PROJETO - MÁXIMA VISIBILIDADE */
-    background-color: rgba(123, 104, 238, 0.45) !important; /* Fundo roxo sólido bem visível */
-    background-image: linear-gradient(135deg, rgba(100, 149, 237, 0.5) 0%, rgba(123, 104, 238, 0.5) 100%) !important;
+    /* FUNDO ROXO BEM VISÍVEL - COR DO PROJETO (adaptado do Streamlit com bordas vermelhas) */
+    background-color: rgba(123, 104, 238, 0.25) !important; /* Fundo roxo claro - similar ao Streamlit */
     
-    /* BORDAS ROXAS BEM VISÍVEIS - 2px SÓLIDAS */
+    /* BORDAS ROXAS BEM VISÍVEIS - 2px SÓLIDAS (adaptado das bordas vermelhas do Streamlit) */
     border-top: 2px solid rgba(123, 104, 238, 1) !important;
     border-right: 2px solid rgba(123, 104, 238, 1) !important;
     border-bottom: 2px solid rgba(123, 104, 238, 1) !important;
     border-left: 2px solid rgba(123, 104, 238, 1) !important;
-    border-color: rgba(123, 104, 238, 1) !important;
     
     /* TEXTO DESTACADO */
     color: #4c1d95 !important;
-    font-weight: 700 !important; /* Mais negrito para destacar */
+    font-weight: 600 !important;
     
     /* EFEITOS VISUAIS */
     position: relative !important;
-    box-shadow: 0 0 0 2px rgba(123, 104, 238, 0.7) inset, 0 2px 8px rgba(123, 104, 238, 0.5) !important;
-    z-index: 10 !important; /* Z-index alto para garantir visibilidade */
-    outline: 2px solid rgba(123, 104, 238, 0.9) !important; /* Outline adicional para garantir visibilidade */
-    outline-offset: -2px !important;
-    
-    /* GARANTIR QUE NÃO SEJA SOBRESCRITO POR NENHUM OUTRO ESTILO */
-    background: rgba(123, 104, 238, 0.45) linear-gradient(135deg, rgba(100, 149, 237, 0.5) 0%, rgba(123, 104, 238, 0.5) 100%) !important;
+    z-index: 10 !important;
   }
   
   /* Quando múltiplas células adjacentes estão selecionadas na mesma linha, ajustar borda esquerda para parecer contínuo */
