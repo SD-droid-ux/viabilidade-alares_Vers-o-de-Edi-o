@@ -68,6 +68,38 @@
   let calculandoTotais = false; // Flag para evitar múltiplas execuções simultâneas
   let ultimosCaminhosCalculados = new Set(); // Rastrear quais caminhos já foram calculados
   
+  // Seleção de células individuais
+  let selectedCells = new Set(); // Set de chaves "ctoKey|columnName" para células selecionadas
+  
+  // Função auxiliar para obter chave da célula
+  function getCellKey(ctoKey, columnName) {
+    return `${ctoKey}|${columnName}`;
+  }
+  
+  // Função auxiliar para verificar se célula está selecionada
+  function isCellSelected(ctoKey, columnName) {
+    return selectedCells.has(getCellKey(ctoKey, columnName));
+  }
+  
+  // Função para lidar com clique em célula
+  function handleCellClick(ctoKey, columnName, event) {
+    event.stopPropagation();
+    const cellKey = getCellKey(ctoKey, columnName);
+    if (event.ctrlKey || event.metaKey) {
+      // Seleção múltipla com Ctrl/Cmd
+      if (selectedCells.has(cellKey)) {
+        selectedCells.delete(cellKey);
+      } else {
+        selectedCells.add(cellKey);
+      }
+    } else {
+      // Seleção única (limpa outras e seleciona esta)
+      selectedCells.clear();
+      selectedCells.add(cellKey);
+    }
+    selectedCells = selectedCells; // Forçar reatividade
+  }
+  
   // Função para buscar total de portas do caminho de rede da base de dados
   async function fetchCaminhoRedeTotal(olt, slot, pon) {
     const caminhoKey = `${olt}|${slot}|${pon}`;
@@ -1916,17 +1948,81 @@
                           aria-label="Mostrar/ocultar CTO no mapa"
                         />
                       </td>
-                      <td><strong>{cto.nome}</strong></td>
-                      <td>{cto.cidade}</td>
-                      <td>{cto.pop || 'N/A'}</td>
-                      <td>{cto.olt || 'N/A'}</td>
-                      <td>{cto.slot || 'N/A'}</td>
-                      <td>{cto.pon || 'N/A'}</td>
-                      <td>{cto.id_cto || cto.id || 'N/A'}</td>
-                      <td>{cto.vagas_total}</td>
-                      <td>{cto.clientes_conectados}</td>
-                      <td>{cto.vagas_total - cto.clientes_conectados}</td>
-                      <td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'nome')}
+                        on:click={(e) => handleCellClick(ctoKey, 'nome', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
+                        <strong>{cto.nome}</strong>
+                      </td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'cidade')}
+                        on:click={(e) => handleCellClick(ctoKey, 'cidade', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
+                        {cto.cidade}
+                      </td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'pop')}
+                        on:click={(e) => handleCellClick(ctoKey, 'pop', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
+                        {cto.pop || 'N/A'}
+                      </td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'olt')}
+                        on:click={(e) => handleCellClick(ctoKey, 'olt', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
+                        {cto.olt || 'N/A'}
+                      </td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'slot')}
+                        on:click={(e) => handleCellClick(ctoKey, 'slot', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
+                        {cto.slot || 'N/A'}
+                      </td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'pon')}
+                        on:click={(e) => handleCellClick(ctoKey, 'pon', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
+                        {cto.pon || 'N/A'}
+                      </td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'id_cto')}
+                        on:click={(e) => handleCellClick(ctoKey, 'id_cto', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
+                        {cto.id_cto || cto.id || 'N/A'}
+                      </td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'vagas_total')}
+                        on:click={(e) => handleCellClick(ctoKey, 'vagas_total', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
+                        {cto.vagas_total}
+                      </td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'clientes_conectados')}
+                        on:click={(e) => handleCellClick(ctoKey, 'clientes_conectados', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
+                        {cto.clientes_conectados}
+                      </td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'disponiveis')}
+                        on:click={(e) => handleCellClick(ctoKey, 'disponiveis', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
+                        {cto.vagas_total - cto.clientes_conectados}
+                      </td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'ocupacao')}
+                        on:click={(e) => handleCellClick(ctoKey, 'ocupacao', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
                         <span class="occupation-badge" 
                           class:low={parseFloat(cto.pct_ocup || 0) < 50}
                           class:medium={parseFloat(cto.pct_ocup || 0) >= 50 && parseFloat(cto.pct_ocup || 0) < 80}
@@ -1935,8 +2031,18 @@
                           {formatPercentage(cto.pct_ocup)}
                         </span>
                       </td>
-                      <td>{cto.status_cto || 'N/A'}</td>
-                      <td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'status')}
+                        on:click={(e) => handleCellClick(ctoKey, 'status', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
+                        {cto.status_cto || 'N/A'}
+                      </td>
+                      <td 
+                        class:cell-selected={isCellSelected(ctoKey, 'total_caminho')}
+                        on:click={(e) => handleCellClick(ctoKey, 'total_caminho', e)}
+                        style="cursor: pointer; user-select: none;"
+                      >
                         {#if estaCarregando}
                           <span style="color: #666; font-style: italic; font-size: 0.9em;">Carregando...</span>
                         {:else}
@@ -2514,6 +2620,24 @@
   }
 
   .results-table th {
+    user-select: none;
+  }
+  
+  .results-table td.cell-selected {
+    background-color: rgba(255, 182, 193, 0.3) !important; /* Light red/pink background */
+    outline: 2px solid rgba(255, 0, 0, 0.5);
+    outline-offset: -2px;
+  }
+  
+  .results-table td {
+    transition: background-color 0.15s ease, outline 0.15s ease;
+  }
+  
+  .results-table td:hover:not(.cell-selected) {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+  
+  .results-table th {
     padding: 0.75rem;
     text-align: left;
     font-weight: 600;
@@ -2531,6 +2655,17 @@
     vertical-align: middle; /* Alinhamento vertical centralizado */
     overflow: hidden;
     text-overflow: ellipsis; /* Mostrar "..." se o texto for muito longo */
+    transition: background-color 0.15s ease, outline 0.15s ease;
+  }
+  
+  .results-table td.cell-selected {
+    background-color: rgba(255, 182, 193, 0.3) !important; /* Light red/pink background */
+    outline: 2px solid rgba(255, 0, 0, 0.5);
+    outline-offset: -2px;
+  }
+  
+  .results-table td:hover:not(.cell-selected) {
+    background-color: rgba(0, 0, 0, 0.05);
   }
 
   .results-table tbody tr:hover {
