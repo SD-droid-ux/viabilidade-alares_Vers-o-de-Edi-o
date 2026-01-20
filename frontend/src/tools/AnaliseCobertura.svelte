@@ -72,8 +72,9 @@
       return caminhoRedeTotals.get(caminhoKey) || 0;
     }
     
-    // Se algum valor é N/A, não buscar
-    if (olt === 'N/A' || slot === 'N/A' || pon === 'N/A' || !olt || !slot || !pon) {
+    // Se algum valor é N/A ou vazio, não buscar
+    if (!olt || !slot || !pon || olt === 'N/A' || slot === 'N/A' || pon === 'N/A' || olt.trim() === '' || slot.trim() === '' || pon.trim() === '') {
+      console.warn(`⚠️ Valores inválidos para caminho de rede: olt="${olt}", slot="${slot}", pon="${pon}"`);
       return 0;
     }
     
@@ -91,9 +92,10 @@
         caminhoRedeTotals = newTotals;
         
         console.log(`✅ Total de portas para ${olt} / ${slot} / ${pon}: ${data.total_portas} (${data.total_ctos} CTOs)`);
+        console.log(`📊 Map atualizado. Tamanho: ${caminhoRedeTotals.size}, Chaves:`, Array.from(caminhoRedeTotals.keys()));
         return data.total_portas;
       } else {
-        console.warn(`⚠️ Erro ao buscar total de portas para ${olt} / ${slot} / ${pon}:`, data.error);
+        console.warn(`⚠️ Erro ao buscar total de portas para ${olt} / ${slot} / ${pon}:`, data);
         return 0;
       }
     } catch (err) {
@@ -114,34 +116,68 @@
     const caminhosUnicos = new Set();
     for (const cto of ctos) {
       const caminhoKey = getCaminhoRedeKey(cto);
-      if (caminhoKey && !caminhoKey.includes('N/A')) {
+      // Verificar se o caminho é válido (não é N/A e não está vazio)
+      if (caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||') {
         caminhosUnicos.add(caminhoKey);
       }
+    }
+    
+    console.log(`🔍 Calculando totais para ${caminhosUnicos.size} caminhos de rede únicos:`, Array.from(caminhosUnicos));
+    
+    if (caminhosUnicos.size === 0) {
+      console.warn('⚠️ Nenhum caminho de rede válido encontrado nas CTOs');
+      return;
     }
     
     // Buscar total de portas para cada caminho de rede único em paralelo
     const promises = Array.from(caminhosUnicos).map(caminhoKey => {
       const [olt, slot, pon] = caminhoKey.split('|');
+      console.log(`📡 Buscando total para caminho: ${olt} / ${slot} / ${pon}`);
       return fetchCaminhoRedeTotal(olt, slot, pon);
     });
     
     // Aguardar todas as buscas completarem
-    await Promise.all(promises);
+    const results = await Promise.all(promises);
+    console.log(`✅ Totais calculados para ${results.length} caminhos de rede`);
   }
   
   // Função para obter total de portas do caminho de rede de uma CTO
   function getCaminhoRedeTotal(cto) {
-    if (!cto || !caminhoRedeTotals) return 0;
+    if (!cto || !caminhoRedeTotals) {
+      console.warn('⚠️ getCaminhoRedeTotal: CTO ou Map inválido', { cto: !!cto, map: !!caminhoRedeTotals });
+      return 0;
+    }
     const caminhoKey = getCaminhoRedeKey(cto);
-    return caminhoRedeTotals.get(caminhoKey) || 0;
+    const total = caminhoRedeTotals.get(caminhoKey) || 0;
+    if (total === 0 && caminhoKey && !caminhoKey.includes('N/A')) {
+      console.warn(`⚠️ getCaminhoRedeTotal: Total 0 para caminho "${caminhoKey}". Map tem ${caminhoRedeTotals.size} chaves:`, Array.from(caminhoRedeTotals.keys()));
+    }
+    return total;
   }
+  
+  // Variável reativa para forçar atualização quando os totais mudarem
+  let caminhoRedeTotalsVersion = 0;
   
   // Recalcular quando a lista de CTOs mudar
   $: if (ctos && ctos.length > 0) {
-    calculateCaminhoRedeTotals();
+    // Chamar função async de forma adequada
+    (async () => {
+      try {
+        console.log(`🔄 Iniciando cálculo de totais para ${ctos.length} CTOs`);
+        await calculateCaminhoRedeTotals();
+        // Incrementar versão para forçar re-render
+        caminhoRedeTotalsVersion++;
+        console.log(`✅ Cálculo concluído. Versão: ${caminhoRedeTotalsVersion}, Map size: ${caminhoRedeTotals.size}`);
+        // Forçar atualização após cálculo
+        await tick();
+      } catch (err) {
+        console.error('❌ Erro ao calcular totais do caminho de rede:', err);
+      }
+    })();
   } else {
     caminhoRedeTotals = new Map();
     caminhoRedeLoading.clear();
+    caminhoRedeTotalsVersion = 0;
   }
   
   // Estados reativos para checkbox "marcar todos"
@@ -1720,7 +1756,8 @@
                   {#each ctos as cto}
                     {@const ctoKey = getCTOKey(cto)}
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
-                    {@const caminhoTotal = getCaminhoRedeTotal(cto)}
+                    {@const caminhoKey = getCaminhoRedeKey(cto)}
+                    {@const caminhoTotal = caminhoRedeTotalsVersion >= 0 ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0}
                     <tr>
                       <td style="text-align: center; padding: 0.5rem;">
                         <input 
