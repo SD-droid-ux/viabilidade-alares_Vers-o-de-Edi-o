@@ -1307,6 +1307,87 @@ app.get('/api/ctos/search', async (req, res) => {
   }
 });
 
+// Rota para buscar total de portas por caminho de rede
+app.get('/api/ctos/caminho-rede', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    const olt = req.query.olt; // CHASSE (campo olt na tabela)
+    const slot = req.query.slot; // PLACA (campo slot na tabela)
+    const pon = req.query.pon; // OLT (campo pon na tabela)
+    
+    if (!olt || !slot || !pon) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Parâmetros olt, slot e pon são obrigatórios' 
+      });
+    }
+    
+    console.log(`🔍 [API] Buscando total de portas para caminho de rede: ${olt} / ${slot} / ${pon}`);
+    
+    if (supabase && isSupabaseAvailable()) {
+      try {
+        // Buscar TODAS as CTOs com esse caminho de rede
+        const { data, error } = await supabase
+          .from('ctos')
+          .select('portas')
+          .eq('olt', olt)
+          .eq('slot', slot)
+          .eq('pon', pon);
+        
+        if (error) {
+          console.error('❌ [API] Erro ao buscar CTOs do caminho de rede:', error);
+          throw error;
+        }
+        
+        // Calcular total de portas
+        const totalPortas = (data || []).reduce((sum, cto) => {
+          return sum + (parseInt(cto.portas || 0) || 0);
+        }, 0);
+        
+        console.log(`✅ [API] Caminho de rede ${olt} / ${slot} / ${pon}: ${data?.length || 0} CTOs, ${totalPortas} portas totais`);
+        
+        return res.json({
+          success: true,
+          caminho_rede: {
+            olt: olt,
+            slot: slot,
+            pon: pon
+          },
+          total_ctos: data?.length || 0,
+          total_portas: totalPortas
+        });
+      } catch (supabaseErr) {
+        console.error('❌ [API] Erro ao buscar CTOs do Supabase:', supabaseErr);
+        return res.status(500).json({ 
+          success: false,
+          error: 'Erro ao buscar CTOs', 
+          details: supabaseErr.message 
+        });
+      }
+    } else {
+      return res.status(503).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/ctos/caminho-rede:', err);
+    return res.status(500).json({ 
+      success: false,
+      error: 'Erro interno', 
+      details: err.message 
+    });
+  }
+});
+
 // Rota OTIMIZADA: Buscar apenas prédios/condomínios dentro de 250m
 app.get('/api/condominios/nearby', async (req, res) => {
   try {
