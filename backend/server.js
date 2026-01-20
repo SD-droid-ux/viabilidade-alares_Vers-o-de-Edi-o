@@ -1388,6 +1388,119 @@ app.get('/api/ctos/caminho-rede', async (req, res) => {
   }
 });
 
+// Rota OTIMIZADA: Buscar totais de múltiplos caminhos de rede de uma vez
+app.post('/api/ctos/caminhos-rede-batch', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    const { caminhos } = req.body; // Array de objetos { olt, slot, pon }
+    
+    if (!Array.isArray(caminhos) || caminhos.length === 0) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Parâmetro caminhos deve ser um array não vazio' 
+      });
+    }
+    
+    console.log(`🔍 [API] Buscando totais para ${caminhos.length} caminhos de rede em batch`);
+    
+    if (!supabase || !isSupabaseAvailable()) {
+      return res.status(503).json({ 
+        success: false,
+        error: 'Supabase não disponível' 
+      });
+    }
+    
+    try {
+      // Buscar todos os caminhos de uma vez usando OR conditions
+      // Construir query dinâmica para múltiplos caminhos
+      const resultados = {};
+      
+      // Processar em lotes para evitar query muito grande
+      const BATCH_SIZE = 50; // Processar até 50 caminhos por vez
+      
+      for (let i = 0; i < caminhos.length; i += BATCH_SIZE) {
+        const batch = caminhos.slice(i, i + BATCH_SIZE);
+        
+        // Construir filtros OR para cada caminho no batch
+        const orConditions = batch.map(caminho => {
+          return `and.olt.eq.${caminho.olt},and.slot.eq.${caminho.slot},and.pon.eq.${caminho.pon}`;
+        });
+        
+        // Para cada caminho no batch, fazer uma query separada (mais simples e confiável)
+        const batchPromises = batch.map(async (caminho) => {
+          const caminhoKey = `${caminho.olt}|${caminho.slot}|${caminho.pon}`;
+          
+          try {
+            const { data, error } = await supabase
+              .from('ctos')
+              .select('portas')
+              .eq('olt', caminho.olt)
+              .eq('slot', caminho.slot)
+              .eq('pon', caminho.pon);
+            
+            if (error) {
+              console.error(`❌ [API] Erro ao buscar caminho ${caminhoKey}:`, error);
+              return { caminhoKey, total_portas: 0, total_ctos: 0, error: error.message };
+            }
+            
+            const totalPortas = (data || []).reduce((sum, cto) => {
+              return sum + (parseInt(cto.portas || 0) || 0);
+            }, 0);
+            
+            return {
+              caminhoKey,
+              caminho_rede: caminho,
+              total_portas: totalPortas,
+              total_ctos: data?.length || 0
+            };
+          } catch (err) {
+            console.error(`❌ [API] Erro ao processar caminho ${caminhoKey}:`, err);
+            return { caminhoKey, total_portas: 0, total_ctos: 0, error: err.message };
+          }
+        });
+        
+        const batchResults = await Promise.all(batchPromises);
+        
+        // Adicionar resultados ao objeto final
+        for (const result of batchResults) {
+          resultados[result.caminhoKey] = result;
+        }
+      }
+      
+      console.log(`✅ [API] Batch completo: ${Object.keys(resultados).length} caminhos processados`);
+      
+      return res.json({
+        success: true,
+        resultados: resultados,
+        total_caminhos: caminhos.length,
+        caminhos_processados: Object.keys(resultados).length
+      });
+    } catch (supabaseErr) {
+      console.error('❌ [API] Erro ao buscar caminhos do Supabase:', supabaseErr);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao buscar caminhos',
+        details: supabaseErr.message
+      });
+    }
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/ctos/caminhos-rede-batch:', err);
+    return res.status(500).json({ 
+      success: false,
+      error: 'Erro interno', 
+      details: err.message 
+    });
+  }
+});
+
 // Rota OTIMIZADA: Buscar apenas prédios/condomínios dentro de 250m
 app.get('/api/condominios/nearby', async (req, res) => {
   try {
