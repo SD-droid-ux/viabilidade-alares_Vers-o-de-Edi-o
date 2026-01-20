@@ -1101,7 +1101,10 @@
               <h4 style="margin: 0 0 8px 0; color: #1e40af; font-size: 16px;">CTO #${numbers[i]}: ${String(cto.nome || 'N/A')}</h4>
               <strong>Cidade:</strong> ${String(cto.cidade || 'N/A')}<br>
               <strong>POP:</strong> ${String(cto.pop || 'N/A')}<br>
-              <strong>ID:</strong> ${String(cto.id || 'N/A')}<br>
+              <strong>OLT:</strong> ${String(cto.olt || 'N/A')}<br>
+              <strong>Slot:</strong> ${String(cto.slot || 'N/A')}<br>
+              <strong>PON:</strong> ${String(cto.pon || 'N/A')}<br>
+              <strong>ID CTO:</strong> ${String(cto.id_cto || cto.id || 'N/A')}<br>
               <strong>Status:</strong> <span style="color: ${isAtiva ? '#28A745' : '#DC3545'}; font-weight: bold;">${String(statusCto || 'N/A')}</span><br>
               <strong>Total de Portas:</strong> ${Number(cto.vagas_total || 0)}<br>
               <strong>Portas Conectadas:</strong> ${Number(cto.clientes_conectados || 0)}<br>
@@ -1607,6 +1610,10 @@
                     <th>CTO</th>
                     <th>Cidade</th>
                     <th>POP</th>
+                    <th>OLT</th>
+                    <th>Slot</th>
+                    <th>PON</th>
+                    <th>ID CTO</th>
                     <th>Portas Total</th>
                     <th>Ocupadas</th>
                     <th>Disponíveis</th>
@@ -1635,6 +1642,10 @@
                       <td><strong>{cto.nome}</strong></td>
                       <td>{cto.cidade}</td>
                       <td>{cto.pop || 'N/A'}</td>
+                      <td>{cto.olt || 'N/A'}</td>
+                      <td>{cto.slot || 'N/A'}</td>
+                      <td>{cto.pon || 'N/A'}</td>
+                      <td>{cto.id_cto || cto.id || 'N/A'}</td>
                       <td>{cto.vagas_total}</td>
                       <td>{cto.clientes_conectados}</td>
                       <td>{cto.vagas_total - cto.clientes_conectados}</td>
