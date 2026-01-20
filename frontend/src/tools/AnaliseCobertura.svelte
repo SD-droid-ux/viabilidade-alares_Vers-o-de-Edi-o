@@ -69,7 +69,9 @@
   let ultimosCaminhosCalculados = new Set(); // Rastrear quais caminhos já foram calculados
   
   // Seleção de células individuais (estilo Excel)
-  let selectedCells = new Set(); // Set de chaves "ctoKey|columnName" para células selecionadas
+  // OPÇÃO 1+2 (HÍBRIDA): Usar Set para performance + Array para reatividade
+  let selectedCells = new Set(); // Set de chaves "ctoKey|columnName" para células selecionadas (performance)
+  let selectedCellsArray = []; // Array reativo de chaves (reatividade do Svelte)
   let selectedCellsVersion = 0; // Versão para forçar reatividade do Svelte
   let isSelecting = false; // Flag para indicar se está em modo de seleção por arrasto
   let selectionStart = null; // Célula inicial da seleção (para range) - formato "ctoKey|columnName"
@@ -79,12 +81,15 @@
   
   // Variável reativa para forçar atualização do DOM quando seleção mudar
   $: selectionTrigger = selectedCellsVersion; // Reativo: quando selectedCellsVersion muda, força re-render
+  $: selectedCellsArraySorted = [...selectedCellsArray].sort(); // Array ordenado para garantir reatividade consistente
   
   // Função auxiliar para atualizar selectedCells e forçar reatividade
+  // OPÇÃO 1+2 (HÍBRIDA): Atualiza Set (performance) + Array (reatividade) simultaneamente
   function updateSelectedCells(newSet) {
-    // IMPORTANTE: Criar um novo Set para garantir que o Svelte detecte a mudança
-    // Em JavaScript, mudar o conteúdo de um Set não dispara reatividade
-    selectedCells = new Set(newSet); // Criar novo Set para garantir reatividade
+    // OPÇÃO 1: Criar novo Set para garantir que o Svelte detecte a mudança (se necessário)
+    // OPÇÃO 2: Atualizar Array reativo em paralelo para garantir reatividade
+    selectedCells = new Set(newSet); // Set para verificações rápidas (.has())
+    selectedCellsArray = Array.from(newSet); // Array para reatividade do Svelte
     
     // Se a seleção estiver vazia, limpar célula ativa também
     if (newSet.size === 0) {
@@ -112,23 +117,31 @@
   }
   
   // Função auxiliar para verificar se célula está selecionada (reativa)
-  // IMPORTANTE: Esta função usa selectionTrigger para garantir reatividade
-  // CRÍTICO: Esta função deve ser chamada dentro do template para que o Svelte rastreie a dependência
+  // OPÇÃO 1+2 (HÍBRIDA): Usa Array para reatividade + Set para performance
+  // IMPORTANTE: Esta função deve ser chamada dentro do template para que o Svelte rastreie a dependência
   function isCellSelected(ctoKey, columnName) {
-    // Usar selectionTrigger para forçar reatividade - quando muda, todas as células são reavaliadas
-    // A leitura de selectionTrigger aqui faz o Svelte rastrear a dependência
+    // OPÇÃO 1: Acessar selectionTrigger e selectedCellsVersion para forçar reatividade
     const _trigger = selectionTrigger; // Variável reativa que força atualização
+    const _version = selectedCellsVersion; // Versão também acessada para reatividade
+    
+    // OPÇÃO 2: Acessar o Array reativo para garantir que o Svelte detecte mudanças
+    const _array = selectedCellsArraySorted; // Array reativo - leitura força dependência reativa
+    const _arrayLength = selectedCellsArray.length; // Tamanho do array também reativo
+    
+    // Usar Set para verificação rápida (performance)
     const cellKey = getCellKey(ctoKey, columnName);
-    // Usar Array.from para garantir que o Svelte rastreie a mudança no Set
-    // Mas isso é custoso, então vamos manter o Set mas garantir que selectionTrigger seja acessado
-    return selectedCells.has(cellKey);
+    return selectedCells.has(cellKey); // Set é mais rápido para .has() que Array.includes()
   }
   
   // Função auxiliar para verificar se célula é a ativa (reativa)
   function isCellActive(ctoKey, columnName) {
-    // A leitura de selectionTrigger e activeCell aqui faz o Svelte rastrear as dependências
+    // OPÇÃO 1: Acessar variáveis reativas para garantir dependência
     const _trigger = selectionTrigger; // Variável reativa que força atualização
-    const _active = activeCell; // Variável reativa
+    const _version = selectedCellsVersion; // Versão também acessada
+    
+    // OPÇÃO 2: Acessar activeCell diretamente (variável reativa)
+    const _active = activeCell; // Variável reativa - leitura força dependência
+    
     const cellKey = getCellKey(ctoKey, columnName);
     return _active === cellKey;
   }
@@ -2278,7 +2291,8 @@
                     {@const caminhoKey = getCaminhoRedeKey(cto)}
                     {@const total = caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0}
                     {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5}
-                    {@const _selectionTrigger = selectionTrigger} <!-- Forçar dependência reativa da seleção -->
+                    {@const _selectionTrigger = selectionTrigger} <!-- OPÇÃO 1: Forçar dependência reativa da seleção -->
+                    {@const _selectedCellsArray = selectedCellsArraySorted} <!-- OPÇÃO 2: Forçar dependência reativa do Array -->
                     <tr>
                       <td style="text-align: center; padding: 0.5rem;">
                         <input 
