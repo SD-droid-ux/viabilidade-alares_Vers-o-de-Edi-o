@@ -21,8 +21,10 @@ cmds = [
 cmds = [
   # Limpar cache antes do build para garantir build limpo
   "rm -rf .vite dist 2>/dev/null || true",
-  "NODE_ENV=production npm run build"
+  # Usar variável de ambiente para timeouts maiores no build
+  "NODE_ENV=production NODE_OPTIONS='--max-old-space-size=4096' npm run build"
 ]
 
 [start]
 cmd = "npm start"
+
