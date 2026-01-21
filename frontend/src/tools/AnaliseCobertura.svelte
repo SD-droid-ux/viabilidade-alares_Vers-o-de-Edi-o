@@ -1672,23 +1672,57 @@
     gridColumnApi = params.columnApi;
     console.log('✅ AG Grid pronto e inicializado');
     
-    // Atualizar dados iniciais
-    if (ctos && ctos.length > 0) {
-      gridApi.setGridOption('rowData', ctos);
-      console.log(`✅ ${ctos.length} linhas carregadas no AG Grid`);
+    // Aplicar configurações do grid através da API
+    if (gridApi) {
+      // Seleção estilo Excel - CONFIGURAÇÃO PRINCIPAL
+      gridApi.setGridOption('enableRangeSelection', true);
+      gridApi.setGridOption('enableRangeHandle', true);
+      gridApi.setGridOption('enableFillHandle', false);
+      gridApi.setGridOption('suppressMultiRangeSelection', false);
+      gridApi.setGridOption('enableClipboard', true);
+      gridApi.setGridOption('clipboardDelimiter', '\t');
       
-      // Ajustar tamanho das colunas
-      setTimeout(() => {
-        if (gridApi) {
-          try {
-            gridApi.sizeColumnsToFit();
-            console.log('✅ Colunas ajustadas automaticamente');
-          } catch (e) {
-            console.warn('⚠️ Erro ao ajustar colunas:', e);
-          }
+      // Configurações de seleção
+      gridApi.setGridOption('rowSelection', 'multiple');
+      gridApi.setGridOption('suppressRowClickSelection', true);
+      
+      // Performance e estilo
+      gridApi.setGridOption('suppressCellFocus', false);
+      gridApi.setGridOption('animateRows', true);
+      gridApi.setGridOption('enableCellTextSelection', true);
+      gridApi.setGridOption('ensureDomOrder', true);
+      
+      // getRowId
+      gridApi.setGridOption('getRowId', (params) => getCTOKey(params.data));
+      
+      // Eventos
+      gridApi.addEventListener('cellClicked', (params) => {
+        if (params.column.colId === 'checkbox') {
+          const ctoKey = getCTOKey(params.data);
+          const currentValue = ctoVisibility.get(ctoKey) !== false;
+          ctoVisibility.set(ctoKey, !currentValue);
+          ctoVisibility = ctoVisibility;
+          displayResultsOnMap();
+          gridApi.refreshCells({ columns: ['checkbox'] });
         }
-      }, 200);
+      });
+      
+      gridApi.addEventListener('selectionChanged', () => {
+        console.log('Seleção mudou:', gridApi.getSelectedRows());
+      });
     }
+    
+    // Ajustar tamanho das colunas
+    setTimeout(() => {
+      if (gridApi) {
+        try {
+          gridApi.sizeColumnsToFit();
+          console.log('✅ Colunas ajustadas automaticamente');
+        } catch (e) {
+          console.warn('⚠️ Erro ao ajustar colunas:', e);
+        }
+      }
+    }, 200);
     
     // Forçar redimensionamento do grid após renderização
     setTimeout(() => {
@@ -1894,75 +1928,8 @@
     ];
   }
   
-  // Configurações do grid - usando reactive statement para garantir reatividade
-  $: {
-    console.log('🔄 gridOptions sendo recalculado, ctos.length:', ctos?.length || 0);
-    gridOptions = {
-      columnDefs: getColumnDefs(),
-      rowData: ctos || [],
-    defaultColDef: {
-      sortable: true,
-      resizable: true,
-      filter: false,
-      editable: false
-    },
-    // Seleção estilo Excel - CONFIGURAÇÃO PRINCIPAL
-    enableRangeSelection: true, // Permitir seleção de range (bloco de células)
-    enableRangeHandle: true, // Mostrar handle para arrastar seleção
-    enableFillHandle: false, // Desabilitar fill handle (arrastar para preencher)
-    suppressMultiRangeSelection: false, // Permitir múltiplos ranges
-    suppressCopyRowsToClipboard: false, // Permitir copiar linhas
-    enableClipboard: true, // Habilitar clipboard (Ctrl+C, Ctrl+V)
-    clipboardDelimiter: '\t', // Delimitador para cópia (tab para Excel)
-    // Configurações de seleção
-    rowSelection: 'multiple', // Seleção múltipla de linhas (não usado para seleção de células)
-    suppressRowClickSelection: true, // Não selecionar linha ao clicar
-    // Estilo
-    suppressCellFocus: false, // Permitir foco em células
-    // Performance
-    animateRows: true,
-    enableCellTextSelection: true,
-    ensureDomOrder: true,
-    // Eventos
-    onCellClicked: (params) => {
-      // Manter lógica de seleção se necessário
-      if (params.column.colId === 'checkbox') {
-        const ctoKey = getCTOKey(params.data);
-        const currentValue = ctoVisibility.get(ctoKey) !== false;
-        ctoVisibility.set(ctoKey, !currentValue);
-        ctoVisibility = ctoVisibility; // Forçar reatividade
-        displayResultsOnMap();
-      }
-    },
-    onSelectionChanged: (params) => {
-      // Atualizar seleção
-      console.log('Seleção mudou:', params.api.getSelectedRows());
-    },
-    // Evento de cópia para personalizar comportamento
-    onCellKeyDown: (params) => {
-      // Capturar Ctrl+C ou Cmd+C
-      if ((params.event.ctrlKey || params.event.metaKey) && params.event.key === 'c') {
-        const ranges = params.api.getCellRanges();
-        if (ranges && ranges.length > 0) {
-          // AG Grid já cuida da cópia automaticamente com enableClipboard
-          console.log('Células copiadas:', ranges);
-        }
-      }
-    },
-    // Estilos customizados
-    rowClassRules: {
-      'selected-row': (params) => {
-        // Lógica para destacar linhas selecionadas
-        return false;
-      }
-    },
-    getRowId: (params) => {
-      // Usar chave única para cada linha
-      return getCTOKey(params.data);
-    }
-    };
-    console.log('✅ gridOptions atualizado');
-  };
+  // Variáveis reativas para o AG Grid (wrapper não oficial usa props diretas)
+  $: columnDefs = getColumnDefs();
   
   // Atualizar rowData quando ctos mudar - usar API quando disponível
   $: if (ctos && gridApi) {
@@ -2208,19 +2175,14 @@
             </div>
             {#if !isTableMinimized}
             <div class="table-wrapper ag-grid-wrapper">
-              <!-- AG Grid Component -->
-              {#if gridOptions}
-                <AgGridSvelte
-                  class="ag-theme-alpine ag-grid-custom"
-                  gridOptions={gridOptions}
-                  on:gridReady={onGridReady}
-                  style="width: 100%; height: 100%; min-height: 400px;"
-                />
-              {:else}
-                <div style="padding: 2rem; text-align: center; color: #666;">
-                  <p>Carregando tabela...</p>
-                </div>
-              {/if}
+              <!-- AG Grid Component - wrapper não oficial usa props diretas -->
+              <AgGridSvelte
+                class="ag-theme-alpine ag-grid-custom"
+                rowData={ctos}
+                {columnDefs}
+                {onGridReady}
+                style="width: 100%; height: 100%; min-height: 400px;"
+              />
             </div>
             {/if}
           </div>
