@@ -2663,7 +2663,7 @@
   
   .results-table th {
     padding: 0.75rem;
-    text-align: left;
+    text-align: center;
     font-weight: 600;
     color: #374151;
     border-bottom: 2px solid #e5e7eb;
@@ -2684,11 +2684,13 @@
     padding: 0.75rem;
     border-bottom: 1px solid #e5e7eb;
     color: #4b5563;
+    text-align: center;
   }
   
   .results-table .cto-name-cell {
     white-space: nowrap;
     min-width: 150px;
+    text-align: center;
   }
   
   .results-table tbody tr:hover {
@@ -2714,7 +2716,7 @@
   }
   
   .results-table .numeric {
-    text-align: right;
+    text-align: center;
   }
   
   .results-table .loading-text {
