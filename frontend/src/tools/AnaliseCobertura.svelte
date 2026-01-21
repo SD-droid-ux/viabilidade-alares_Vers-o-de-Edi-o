@@ -1733,6 +1733,64 @@
   }
 
 
+  // Função para limitar seleção de texto a uma única célula
+  let selectionHandler = null;
+  
+  function limitSelectionToSingleCell() {
+    const table = document.querySelector('.results-table');
+    if (!table) return;
+    
+    // Remover listener anterior se existir
+    if (selectionHandler) {
+      table.removeEventListener('mouseup', selectionHandler);
+    }
+    
+    // Criar novo handler
+    selectionHandler = (e) => {
+      // Aguardar um pouco para permitir que a seleção seja completada
+      setTimeout(() => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        
+        const range = selection.getRangeAt(0);
+        if (!range) return;
+        
+        // Encontrar células que contêm o início e fim da seleção
+        let startCell = range.startContainer;
+        let endCell = range.endContainer;
+        
+        // Navegar até encontrar o elemento TD
+        while (startCell && startCell.nodeType !== 1) {
+          startCell = startCell.parentNode;
+        }
+        while (startCell && startCell.tagName !== 'TD') {
+          startCell = startCell.parentNode;
+        }
+        
+        while (endCell && endCell.nodeType !== 1) {
+          endCell = endCell.parentNode;
+        }
+        while (endCell && endCell.tagName !== 'TD') {
+          endCell = endCell.parentNode;
+        }
+        
+        // Se a seleção cruza múltiplas células, limitar à célula onde começou
+        if (startCell && endCell && startCell !== endCell) {
+          // Limpar seleção atual
+          selection.removeAllRanges();
+          
+          // Selecionar apenas o conteúdo da célula de início
+          const newRange = document.createRange();
+          newRange.selectNodeContents(startCell);
+          selection.addRange(newRange);
+        }
+      }, 10);
+    };
+    
+    // Adicionar listener
+    table.addEventListener('mouseup', selectionHandler, true);
+  }
+
   // Inicializar ferramenta
   onMount(async () => {
     try {
@@ -1756,6 +1814,12 @@
       
       // Inicializar a ferramenta (carrega Google Maps, verifica base, inicializa mapa)
       await initializeTool();
+      
+      // Aguardar a tabela estar disponível antes de adicionar o listener
+      await tick();
+      setTimeout(() => {
+        limitSelectionToSingleCell();
+      }, 500);
     } catch (err) {
       console.error('Erro ao inicializar ferramenta:', err);
       error = 'Erro ao inicializar ferramenta: ' + err.message;
@@ -1769,6 +1833,15 @@
     if (mapObserver) {
       mapObserver.disconnect();
       mapObserver = null;
+    }
+    
+    // Limpar handler de seleção se existir
+    if (selectionHandler) {
+      const table = document.querySelector('.results-table');
+      if (table && selectionHandler) {
+        table.removeEventListener('mouseup', selectionHandler, true);
+      }
+      selectionHandler = null;
     }
   });
 </script>
@@ -2720,8 +2793,8 @@
   .results-table td {
     padding: 0.75rem;
     border-bottom: 1px solid #e5e7eb;
-    border-left: 1px solid #e5e7eb;
-    border-right: 1px solid #e5e7eb;
+    border-left: 2px solid transparent;
+    border-right: 2px solid transparent;
     color: #4b5563;
     text-align: center;
     user-select: text;
@@ -2730,14 +2803,65 @@
     -ms-user-select: text;
     cursor: text;
     position: relative;
+    /* Prevenir que a seleção se estenda para células adjacentes */
+    isolation: isolate;
+  }
+  
+  /* Criar zona não selecionável entre colunas usando pseudo-elementos */
+  .results-table td::before {
+    content: '';
+    position: absolute;
+    left: -2px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    pointer-events: none;
+    z-index: 1;
+  }
+  
+  .results-table td::after {
+    content: '';
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    pointer-events: none;
+    z-index: 1;
+  }
+  
+  /* Ativar bordas visíveis apenas no hover ou quando selecionado */
+  .results-table td:hover,
+  .results-table td:focus-within {
+    border-left-color: #d1d5db;
+    border-right-color: #d1d5db;
   }
   
   .results-table td:first-child {
     border-left: none;
   }
   
+  .results-table td:first-child::before {
+    display: none;
+  }
+  
   .results-table td:last-child {
     border-right: none;
+  }
+  
+  .results-table td:last-child::after {
+    display: none;
+  }
+  
+  /* Garantir que as células tenham espaço suficiente para evitar seleção cruzada */
+  .results-table td {
+    box-sizing: border-box;
   }
   
   /* Separar visualmente as colunas com espaçamento interno */
