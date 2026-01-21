@@ -49,9 +49,44 @@
   let filters = {}; // Objeto com filtros por coluna: { coluna: { type: 'text'|'number'|'min', value: ... } }
   let columnVisibility = {}; // Objeto com visibilidade de colunas: { coluna: true/false }
   let showFilterMenu = null; // Coluna que está mostrando o menu de filtro
+  let columnWidths = {}; // Objeto com larguras de colunas: { coluna: '100px' }
+  let resizingColumn = null; // Coluna sendo redimensionada
+  let columnResizeStartX = 0;
+  let columnResizeStartWidth = 0;
   
   // CTOs filtradas e ordenadas
   let filteredAndSortedCTOs = [];
+  
+  // Função para iniciar redimensionamento de coluna
+  function startResizeColumn(e, columnName) {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingColumn = columnName;
+    columnResizeStartX = e.clientX;
+    const header = e.target.closest('th');
+    if (header) {
+      columnResizeStartWidth = header.offsetWidth;
+    }
+    
+    document.addEventListener('mousemove', handleResizeColumn);
+    document.addEventListener('mouseup', stopResizeColumn);
+  }
+  
+  function handleResizeColumn(e) {
+    if (!resizingColumn) return;
+    
+    const diff = e.clientX - columnResizeStartX;
+    const newWidth = Math.max(50, columnResizeStartWidth + diff); // Mínimo de 50px
+    
+    columnWidths[resizingColumn] = `${newWidth}px`;
+    columnWidths = columnWidths; // Forçar reatividade
+  }
+  
+  function stopResizeColumn() {
+    resizingColumn = null;
+    document.removeEventListener('mousemove', handleResizeColumn);
+    document.removeEventListener('mouseup', stopResizeColumn);
+  }
   
   // Função para gerar uma chave única para uma CTO (declarada aqui para uso nos reactive statements)
   function getCTOKey(cto) {
@@ -2406,20 +2441,31 @@
           <div class="results-table-container" class:minimized={isTableMinimized} style="flex: {isTableMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isTableMinimized ? '60px' : '200px'};">
             <div class="table-header">
               <h3>Resultados ({filteredAndSortedCTOs.length}{Object.keys(filters).length > 0 ? ` de ${ctos.length}` : ''})</h3>
-              {#if Object.keys(filters).length > 0}
-                <button class="clear-filters-button" on:click={clearAllFilters} title="Limpar todos os filtros">
-                  🗑️ Limpar Filtros
+              <div class="table-actions">
+                {#if Object.keys(filters).length > 0}
+                  <button class="action-button" on:click={clearAllFilters} title="Limpar todos os filtros">
+                    🗑️
+                  </button>
+                {/if}
+                <button class="action-button" title="Buscar">
+                  🔍
                 </button>
-              {/if}
-              <button 
-                class="minimize-button" 
-                disabled={isResizingSidebar || isResizingMapTable}
-                on:click={() => isTableMinimized = !isTableMinimized}
-                aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
-                title={isTableMinimized ? 'Expandir' : 'Minimizar'}
-              >
-                {isTableMinimized ? '⬆️' : '⬇️'}
-              </button>
+                <button class="action-button" title="Filtrar">
+                  ⚙️
+                </button>
+                <button class="action-button" title="Exportar">
+                  ⬇️
+                </button>
+                <button 
+                  class="minimize-button" 
+                  disabled={isResizingSidebar || isResizingMapTable}
+                  on:click={() => isTableMinimized = !isTableMinimized}
+                  aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
+                  title={isTableMinimized ? 'Expandir' : 'Minimizar'}
+                >
+                  {isTableMinimized ? '⬆️' : '⬇️'}
+                </button>
+              </div>
             </div>
             {#if !isTableMinimized}
             <div class="table-wrapper">
@@ -2444,7 +2490,8 @@
                         }}
                       />
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.numero === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.numero === true} style="width: {columnWidths.numero || '60px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'numero')}></div>
                       <div class="header-content">
                         <span>#</span>
                         <div class="header-controls">
@@ -2470,7 +2517,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.nome === true}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.nome === true} style="width: {columnWidths.nome || '150px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'nome')}></div>
                       <div class="header-content">
                         <span>CTO</span>
                         <div class="header-controls">
@@ -2496,7 +2544,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.cidade === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.cidade === true} style="width: {columnWidths.cidade || '120px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'cidade')}></div>
                       <div class="header-content">
                         <span>Cidade</span>
                         <div class="header-controls">
@@ -2522,7 +2571,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.pop === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.pop === true} style="width: {columnWidths.pop || '100px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'pop')}></div>
                       <div class="header-content">
                         <span>POP</span>
                         <div class="header-controls">
@@ -2548,7 +2598,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.chasse === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.chasse === true} style="width: {columnWidths.chasse || '100px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'chasse')}></div>
                       <div class="header-content">
                         <span>CHASSE</span>
                         <div class="header-controls">
@@ -2574,7 +2625,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.placa === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.placa === true} style="width: {columnWidths.placa || '100px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'placa')}></div>
                       <div class="header-content">
                         <span>PLACA</span>
                         <div class="header-controls">
@@ -2600,7 +2652,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.olt === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.olt === true} style="width: {columnWidths.olt || '100px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'olt')}></div>
                       <div class="header-content">
                         <span>OLT</span>
                         <div class="header-controls">
@@ -2626,7 +2679,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.id_cto === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.id_cto === true} style="width: {columnWidths.id_cto || '100px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'id_cto')}></div>
                       <div class="header-content">
                         <span>ID CTO</span>
                         <div class="header-controls">
@@ -2652,7 +2706,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.portas_total === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.portas_total === true} style="width: {columnWidths.portas_total || '110px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'portas_total')}></div>
                       <div class="header-content">
                         <span>Portas Total</span>
                         <div class="header-controls">
@@ -2684,7 +2739,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.ocupadas === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.ocupadas === true} style="width: {columnWidths.ocupadas || '100px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'ocupadas')}></div>
                       <div class="header-content">
                         <span>Ocupadas</span>
                         <div class="header-controls">
@@ -2716,7 +2772,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.disponiveis === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.disponiveis === true} style="width: {columnWidths.disponiveis || '110px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'disponiveis')}></div>
                       <div class="header-content">
                         <span>Disponíveis</span>
                         <div class="header-controls">
@@ -2748,7 +2805,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.ocupacao === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.ocupacao === true} style="width: {columnWidths.ocupacao || '110px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'ocupacao')}></div>
                       <div class="header-content">
                         <span>Ocupação</span>
                         <div class="header-controls">
@@ -2780,7 +2838,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.status === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.status === true} style="width: {columnWidths.status || '100px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'status')}></div>
                       <div class="header-content">
                         <span>Status</span>
                         <div class="header-controls">
@@ -2806,7 +2865,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.total_portas_caminho === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.total_portas_caminho === true} style="width: {columnWidths.total_portas_caminho || '200px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'total_portas_caminho')}></div>
                       <div class="header-content">
                         <span>Total de Portas no Caminho de Rede</span>
                         <div class="header-controls">
@@ -2838,7 +2898,8 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:minimized={columnVisibility.total_ctos_caminho === false}>
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.total_ctos_caminho === true} style="width: {columnWidths.total_ctos_caminho || '200px'};">
+                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'total_ctos_caminho')}></div>
                       <div class="header-content">
                         <span>Total de CTOs no Caminho de Rede</span>
                         <div class="header-controls">
@@ -2894,29 +2955,29 @@
                           }}
                         />
                       </td>
-                      <td class="numeric" class:minimized={columnVisibility.numero === false}>{ctoNumbers.get(cto) || '-'}</td>
-                      <td class="cto-name-cell" class:minimized={columnVisibility.nome === false}><strong>{cto.nome || ''}</strong></td>
-                      <td class:minimized={columnVisibility.cidade === false}>{cto.cidade || 'N/A'}</td>
-                      <td class:minimized={columnVisibility.pop === false}>{cto.pop || 'N/A'}</td>
-                      <td class:minimized={columnVisibility.chasse === false}>{cto.olt || 'N/A'}</td>
-                      <td class:minimized={columnVisibility.placa === false}>{cto.slot || 'N/A'}</td>
-                      <td class:minimized={columnVisibility.olt === false}>{cto.pon || 'N/A'}</td>
-                      <td class:minimized={columnVisibility.id_cto === false}>{cto.id_cto || cto.id || 'N/A'}</td>
-                      <td class="numeric" class:minimized={columnVisibility.portas_total === false}>{cto.vagas_total || 0}</td>
-                      <td class="numeric" class:minimized={columnVisibility.ocupadas === false}>{cto.clientes_conectados || 0}</td>
-                      <td class="numeric" class:minimized={columnVisibility.disponiveis === false}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
-                      <td class:minimized={columnVisibility.ocupacao === false}>
+                      <td class="numeric" class:minimized={columnVisibility.numero === true} style="width: {columnWidths.numero || '60px'};">{ctoNumbers.get(cto) || '-'}</td>
+                      <td class="cto-name-cell" class:minimized={columnVisibility.nome === true} style="width: {columnWidths.nome || '150px'};"><strong>{cto.nome || ''}</strong></td>
+                      <td class:minimized={columnVisibility.cidade === true} style="width: {columnWidths.cidade || '120px'};">{cto.cidade || 'N/A'}</td>
+                      <td class:minimized={columnVisibility.pop === true} style="width: {columnWidths.pop || '100px'};">{cto.pop || 'N/A'}</td>
+                      <td class:minimized={columnVisibility.chasse === true} style="width: {columnWidths.chasse || '100px'};">{cto.olt || 'N/A'}</td>
+                      <td class:minimized={columnVisibility.placa === true} style="width: {columnWidths.placa || '100px'};">{cto.slot || 'N/A'}</td>
+                      <td class:minimized={columnVisibility.olt === true} style="width: {columnWidths.olt || '100px'};">{cto.pon || 'N/A'}</td>
+                      <td class:minimized={columnVisibility.id_cto === true} style="width: {columnWidths.id_cto || '100px'};">{cto.id_cto || cto.id || 'N/A'}</td>
+                      <td class="numeric" class:minimized={columnVisibility.portas_total === true} style="width: {columnWidths.portas_total || '110px'};">{cto.vagas_total || 0}</td>
+                      <td class="numeric" class:minimized={columnVisibility.ocupadas === true} style="width: {columnWidths.ocupadas || '100px'};">{cto.clientes_conectados || 0}</td>
+                      <td class="numeric" class:minimized={columnVisibility.disponiveis === true} style="width: {columnWidths.disponiveis || '110px'};">{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
+                      <td class:minimized={columnVisibility.ocupacao === true} style="width: {columnWidths.ocupacao || '110px'};">
                         <span class="occupation-badge {occupationClass}">{pctOcup.toFixed(1)}%</span>
                       </td>
-                      <td class:minimized={columnVisibility.status === false}>{cto.status_cto || 'N/A'}</td>
-                      <td class="numeric" class:minimized={columnVisibility.total_portas_caminho === false}>
+                      <td class:minimized={columnVisibility.status === true} style="width: {columnWidths.status || '100px'};">{cto.status_cto || 'N/A'}</td>
+                      <td class="numeric" class:minimized={columnVisibility.total_portas_caminho === true} style="width: {columnWidths.total_portas_caminho || '200px'};">
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
                           <strong>{total}</strong>
                         {/if}
                       </td>
-                      <td class="numeric" class:minimized={columnVisibility.total_ctos_caminho === false}>
+                      <td class="numeric" class:minimized={columnVisibility.total_ctos_caminho === true} style="width: {columnWidths.total_ctos_caminho || '200px'};">
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
@@ -3424,15 +3485,46 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    padding: 1rem;
+    background-color: white;
+    border-bottom: 1px solid #e0e0e0;
+    margin-bottom: 0;
     flex-shrink: 0;
   }
 
   .table-header h3 {
     margin: 0;
-    color: #4c1d95;
-    font-size: 1.125rem;
+    font-size: 1rem;
     font-weight: 600;
+    color: #333333;
+  }
+  
+  .table-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  
+  .action-button {
+    background: transparent;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 0.5rem;
+    cursor: pointer;
+    font-size: 1rem;
+    color: #666666;
+    transition: all 0.2s;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .action-button:hover {
+    background-color: #f5f5f5;
+    border-color: #d0d0d0;
+    color: #333333;
   }
 
   .results-table-container.minimized {
@@ -3570,30 +3662,104 @@
   .results-table {
     width: 100%;
     border-collapse: separate;
-    border-spacing: 0 0;
+    border-spacing: 0;
     font-size: 0.875rem;
-    /* Adicionar espaço mínimo entre colunas para facilitar seleção individual */
-    table-layout: auto;
+    table-layout: fixed;
+    border: 1px solid #e0e0e0;
+    background-color: white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   }
   
   .results-table thead {
-    background-color: #f9fafb;
+    background-color: #ffffff;
     position: sticky;
     top: 0;
     z-index: 10;
   }
   
   .results-table th {
-    padding: 0.65rem 0.5rem !important;
+    padding: 0.75rem 0.5rem !important;
     text-align: center;
     font-weight: 600;
-    color: #374151;
-    border-bottom: 2px solid #e5e7eb;
-    border-left: 1px solid #e5e7eb;
+    color: #333333;
+    border-bottom: 1px solid #e0e0e0;
+    border-right: 1px solid #e0e0e0;
+    border-top: none;
     white-space: nowrap !important;
     position: relative;
     vertical-align: middle !important;
     min-height: auto !important;
+    background-color: #ffffff;
+    font-size: 0.8125rem;
+  }
+  
+  .results-table th:first-child {
+    border-left: 1px solid #e0e0e0;
+  }
+  
+  .results-table th:last-child {
+    border-right: 1px solid #e0e0e0;
+  }
+  
+  .results-table td {
+    padding: 0.75rem 0.5rem;
+    text-align: center;
+    border-bottom: 1px solid #e0e0e0;
+    border-right: 1px solid #e0e0e0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background-color: white;
+    font-size: 0.8125rem;
+    color: #333333;
+  }
+  
+  .results-table td:first-child {
+    border-left: 1px solid #e0e0e0;
+  }
+  
+  .results-table td:last-child {
+    border-right: 1px solid #e0e0e0;
+  }
+  
+  .results-table tbody tr {
+    background-color: white;
+  }
+  
+  .results-table tbody tr:nth-child(even) td {
+    background-color: #fafafa;
+  }
+  
+  .results-table tbody tr:hover td {
+    background-color: #f5f5f5;
+  }
+  
+  .results-table tbody tr:last-child td {
+    border-bottom: 1px solid #e0e0e0;
+  }
+  
+  /* Resizable column handles */
+  .resizable-header {
+    position: relative;
+  }
+  
+  .resize-handle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 4px;
+    height: 100%;
+    cursor: col-resize;
+    background-color: transparent;
+    z-index: 1;
+  }
+  
+  .resize-handle:hover {
+    background-color: rgba(123, 104, 238, 0.3);
+  }
+  
+  .resize-handle:active {
+    background-color: rgba(123, 104, 238, 0.5);
   }
   
   .results-table th.hidden,
@@ -3629,26 +3795,29 @@
   }
   
   .header-content {
-    display: flex;
-    flex-direction: column;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
     gap: 0.5rem;
-    align-items: center;
-    width: 100%;
+    padding: 0 0.25rem;
   }
   
   .header-content > span {
     font-weight: 600;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
+    flex: 1;
+    text-align: center;
+    color: #333333;
   }
   
   .header-controls {
     display: flex !important;
-    gap: 0.375rem !important;
+    gap: 0.2rem !important;
     align-items: center !important;
-    justify-content: center !important;
-    flex-wrap: wrap !important;
-    width: 100% !important;
-    margin-top: 0.25rem;
+    justify-content: flex-end !important;
+    flex-shrink: 0;
     visibility: visible !important;
     opacity: 1 !important;
   }
@@ -3658,18 +3827,18 @@
   .toggle-column-button {
     background: transparent !important;
     border: 1px solid rgba(0, 0, 0, 0.1) !important;
-    border-radius: 4px;
+    border-radius: 3px;
     padding: 0.2rem 0.35rem !important;
     cursor: pointer;
-    font-size: 0.75rem !important;
-    color: #6b7280 !important;
+    font-size: 0.7rem !important;
+    color: #666666 !important;
     transition: all 0.15s ease;
     width: 22px !important;
     height: 22px !important;
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    margin: 0 0.15rem;
+    margin: 0 0.1rem;
     font-weight: 400;
     line-height: 1;
     box-shadow: none;
@@ -3678,16 +3847,21 @@
   .sort-button:hover,
   .filter-button:hover,
   .toggle-column-button:hover {
-    background: rgba(123, 104, 238, 0.08) !important;
-    border-color: rgba(123, 104, 238, 0.3) !important;
-    color: #7B68EE !important;
+    background: #f5f5f5 !important;
+    border-color: #d0d0d0 !important;
+    color: #333333 !important;
   }
   
   .sort-button:active,
   .filter-button:active,
   .toggle-column-button:active {
     transform: scale(0.95);
-    background: rgba(123, 104, 238, 0.12) !important;
+    background: #eeeeee !important;
+  }
+  
+  .filter-button:has-text("●") {
+    color: #7B68EE !important;
+    border-color: rgba(123, 104, 238, 0.3) !important;
   }
   
   .sort-button:hover,
