@@ -450,6 +450,7 @@
     map = new google.maps.Map(mapElement, {
       center: { lat: -23.5505, lng: -46.6333 }, // São Paulo como padrão
       zoom: 13,
+      mapId: 'DEMO_MAP_ID', // Necessário para AdvancedMarkerElement
       mapTypeControl: true,
       streetViewControl: true,
       fullscreenControl: true,
@@ -1793,58 +1794,9 @@
         lockPosition: true,
         checkboxSelection: false,
         sortable: false,
-        filter: false,
-        headerComponent: function(params) {
-          const wrapper = document.createElement('div');
-          wrapper.style.textAlign = 'center';
-          wrapper.style.display = 'flex';
-          wrapper.style.alignItems = 'center';
-          wrapper.style.justifyContent = 'center';
-          wrapper.style.height = '100%';
-          
-          const checkbox = document.createElement('input');
-          checkbox.type = 'checkbox';
-          checkbox.checked = allCTOsVisible;
-          checkbox.indeterminate = someCTOsVisible;
-          checkbox.style.cursor = 'pointer';
-          checkbox.style.width = '18px';
-          checkbox.style.height = '18px';
-          checkbox.style.margin = '0';
-          
-          // Função para atualizar checkbox do cabeçalho
-          const updateHeaderCheckbox = () => {
-            checkbox.checked = allCTOsVisible;
-            checkbox.indeterminate = someCTOsVisible;
-          };
-          
-          // Atualizar quando visibilidade mudar
-          const interval = setInterval(() => {
-            updateHeaderCheckbox();
-          }, 100);
-          
-          checkbox.addEventListener('change', (e) => {
-            const isChecked = e.target.checked;
-            const newVisibility = new Map();
-            for (const cto of ctos) {
-              const ctoKey = getCTOKey(cto);
-              newVisibility.set(ctoKey, isChecked);
-            }
-            ctoVisibility = newVisibility;
-            displayResultsOnMap();
-            if (gridApi) {
-              gridApi.refreshCells({ columns: ['checkbox'] });
-            }
-            updateHeaderCheckbox();
-          });
-          
-          // Limpar intervalo quando componente for destruído
-          params.api.addEventListener('destroy', () => {
-            clearInterval(interval);
-          });
-          
-          wrapper.appendChild(checkbox);
-          return wrapper;
-        }
+        filter: false
+        // Removido headerComponent customizado - causava erro "e is not a constructor"
+        // O headerCheckboxSelection já está configurado e funciona automaticamente com rowSelection="multiple"
       },
       {
         headerName: 'CTO',
@@ -1978,6 +1930,10 @@
   // Inicializar ferramenta
   onMount(async () => {
     try {
+      // Garantir que mapa e tabela estejam visíveis ao carregar
+      isMapMinimized = false;
+      isTableMinimized = false;
+      
       // Carregar preferências de redimensionamento
       loadResizePreferences();
       
