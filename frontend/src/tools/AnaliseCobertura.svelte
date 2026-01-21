@@ -1735,60 +1735,195 @@
 
   // Função para limitar seleção de texto a uma única célula
   let selectionHandler = null;
+  let mouseDownCell = null;
   
   function limitSelectionToSingleCell() {
     const table = document.querySelector('.results-table');
     if (!table) return;
     
-    // Remover listener anterior se existir
+    // Remover listeners anteriores se existirem
     if (selectionHandler) {
-      table.removeEventListener('mouseup', selectionHandler);
+      table.removeEventListener('mousedown', selectionHandler.mousedown);
+      table.removeEventListener('mouseup', selectionHandler.mouseup);
+      table.removeEventListener('selectstart', selectionHandler.selectstart);
     }
     
-    // Criar novo handler
-    selectionHandler = (e) => {
-      // Aguardar um pouco para permitir que a seleção seja completada
-      setTimeout(() => {
-        const selection = window.getSelection();
-        if (!selection || selection.rangeCount === 0) return;
-        
-        const range = selection.getRangeAt(0);
-        if (!range) return;
-        
-        // Encontrar células que contêm o início e fim da seleção
-        let startCell = range.startContainer;
-        let endCell = range.endContainer;
-        
-        // Navegar até encontrar o elemento TD
-        while (startCell && startCell.nodeType !== 1) {
-          startCell = startCell.parentNode;
+    // Criar novos handlers
+    selectionHandler = {
+      mousedown: (e) => {
+        // Encontrar a célula onde o mouse foi pressionado
+        let target = e.target;
+        while (target && target.tagName !== 'TD' && target.tagName !== 'TH') {
+          target = target.parentNode;
         }
-        while (startCell && startCell.tagName !== 'TD') {
-          startCell = startCell.parentNode;
-        }
-        
-        while (endCell && endCell.nodeType !== 1) {
-          endCell = endCell.parentNode;
-        }
-        while (endCell && endCell.tagName !== 'TD') {
-          endCell = endCell.parentNode;
-        }
-        
-        // Se a seleção cruza múltiplas células, limitar à célula onde começou
-        if (startCell && endCell && startCell !== endCell) {
-          // Limpar seleção atual
-          selection.removeAllRanges();
+        mouseDownCell = target;
+      },
+      
+      mouseup: (e) => {
+        // Aguardar um pouco para permitir que a seleção seja completada
+        setTimeout(() => {
+          const selection = window.getSelection();
+          if (!selection || selection.rangeCount === 0) {
+            mouseDownCell = null;
+            return;
+          }
           
-          // Selecionar apenas o conteúdo da célula de início
-          const newRange = document.createRange();
-          newRange.selectNodeContents(startCell);
-          selection.addRange(newRange);
+          const range = selection.getRangeAt(0);
+          if (!range) {
+            mouseDownCell = null;
+            return;
+          }
+          
+          // Encontrar células que contêm o início e fim da seleção
+          let startCell = range.startContainer;
+          let endCell = range.endContainer;
+          
+          // Função auxiliar para encontrar célula pai
+          const findParentCell = (node) => {
+            while (node && node.nodeType !== 1) {
+              node = node.parentNode;
+            }
+            while (node && node.tagName !== 'TD' && node.tagName !== 'TH') {
+              node = node.parentNode;
+            }
+            return node;
+          };
+          
+          // Função auxiliar para obter o índice da coluna de uma célula
+          const getCellColumnIndex = (cell) => {
+            if (!cell) return -1;
+            const row = cell.parentNode;
+            if (!row) return -1;
+            const cells = Array.from(row.children);
+            return cells.indexOf(cell);
+          };
+          
+          startCell = findParentCell(startCell);
+          endCell = findParentCell(endCell);
+          
+          // Se a seleção cruza múltiplas células
+          if (startCell && endCell && startCell !== endCell) {
+            const startColIndex = getCellColumnIndex(startCell);
+            const endColIndex = getCellColumnIndex(endCell);
+            
+            // Se estão na mesma coluna, permitir seleção vertical (múltiplas linhas da mesma coluna)
+            if (startColIndex === endColIndex && startColIndex !== -1) {
+              // Verificar se a seleção é realmente vertical (mesma coluna)
+              // Se sim, permitir e extrair apenas o texto dessa coluna
+              const selectedText = selection.toString();
+              const lines = selectedText.split('\n');
+              
+              // Verificar se o texto selecionado contém conteúdo de múltiplas colunas (separado por tabulação ou espaços excessivos)
+              const hasMultipleColumns = lines.some(line => {
+                // Se a linha contém muitos espaços ou tabulações, provavelmente tem múltiplas colunas
+                const parts = line.split(/\s+/).filter(p => p.length > 0);
+                return parts.length > 2; // Mais de 2 partes indica múltiplas colunas
+              });
+              
+              if (hasMultipleColumns) {
+                // Extrair apenas o conteúdo da coluna selecionada
+                const startRow = startCell.parentNode;
+                const endRow = endCell.parentNode;
+                const rows = Array.from(table.querySelectorAll('tbody tr'));
+                const startRowIndex = rows.indexOf(startRow);
+                const endRowIndex = rows.indexOf(endRow);
+                
+                if (startRowIndex !== -1 && endRowIndex !== -1) {
+                  // Extrair apenas os valores da coluna selecionada
+                  const columnValues = [];
+                  const minRow = Math.min(startRowIndex, endRowIndex);
+                  const maxRow = Math.max(startRowIndex, endRowIndex);
+                  
+                  for (let i = minRow; i <= maxRow; i++) {
+                    const row = rows[i];
+                    if (row) {
+                      const cells = Array.from(row.querySelectorAll('td'));
+                      if (cells[startColIndex]) {
+                        const cellText = cells[startColIndex].textContent.trim();
+                        if (cellText) {
+                          columnValues.push(cellText);
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Limpar seleção atual
+                  selection.removeAllRanges();
+                  
+                  // Criar uma seleção temporária apenas para copiar
+                  const tempDiv = document.createElement('div');
+                  tempDiv.style.position = 'absolute';
+                  tempDiv.style.left = '-9999px';
+                  tempDiv.textContent = columnValues.join('\n');
+                  document.body.appendChild(tempDiv);
+                  
+                  const newRange = document.createRange();
+                  newRange.selectNodeContents(tempDiv);
+                  selection.addRange(newRange);
+                  
+                  // Copiar para clipboard
+                  document.execCommand('copy');
+                  
+                  // Remover elemento temporário após um breve delay
+                  setTimeout(() => {
+                    document.body.removeChild(tempDiv);
+                    selection.removeAllRanges();
+                  }, 100);
+                  
+                  console.log('✅ Apenas coluna selecionada:', columnValues);
+                  return;
+                }
+              }
+            } else {
+              // Se não estão na mesma coluna, limitar a apenas uma célula
+              const targetCell = mouseDownCell || startCell;
+              
+              if (targetCell) {
+                // Limpar seleção atual
+                selection.removeAllRanges();
+                
+                // Selecionar apenas o conteúdo da célula alvo
+                const newRange = document.createRange();
+                newRange.selectNodeContents(targetCell);
+                selection.addRange(newRange);
+                
+                console.log('✅ Seleção limitada à célula:', targetCell.textContent.trim());
+              }
+            }
+          } else if (mouseDownCell && startCell && startCell !== mouseDownCell) {
+            // Se apenas uma célula foi selecionada mas diferente da inicial
+            if (mouseDownCell) {
+              selection.removeAllRanges();
+              const newRange = document.createRange();
+              newRange.selectNodeContents(mouseDownCell);
+              selection.addRange(newRange);
+            }
+          }
+          
+          mouseDownCell = null;
+        }, 50); // Aumentar timeout para garantir que a seleção seja capturada
+      },
+      
+      selectstart: (e) => {
+        // Se o usuário começar a selecionar, verificar se está dentro de uma célula
+        let target = e.target;
+        while (target && target.tagName !== 'TD' && target.tagName !== 'TH' && target !== table) {
+          target = target.parentNode;
         }
-      }, 10);
+        
+        // Se não estiver em uma célula, permitir seleção normal
+        if (!target || target === table) return;
+        
+        // Armazenar a célula inicial
+        mouseDownCell = target;
+        console.log('📍 Seleção iniciada na célula:', target.textContent.trim());
+      }
     };
     
-    // Adicionar listener
-    table.addEventListener('mouseup', selectionHandler, true);
+    // Adicionar listeners
+    table.addEventListener('mousedown', selectionHandler.mousedown, true);
+    table.addEventListener('mouseup', selectionHandler.mouseup, true);
+    table.addEventListener('selectstart', selectionHandler.selectstart, true);
   }
 
   // Inicializar ferramenta
@@ -1839,7 +1974,9 @@
     if (selectionHandler) {
       const table = document.querySelector('.results-table');
       if (table && selectionHandler) {
-        table.removeEventListener('mouseup', selectionHandler, true);
+        table.removeEventListener('mousedown', selectionHandler.mousedown, true);
+        table.removeEventListener('mouseup', selectionHandler.mouseup, true);
+        table.removeEventListener('selectstart', selectionHandler.selectstart, true);
       }
       selectionHandler = null;
     }
@@ -2805,6 +2942,21 @@
     position: relative;
     /* Prevenir que a seleção se estenda para células adjacentes */
     isolation: isolate;
+    /* Criar contexto de empilhamento para isolar seleção */
+    z-index: 0;
+  }
+  
+  /* Quando uma célula está sendo selecionada, aumentar z-index para isolá-la */
+  .results-table td:active {
+    z-index: 1;
+  }
+  
+  /* Prevenir seleção entre células usando pointer-events nas bordas */
+  .results-table td::before,
+  .results-table td::after {
+    pointer-events: auto;
+    user-select: none;
+    -webkit-user-select: none;
   }
   
   /* Criar zona não selecionável entre colunas usando pseudo-elementos */
