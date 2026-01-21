@@ -2685,12 +2685,22 @@
     border-bottom: 1px solid #e5e7eb;
     color: #4b5563;
     text-align: center;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    cursor: text;
   }
   
   .results-table .cto-name-cell {
     white-space: nowrap;
     min-width: 150px;
     text-align: center;
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    cursor: text;
   }
   
   .results-table tbody tr:hover {
@@ -2707,12 +2717,21 @@
   
   .results-table .checkbox-cell {
     text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    cursor: default;
   }
   
   .results-table .checkbox-cell input[type="checkbox"] {
     cursor: pointer;
     width: 18px;
     height: 18px;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
   }
   
   .results-table .numeric {
