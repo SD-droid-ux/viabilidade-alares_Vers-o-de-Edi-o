@@ -63,6 +63,8 @@
   
   // Map para armazenar o total de portas por caminho de rede (busca da base de dados)
   let caminhoRedeTotals = new Map();
+  // Map para armazenar o total de CTOs por caminho de rede
+  let caminhoRedeCTOsTotals = new Map();
   let caminhoRedeLoading = new Set(); // Caminhos que estão sendo carregados
   let caminhosCarregando = false; // Flag para indicar se ainda está carregando totais
   let calculandoTotais = false; // Flag para evitar múltiplas execuções simultâneas
@@ -170,6 +172,7 @@
     }
     for (const key of caminhosParaRemover) {
       caminhoRedeTotals.delete(key);
+      caminhoRedeCTOsTotals.delete(key);
     }
     
     caminhoRedeLoading.clear();
@@ -231,21 +234,26 @@
       const data = await response.json();
       
       if (data.success && data.resultados) {
-        // Atualizar o Map com todos os resultados de uma vez
+        // Atualizar o Map com todos os resultados de uma vez (portas e CTOs)
         const newTotals = new Map(caminhoRedeTotals);
+        const newCTOsTotals = new Map(caminhoRedeCTOsTotals);
         
         for (const caminhoKey of caminhosParaCalcular) {
           const resultado = data.resultados[caminhoKey];
           if (resultado && resultado.total_portas !== undefined) {
             newTotals.set(caminhoKey, resultado.total_portas);
+            // Armazenar também o total de CTOs
+            newCTOsTotals.set(caminhoKey, resultado.total_ctos || 0);
             console.log(`✅ ${caminhoKey}: ${resultado.total_portas} portas (${resultado.total_ctos} CTOs)`);
           } else {
             console.warn(`⚠️ Sem resultado para ${caminhoKey}`);
             newTotals.set(caminhoKey, 0);
+            newCTOsTotals.set(caminhoKey, 0);
           }
         }
         
         caminhoRedeTotals = newTotals;
+        caminhoRedeCTOsTotals = newCTOsTotals;
         ultimosCaminhosCalculados = novosCaminhos;
         
         console.log(`✅ Batch completo! ${Object.keys(data.resultados).length} caminhos processados`);
@@ -258,10 +266,13 @@
       console.error('❌ Erro ao buscar totais em batch:', err);
       // Em caso de erro, marcar todos como 0 para não ficar travado
       const newTotals = new Map(caminhoRedeTotals);
+      const newCTOsTotals = new Map(caminhoRedeCTOsTotals);
       for (const caminhoKey of caminhosParaCalcular) {
         newTotals.set(caminhoKey, 0);
+        newCTOsTotals.set(caminhoKey, 0);
       }
       caminhoRedeTotals = newTotals;
+      caminhoRedeCTOsTotals = newCTOsTotals;
     } finally {
       // Marcar como concluído
       calculandoTotais = false;
@@ -285,6 +296,17 @@
     if (total === 0 && caminhoKey && !caminhoKey.includes('N/A')) {
       console.warn(`⚠️ getCaminhoRedeTotal: Total 0 para caminho "${caminhoKey}". Map tem ${caminhoRedeTotals.size} chaves:`, Array.from(caminhoRedeTotals.keys()));
     }
+    return total;
+  }
+  
+  // Função para obter total de CTOs do caminho de rede
+  function getCaminhoRedeCTOsTotal(cto) {
+    if (!cto || !caminhoRedeCTOsTotals) {
+      console.warn('⚠️ getCaminhoRedeCTOsTotal: CTO ou Map inválido', { cto: !!cto, map: !!caminhoRedeCTOsTotals });
+      return 0;
+    }
+    const caminhoKey = getCaminhoRedeKey(cto);
+    const total = caminhoRedeCTOsTotals.get(caminhoKey) || 0;
     return total;
   }
   
@@ -359,6 +381,7 @@
       timeoutId = null;
     }
     caminhoRedeTotals = new Map();
+    caminhoRedeCTOsTotals = new Map();
     caminhoRedeLoading.clear();
     caminhoRedeTotalsVersion = 0;
     caminhosCarregando = false;
@@ -1958,6 +1981,7 @@
                     <th>Ocupação</th>
                     <th>Status</th>
                     <th>Total de Portas no Caminho de Rede</th>
+                    <th>Total de CTOs no Caminho de Rede</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2002,6 +2026,13 @@
                           <span class="loading-text">Carregando...</span>
                         {:else}
                           <strong>{total}</strong>
+                        {/if}
+                      </td>
+                      <td class="numeric">
+                        {#if estaCarregando}
+                          <span class="loading-text">Carregando...</span>
+                        {:else}
+                          <strong>{getCaminhoRedeCTOsTotal(cto)}</strong>
                         {/if}
                       </td>
                     </tr>
