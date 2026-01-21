@@ -2681,8 +2681,11 @@
   
   .results-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0 0;
     font-size: 0.875rem;
+    /* Adicionar espaço mínimo entre colunas para facilitar seleção individual */
+    table-layout: auto;
   }
   
   .results-table thead {
@@ -2698,10 +2701,13 @@
     font-weight: 600;
     color: #374151;
     border-bottom: 2px solid #e5e7eb;
+    border-left: 1px solid #e5e7eb;
     white-space: nowrap;
+    position: relative;
   }
   
   .results-table th:first-child {
+    border-left: none;
     text-align: center;
     width: 50px;
   }
@@ -2714,6 +2720,8 @@
   .results-table td {
     padding: 0.75rem;
     border-bottom: 1px solid #e5e7eb;
+    border-left: 1px solid #e5e7eb;
+    border-right: 1px solid #e5e7eb;
     color: #4b5563;
     text-align: center;
     user-select: text;
@@ -2721,6 +2729,46 @@
     -moz-user-select: text;
     -ms-user-select: text;
     cursor: text;
+    position: relative;
+  }
+  
+  .results-table td:first-child {
+    border-left: none;
+  }
+  
+  .results-table td:last-child {
+    border-right: none;
+  }
+  
+  /* Separar visualmente as colunas com espaçamento interno */
+  .results-table td:not(:first-child) {
+    padding-left: 1.25rem;
+  }
+  
+  .results-table td:not(:last-child) {
+    padding-right: 1.25rem;
+  }
+  
+  .results-table th:not(:first-child) {
+    padding-left: 1.25rem;
+  }
+  
+  .results-table th:not(:last-child) {
+    padding-right: 1.25rem;
+  }
+  
+  /* Garantir que as bordas das colunas sejam visíveis e separadas */
+  .results-table td {
+    border-left-width: 2px;
+    border-right-width: 2px;
+  }
+  
+  .results-table th {
+    border-left-width: 2px;
+  }
+  
+  .results-table th:first-child {
+    border-left: none;
   }
   
   .results-table .cto-name-cell {
