@@ -2463,7 +2463,7 @@
                       </div>
                       {#if showFilterMenu === 'numero'}
                         <div class="filter-menu">
-                          <input type="number" placeholder="Filtrar por número" bind:value={filters.numero?.value || ''} on:input={(e) => applyFilter('numero', 'number', e.target.value, 'equal')} />
+                            <input type="number" placeholder="Filtrar por número" value={filters.numero?.value || ''} on:input={(e) => applyFilter('numero', 'number', e.target.value, 'equal')} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2489,7 +2489,7 @@
                       </div>
                       {#if showFilterMenu === 'nome'}
                         <div class="filter-menu">
-                          <input type="text" placeholder="Buscar CTO..." bind:value={filters.nome?.value || ''} on:input={(e) => applyFilter('nome', 'text', e.target.value)} />
+                          <input type="text" placeholder="Buscar CTO..." value={filters.nome?.value || ''} on:input={(e) => applyFilter('nome', 'text', e.target.value)} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2515,7 +2515,7 @@
                       </div>
                       {#if showFilterMenu === 'cidade'}
                         <div class="filter-menu">
-                          <input type="text" placeholder="Buscar cidade..." bind:value={filters.cidade?.value || ''} on:input={(e) => applyFilter('cidade', 'text', e.target.value)} />
+                          <input type="text" placeholder="Buscar cidade..." value={filters.cidade?.value || ''} on:input={(e) => applyFilter('cidade', 'text', e.target.value)} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2541,7 +2541,7 @@
                       </div>
                       {#if showFilterMenu === 'pop'}
                         <div class="filter-menu">
-                          <input type="text" placeholder="Buscar POP..." bind:value={filters.pop?.value || ''} on:input={(e) => applyFilter('pop', 'text', e.target.value)} />
+                          <input type="text" placeholder="Buscar POP..." value={filters.pop?.value || ''} on:input={(e) => applyFilter('pop', 'text', e.target.value)} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2567,7 +2567,7 @@
                       </div>
                       {#if showFilterMenu === 'chasse'}
                         <div class="filter-menu">
-                          <input type="text" placeholder="Buscar CHASSE..." bind:value={filters.chasse?.value || ''} on:input={(e) => applyFilter('chasse', 'text', e.target.value)} />
+                          <input type="text" placeholder="Buscar CHASSE..." value={filters.chasse?.value || ''} on:input={(e) => applyFilter('chasse', 'text', e.target.value)} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2593,7 +2593,7 @@
                       </div>
                       {#if showFilterMenu === 'placa'}
                         <div class="filter-menu">
-                          <input type="text" placeholder="Buscar PLACA..." bind:value={filters.placa?.value || ''} on:input={(e) => applyFilter('placa', 'text', e.target.value)} />
+                          <input type="text" placeholder="Buscar PLACA..." value={filters.placa?.value || ''} on:input={(e) => applyFilter('placa', 'text', e.target.value)} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2619,7 +2619,7 @@
                       </div>
                       {#if showFilterMenu === 'olt'}
                         <div class="filter-menu">
-                          <input type="text" placeholder="Buscar OLT..." bind:value={filters.olt?.value || ''} on:input={(e) => applyFilter('olt', 'text', e.target.value)} />
+                          <input type="text" placeholder="Buscar OLT..." value={filters.olt?.value || ''} on:input={(e) => applyFilter('olt', 'text', e.target.value)} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2645,7 +2645,7 @@
                       </div>
                       {#if showFilterMenu === 'id_cto'}
                         <div class="filter-menu">
-                          <input type="text" placeholder="Buscar ID..." bind:value={filters.id_cto?.value || ''} on:input={(e) => applyFilter('id_cto', 'text', e.target.value)} />
+                          <input type="text" placeholder="Buscar ID..." value={filters.id_cto?.value || ''} on:input={(e) => applyFilter('id_cto', 'text', e.target.value)} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2671,13 +2671,13 @@
                       </div>
                       {#if showFilterMenu === 'portas_total'}
                         <div class="filter-menu">
-                          <select bind:value={filters.portas_total?.operator || 'greater'} on:change={(e) => applyFilter('portas_total', 'number', filters.portas_total?.value || '', e.target.value)}>
+                          <select value={filters.portas_total?.operator || 'greater'} on:change={(e) => applyFilter('portas_total', 'number', filters.portas_total?.value || '', e.target.value)}>
                             <option value="greater">Maior que</option>
                             <option value="less">Menor que</option>
                             <option value="equal">Igual a</option>
                             <option value="min">Mínimo</option>
                           </select>
-                          <input type="number" placeholder="Valor" bind:value={filters.portas_total?.value || ''} on:input={(e) => applyFilter('portas_total', 'number', e.target.value, filters.portas_total?.operator || 'greater')} />
+                          <input type="number" placeholder="Valor" value={filters.portas_total?.value || ''} on:input={(e) => applyFilter('portas_total', 'number', e.target.value, filters.portas_total?.operator || 'greater')} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2703,13 +2703,13 @@
                       </div>
                       {#if showFilterMenu === 'ocupadas'}
                         <div class="filter-menu">
-                          <select bind:value={filters.ocupadas?.operator || 'greater'} on:change={(e) => applyFilter('ocupadas', 'number', filters.ocupadas?.value || '', e.target.value)}>
+                          <select value={filters.ocupadas?.operator || 'greater'} on:change={(e) => applyFilter('ocupadas', 'number', filters.ocupadas?.value || '', e.target.value)}>
                             <option value="greater">Maior que</option>
                             <option value="less">Menor que</option>
                             <option value="equal">Igual a</option>
                             <option value="min">Mínimo</option>
                           </select>
-                          <input type="number" placeholder="Valor" bind:value={filters.ocupadas?.value || ''} on:input={(e) => applyFilter('ocupadas', 'number', e.target.value, filters.ocupadas?.operator || 'greater')} />
+                          <input type="number" placeholder="Valor" value={filters.ocupadas?.value || ''} on:input={(e) => applyFilter('ocupadas', 'number', e.target.value, filters.ocupadas?.operator || 'greater')} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2735,13 +2735,13 @@
                       </div>
                       {#if showFilterMenu === 'disponiveis'}
                         <div class="filter-menu">
-                          <select bind:value={filters.disponiveis?.operator || 'greater'} on:change={(e) => applyFilter('disponiveis', 'number', filters.disponiveis?.value || '', e.target.value)}>
+                          <select value={filters.disponiveis?.operator || 'greater'} on:change={(e) => applyFilter('disponiveis', 'number', filters.disponiveis?.value || '', e.target.value)}>
                             <option value="greater">Maior que</option>
                             <option value="less">Menor que</option>
                             <option value="equal">Igual a</option>
                             <option value="min">Mínimo</option>
                           </select>
-                          <input type="number" placeholder="Valor" bind:value={filters.disponiveis?.value || ''} on:input={(e) => applyFilter('disponiveis', 'number', e.target.value, filters.disponiveis?.operator || 'greater')} />
+                          <input type="number" placeholder="Valor" value={filters.disponiveis?.value || ''} on:input={(e) => applyFilter('disponiveis', 'number', e.target.value, filters.disponiveis?.operator || 'greater')} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2767,13 +2767,13 @@
                       </div>
                       {#if showFilterMenu === 'ocupacao'}
                         <div class="filter-menu">
-                          <select bind:value={filters.ocupacao?.operator || 'greater'} on:change={(e) => applyFilter('ocupacao', 'number', filters.ocupacao?.value || '', e.target.value)}>
+                          <select value={filters.ocupacao?.operator || 'greater'} on:change={(e) => applyFilter('ocupacao', 'number', filters.ocupacao?.value || '', e.target.value)}>
                             <option value="greater">Maior que</option>
                             <option value="less">Menor que</option>
                             <option value="equal">Igual a</option>
                             <option value="min">Mínimo</option>
                           </select>
-                          <input type="number" placeholder="Valor (%)" bind:value={filters.ocupacao?.value || ''} on:input={(e) => applyFilter('ocupacao', 'number', e.target.value, filters.ocupacao?.operator || 'greater')} />
+                          <input type="number" placeholder="Valor (%)" value={filters.ocupacao?.value || ''} on:input={(e) => applyFilter('ocupacao', 'number', e.target.value, filters.ocupacao?.operator || 'greater')} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2799,7 +2799,7 @@
                       </div>
                       {#if showFilterMenu === 'status'}
                         <div class="filter-menu">
-                          <input type="text" placeholder="Buscar status..." bind:value={filters.status?.value || ''} on:input={(e) => applyFilter('status', 'text', e.target.value)} />
+                          <input type="text" placeholder="Buscar status..." value={filters.status?.value || ''} on:input={(e) => applyFilter('status', 'text', e.target.value)} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2825,13 +2825,13 @@
                       </div>
                       {#if showFilterMenu === 'total_portas_caminho'}
                         <div class="filter-menu">
-                          <select bind:value={filters.total_portas_caminho?.operator || 'greater'} on:change={(e) => applyFilter('total_portas_caminho', 'number', filters.total_portas_caminho?.value || '', e.target.value)}>
+                          <select value={filters.total_portas_caminho?.operator || 'greater'} on:change={(e) => applyFilter('total_portas_caminho', 'number', filters.total_portas_caminho?.value || '', e.target.value)}>
                             <option value="greater">Maior que</option>
                             <option value="less">Menor que</option>
                             <option value="equal">Igual a</option>
                             <option value="min">Mínimo</option>
                           </select>
-                          <input type="number" placeholder="Valor" bind:value={filters.total_portas_caminho?.value || ''} on:input={(e) => applyFilter('total_portas_caminho', 'number', e.target.value, filters.total_portas_caminho?.operator || 'greater')} />
+                          <input type="number" placeholder="Valor" value={filters.total_portas_caminho?.value || ''} on:input={(e) => applyFilter('total_portas_caminho', 'number', e.target.value, filters.total_portas_caminho?.operator || 'greater')} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
@@ -2857,13 +2857,13 @@
                       </div>
                       {#if showFilterMenu === 'total_ctos_caminho'}
                         <div class="filter-menu">
-                          <select bind:value={filters.total_ctos_caminho?.operator || 'greater'} on:change={(e) => applyFilter('total_ctos_caminho', 'number', filters.total_ctos_caminho?.value || '', e.target.value)}>
+                          <select value={filters.total_ctos_caminho?.operator || 'greater'} on:change={(e) => applyFilter('total_ctos_caminho', 'number', filters.total_ctos_caminho?.value || '', e.target.value)}>
                             <option value="greater">Maior que</option>
                             <option value="less">Menor que</option>
                             <option value="equal">Igual a</option>
                             <option value="min">Mínimo</option>
                           </select>
-                          <input type="number" placeholder="Valor" bind:value={filters.total_ctos_caminho?.value || ''} on:input={(e) => applyFilter('total_ctos_caminho', 'number', e.target.value, filters.total_ctos_caminho?.operator || 'greater')} />
+                          <input type="number" placeholder="Valor" value={filters.total_ctos_caminho?.value || ''} on:input={(e) => applyFilter('total_ctos_caminho', 'number', e.target.value, filters.total_ctos_caminho?.operator || 'greater')} />
                           <button on:click={() => showFilterMenu = null}>Fechar</button>
                         </div>
                       {/if}
