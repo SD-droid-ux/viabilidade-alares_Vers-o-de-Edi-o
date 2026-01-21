@@ -51,17 +51,24 @@
     return `${cto.nome || 'UNKNOWN'}_${lat}_${lng}`;
   }
   
-  // Função para gerar chave do caminho de rede (CHASSE/PLACA/OLT)
+  // Função para gerar chave do caminho de rede (CIDADE|POP|CHASSE|PLACA|OLT)
   function getCaminhoRedeKey(cto) {
+    const cidade = (cto.cidade || 'N/A').trim();
+    const pop = (cto.pop || 'N/A').trim();
     const chasse = (cto.olt || 'N/A').trim();
     const placa = (cto.slot || 'N/A').trim();
     const olt = (cto.pon || 'N/A').trim();
-    return `${chasse}|${placa}|${olt}`;
+    return `${cidade}|${pop}|${chasse}|${placa}|${olt}`;
   }
   
   // Map para armazenar o total de portas por caminho de rede (busca da base de dados)
   let caminhoRedeTotals = new Map();
   let caminhoRedeLoading = new Set(); // Caminhos que estão sendo carregados
+  let caminhosCarregando = false; // Flag para indicar se ainda está carregando totais
+  let calculandoTotais = false; // Flag para evitar múltiplas execuções simultâneas
+  let ultimosCaminhosCalculados = new Set(); // Rastrear quais caminhos já foram calculados
+  
+  // Código de seleção manual pode ser implementado se necessário
   
   // Função para buscar total de portas do caminho de rede da base de dados
   async function fetchCaminhoRedeTotal(olt, slot, pon) {
@@ -72,8 +79,9 @@
       return caminhoRedeTotals.get(caminhoKey) || 0;
     }
     
-    // Se algum valor é N/A, não buscar
-    if (olt === 'N/A' || slot === 'N/A' || pon === 'N/A' || !olt || !slot || !pon) {
+    // Se algum valor é N/A ou vazio, não buscar
+    if (!olt || !slot || !pon || olt === 'N/A' || slot === 'N/A' || pon === 'N/A' || olt.trim() === '' || slot.trim() === '' || pon.trim() === '') {
+      console.warn(`⚠️ Valores inválidos para caminho de rede: olt="${olt}", slot="${slot}", pon="${pon}"`);
       return 0;
     }
     
@@ -81,19 +89,34 @@
     caminhoRedeLoading.add(caminhoKey);
     
     try {
-      const response = await fetch(getApiUrl(`/api/ctos/caminho-rede?olt=${encodeURIComponent(olt)}&slot=${encodeURIComponent(slot)}&pon=${encodeURIComponent(pon)}`));
+      const url = getApiUrl(`/api/ctos/caminho-rede?olt=${encodeURIComponent(olt)}&slot=${encodeURIComponent(slot)}&pon=${encodeURIComponent(pon)}`);
+      console.log(`🌐 Fazendo requisição para: ${url}`);
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        console.error(`❌ Resposta HTTP não OK: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.error(`Erro: ${errorText}`);
+        return 0;
+      }
+      
       const data = await response.json();
+      console.log(`📥 Resposta da API para ${olt} / ${slot} / ${pon}:`, data);
       
       if (data.success && data.total_portas !== undefined) {
         // Atualizar o Map (criar novo para garantir reatividade)
-        const newTotals = new Map(caminhoRedeTotals);
+        // IMPORTANTE: Usar o Map atual para não perder valores já carregados
+        const currentTotals = caminhoRedeTotals || new Map();
+        const newTotals = new Map(currentTotals);
         newTotals.set(caminhoKey, data.total_portas);
         caminhoRedeTotals = newTotals;
         
         console.log(`✅ Total de portas para ${olt} / ${slot} / ${pon}: ${data.total_portas} (${data.total_ctos} CTOs)`);
+        console.log(`📊 Map atualizado. Tamanho: ${caminhoRedeTotals.size}, Chaves:`, Array.from(caminhoRedeTotals.keys()));
         return data.total_portas;
       } else {
-        console.warn(`⚠️ Erro ao buscar total de portas para ${olt} / ${slot} / ${pon}:`, data.error);
+        console.warn(`⚠️ Resposta da API não tem success=true ou total_portas:`, data);
         return 0;
       }
     } catch (err) {
@@ -104,44 +127,206 @@
     }
   }
   
-  // Função para calcular e buscar totais de todos os caminhos de rede únicos
+  // Função OTIMIZADA para calcular e buscar totais de todos os caminhos de rede únicos
+  // Usa uma única requisição batch em vez de múltiplas requisições individuais
   async function calculateCaminhoRedeTotals() {
-    // Limpar valores antigos
-    caminhoRedeTotals = new Map();
-    caminhoRedeLoading.clear();
+    // Evitar execuções simultâneas
+    if (calculandoTotais) {
+      console.log('⏸️ Cálculo já em andamento, ignorando chamada duplicada');
+      return;
+    }
     
     // Coletar todos os caminhos de rede únicos das CTOs
     const caminhosUnicos = new Set();
     for (const cto of ctos) {
       const caminhoKey = getCaminhoRedeKey(cto);
-      if (caminhoKey && !caminhoKey.includes('N/A')) {
+      // Verificar se o caminho é válido (não é N/A e não está vazio)
+      // Formato da chave: CIDADE|POP|CHASSE|PLACA|OLT (5 partes separadas por |)
+      if (caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5) {
         caminhosUnicos.add(caminhoKey);
       }
     }
     
-    // Buscar total de portas para cada caminho de rede único em paralelo
-    const promises = Array.from(caminhosUnicos).map(caminhoKey => {
-      const [olt, slot, pon] = caminhoKey.split('|');
-      return fetchCaminhoRedeTotal(olt, slot, pon);
-    });
+    // Verificar se os caminhos mudaram
+    const caminhosString = Array.from(caminhosUnicos).sort().join(',');
+    const ultimosCaminhosString = Array.from(ultimosCaminhosCalculados).sort().join(',');
     
-    // Aguardar todas as buscas completarem
-    await Promise.all(promises);
+    if (caminhosString === ultimosCaminhosString && caminhoRedeTotals.size > 0) {
+      console.log('✅ Caminhos não mudaram e já temos os valores, pulando recálculo');
+      return;
+    }
+    
+    // Marcar como calculando
+    calculandoTotais = true;
+    caminhosCarregando = true;
+    
+    // Limpar apenas os caminhos que não estão mais presentes
+    const novosCaminhos = new Set(caminhosUnicos);
+    const caminhosParaRemover = [];
+    for (const key of caminhoRedeTotals.keys()) {
+      if (!novosCaminhos.has(key)) {
+        caminhosParaRemover.push(key);
+      }
+    }
+    for (const key of caminhosParaRemover) {
+      caminhoRedeTotals.delete(key);
+    }
+    
+    caminhoRedeLoading.clear();
+    
+    console.log(`🔍 Calculando totais para ${caminhosUnicos.size} caminhos de rede únicos:`, Array.from(caminhosUnicos));
+    
+    if (caminhosUnicos.size === 0) {
+      console.warn('⚠️ Nenhum caminho de rede válido encontrado nas CTOs');
+      calculandoTotais = false;
+      caminhosCarregando = false;
+      return;
+    }
+    
+    // Filtrar apenas caminhos que ainda não foram calculados
+    const todosCaminhos = Array.from(caminhosUnicos);
+    const caminhosParaCalcular = todosCaminhos.filter(key => !caminhoRedeTotals.has(key));
+    
+    if (caminhosParaCalcular.length === 0) {
+      console.log('✅ Todos os caminhos já foram calculados');
+      ultimosCaminhosCalculados = novosCaminhos;
+      calculandoTotais = false;
+      caminhosCarregando = false;
+      caminhoRedeTotalsVersion++;
+      return;
+    }
+    
+    console.log(`📦 Buscando ${caminhosParaCalcular.length} novos caminhos de ${todosCaminhos.length} totais em uma única requisição batch`);
+    
+    try {
+      // Preparar array de caminhos para a requisição batch
+      // IMPORTANTE: A chave é gerada como CIDADE|POP|CHASSE|PLACA|OLT
+      // Onde CHASSE = cto.olt, PLACA = cto.slot, OLT = cto.pon
+      // Mas o backend espera olt, slot, pon nessa ordem
+      const caminhosArray = caminhosParaCalcular.map(caminhoKey => {
+        const [cidade, pop, chasse, placa, olt] = caminhoKey.split('|');
+        // Mapear corretamente: chasse -> olt, placa -> slot, olt -> pon
+        return { cidade, pop, olt: chasse, slot: placa, pon: olt };
+      });
+      
+      // Fazer uma única requisição POST com todos os caminhos
+      const url = getApiUrl('/api/ctos/caminhos-rede-batch');
+      console.log(`🚀 Fazendo requisição batch para ${caminhosArray.length} caminhos`);
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ caminhos: caminhosArray })
+      });
+      
+      if (!response.ok) {
+        console.error(`❌ Resposta HTTP não OK: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        console.error(`Erro: ${errorText}`);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.resultados) {
+        // Atualizar o Map com todos os resultados de uma vez
+        const newTotals = new Map(caminhoRedeTotals);
+        
+        for (const caminhoKey of caminhosParaCalcular) {
+          const resultado = data.resultados[caminhoKey];
+          if (resultado && resultado.total_portas !== undefined) {
+            newTotals.set(caminhoKey, resultado.total_portas);
+            console.log(`✅ ${caminhoKey}: ${resultado.total_portas} portas (${resultado.total_ctos} CTOs)`);
+          } else {
+            console.warn(`⚠️ Sem resultado para ${caminhoKey}`);
+            newTotals.set(caminhoKey, 0);
+          }
+        }
+        
+        caminhoRedeTotals = newTotals;
+        ultimosCaminhosCalculados = novosCaminhos;
+        
+        console.log(`✅ Batch completo! ${Object.keys(data.resultados).length} caminhos processados`);
+        console.log(`📊 Map atualizado. Tamanho: ${caminhoRedeTotals.size}, Chaves:`, Array.from(caminhoRedeTotals.keys()));
+      } else {
+        console.error('❌ Resposta da API não tem success=true ou resultados:', data);
+        throw new Error('Resposta inválida da API');
+      }
+    } catch (err) {
+      console.error('❌ Erro ao buscar totais em batch:', err);
+      // Em caso de erro, marcar todos como 0 para não ficar travado
+      const newTotals = new Map(caminhoRedeTotals);
+      for (const caminhoKey of caminhosParaCalcular) {
+        newTotals.set(caminhoKey, 0);
+      }
+      caminhoRedeTotals = newTotals;
+    } finally {
+      // Marcar como concluído
+      calculandoTotais = false;
+      caminhosCarregando = false;
+      caminhoRedeTotalsVersion++;
+      await tick(); // Garantir atualização do DOM
+    }
+    
+    console.log(`✅ Totais calculados para ${todosCaminhos.length} caminhos de rede`);
+    console.log(`🔄 Versão final: ${caminhoRedeTotalsVersion}. Map final tem ${caminhoRedeTotals.size} entradas`);
   }
   
   // Função para obter total de portas do caminho de rede de uma CTO
   function getCaminhoRedeTotal(cto) {
-    if (!cto || !caminhoRedeTotals) return 0;
+    if (!cto || !caminhoRedeTotals) {
+      console.warn('⚠️ getCaminhoRedeTotal: CTO ou Map inválido', { cto: !!cto, map: !!caminhoRedeTotals });
+      return 0;
+    }
     const caminhoKey = getCaminhoRedeKey(cto);
-    return caminhoRedeTotals.get(caminhoKey) || 0;
+    const total = caminhoRedeTotals.get(caminhoKey) || 0;
+    if (total === 0 && caminhoKey && !caminhoKey.includes('N/A')) {
+      console.warn(`⚠️ getCaminhoRedeTotal: Total 0 para caminho "${caminhoKey}". Map tem ${caminhoRedeTotals.size} chaves:`, Array.from(caminhoRedeTotals.keys()));
+    }
+    return total;
   }
   
-  // Recalcular quando a lista de CTOs mudar
+  // Variável reativa para forçar atualização quando os totais mudarem
+  let caminhoRedeTotalsVersion = 0;
+  
+  // Recalcular quando a lista de CTOs mudar (com debounce para evitar loops)
+  let timeoutId = null;
   $: if (ctos && ctos.length > 0) {
-    calculateCaminhoRedeTotals();
+    // Cancelar timeout anterior se existir
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    
+    // Aguardar um pouco antes de calcular para evitar múltiplas execuções
+    timeoutId = setTimeout(async () => {
+      try {
+        // Verificar novamente se ainda há CTOs (pode ter mudado durante o timeout)
+        if (ctos && ctos.length > 0 && !calculandoTotais) {
+          console.log(`🔄 Iniciando cálculo de totais para ${ctos.length} CTOs`);
+          await calculateCaminhoRedeTotals();
+          console.log(`✅ Cálculo concluído. Versão: ${caminhoRedeTotalsVersion}, Map size: ${caminhoRedeTotals.size}`);
+          await tick();
+        }
+      } catch (err) {
+        console.error('❌ Erro ao calcular totais do caminho de rede:', err);
+        calculandoTotais = false;
+        caminhosCarregando = false;
+      }
+    }, 300); // Debounce de 300ms
   } else {
+    // Limpar quando não há CTOs
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
     caminhoRedeTotals = new Map();
     caminhoRedeLoading.clear();
+    caminhoRedeTotalsVersion = 0;
+    caminhosCarregando = false;
+    calculandoTotais = false;
+    ultimosCaminhosCalculados = new Set();
   }
   
   // Estados reativos para checkbox "marcar todos"
@@ -221,10 +406,11 @@
       }
       
       // Usar as mesmas bibliotecas que ViabilidadeAlares para evitar conflitos
+      // Adicionar 'marker' para suportar AdvancedMarkerElement
       const loader = new Loader({
         apiKey: GOOGLE_MAPS_API_KEY,
         version: 'weekly',
-        libraries: ['places', 'geometry'] // Mesmas bibliotecas que ViabilidadeAlares
+        libraries: ['places', 'geometry', 'marker'] // Adicionar 'marker' para AdvancedMarkerElement
       });
       
       await loader.load();
@@ -255,6 +441,7 @@
     map = new google.maps.Map(mapElement, {
       center: { lat: -23.5505, lng: -46.6333 }, // São Paulo como padrão
       zoom: 13,
+      mapId: 'DEMO_MAP_ID', // Necessário para AdvancedMarkerElement
       mapTypeControl: true,
       streetViewControl: true,
       fullscreenControl: true,
@@ -529,16 +716,22 @@
       console.log(`✅ ${searchedCTOsList.length} CTO(s) pesquisada(s) encontrada(s)`);
 
       // Criar marcadores azuis para TODAS as CTOs pesquisadas
+      // Usando AdvancedMarkerElement (API moderna recomendada pelo Google)
       if (map) {
         for (const { cto, lat, lng } of searchedCTOsList) {
-          const marker = new google.maps.Marker({
-            position: { lat, lng },
+          // Criar ícone personalizado usando PinElement
+          const pinElement = new google.maps.marker.PinElement({
+            background: '#4285F4', // Azul do Google Maps
+            borderColor: '#FFFFFF',
+            glyphColor: '#FFFFFF',
+            scale: 1.2
+          });
+          
+          const marker = new google.maps.marker.AdvancedMarkerElement({
             map: map,
+            position: { lat, lng },
             title: `CTO pesquisada: ${cto.nome}`,
-            icon: {
-              url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
-              scaledSize: new google.maps.Size(32, 32)
-            },
+            content: pinElement.element,
             zIndex: 999
           });
           searchMarkers.push(marker);
@@ -922,17 +1115,23 @@
       console.log(`✅ ${validPoints.length} ponto(s) válido(s) encontrado(s)`);
 
       // Criar marcadores e círculos para cada ponto pesquisado
+      // Usando AdvancedMarkerElement (API moderna recomendada pelo Google)
       if (map) {
         for (const { lat, lng, title } of validPoints) {
           // Marcador azul para o ponto pesquisado
-          const marker = new google.maps.Marker({
-            position: { lat, lng },
+          // Criar ícone personalizado usando PinElement
+          const pinElement = new google.maps.marker.PinElement({
+            background: '#4285F4', // Azul do Google Maps
+            borderColor: '#FFFFFF',
+            glyphColor: '#FFFFFF',
+            scale: 1.2
+          });
+          
+          const marker = new google.maps.marker.AdvancedMarkerElement({
             map: map,
+            position: { lat, lng },
             title: title,
-            icon: {
-              url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
-              scaledSize: new google.maps.Size(32, 32)
-            },
+            content: pinElement.element,
             zIndex: 999
           });
           searchMarkers.push(marker);
@@ -1135,32 +1334,33 @@
       // Criar label com todos os números (ex: "1/9" ou "1/9/15")
       const labelText = numbers.join('/');
 
-      // Configuração do ícone (círculo colorido com label numérico)
-      const iconConfig = {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 18,
-        fillColor: ctoColor,
-        fillOpacity: 1,
-        strokeColor: '#000000',
-        strokeWeight: 3,
-        anchor: new google.maps.Point(0, 0) // Centro do círculo
-      };
-
       try {
-        // Criar marcador único para este grupo
-        const marker = new google.maps.Marker({
-          position: position,
+        // Criar marcador único para este grupo usando AdvancedMarkerElement
+        // Criar elemento HTML customizado para replicar o círculo colorido com label
+        const markerElement = document.createElement('div');
+        markerElement.style.width = '36px';
+        markerElement.style.height = '36px';
+        markerElement.style.borderRadius = '50%';
+        markerElement.style.backgroundColor = ctoColor;
+        markerElement.style.border = '3px solid #000000';
+        markerElement.style.display = 'flex';
+        markerElement.style.alignItems = 'center';
+        markerElement.style.justifyContent = 'center';
+        markerElement.style.color = '#FFFFFF';
+        markerElement.style.fontSize = '14px';
+        markerElement.style.fontWeight = 'bold';
+        markerElement.style.fontFamily = 'Arial, sans-serif';
+        markerElement.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+        markerElement.style.cursor = 'pointer';
+        markerElement.textContent = labelText;
+        markerElement.title = `${groupCTOs.length} CTO(s) neste ponto: ${groupCTOs.map(cto => cto.nome).join(', ')}`;
+        
+        const marker = new google.maps.marker.AdvancedMarkerElement({
           map: map,
+          position: position,
           title: `${groupCTOs.length} CTO(s) neste ponto: ${groupCTOs.map(cto => cto.nome).join(', ')}`,
-          icon: iconConfig,
-          label: {
-            text: labelText,
-            color: '#FFFFFF',
-            fontSize: '14px',
-            fontWeight: 'bold'
-          },
-          zIndex: 1000 + numbers[0],
-          optimized: false
+          content: markerElement,
+          zIndex: 1000 + numbers[0]
         });
         
         console.log(`Marcador ${labelText} criado para ${groupCTOs.length} CTO(s) em`, position);
@@ -1214,8 +1414,13 @@
           content: infoWindowContent
         });
 
-        marker.addListener('click', () => {
-          infoWindow.open(map, marker);
+        // Event listener para AdvancedMarkerElement
+        // AdvancedMarkerElement usa addEventListener diretamente no elemento DOM
+        markerElement.addEventListener('click', () => {
+          infoWindow.open({
+            anchor: marker,
+            map: map
+          });
         });
 
         markers.push(marker);
@@ -1465,9 +1670,14 @@
     }
   }
 
+
   // Inicializar ferramenta
   onMount(async () => {
     try {
+      // Garantir que mapa e tabela estejam visíveis ao carregar
+      isMapMinimized = false;
+      isTableMinimized = false;
+      
       // Carregar preferências de redimensionamento
       loadResizePreferences();
       
@@ -1475,6 +1685,7 @@
       if (onSettingsRequest && typeof onSettingsRequest === 'function') {
         onSettingsRequest(openSettings);
       }
+      
       
       // Registrar função de pré-carregamento no hover
       if (onSettingsHover && typeof onSettingsHover === 'function') {
@@ -1497,7 +1708,6 @@
       mapObserver.disconnect();
       mapObserver = null;
     }
-    // Limpar recursos
   });
 </script>
 
@@ -1677,28 +1887,21 @@
               <table class="results-table">
                 <thead>
                   <tr>
-                    <th style="width: 50px; text-align: center; padding: 0.5rem;">
+                    <th>
                       <input 
                         type="checkbox" 
                         checked={allCTOsVisible}
                         indeterminate={someCTOsVisible}
                         on:change={(e) => {
                           const isChecked = e.target.checked;
-                          // Marcar/desmarcar todas as CTOs
-                          // Criar um novo Map para forçar reatividade do Svelte
                           const newVisibility = new Map();
                           for (const cto of ctos) {
                             const ctoKey = getCTOKey(cto);
                             newVisibility.set(ctoKey, isChecked);
                           }
-                          // Substituir completamente o Map para forçar reatividade
                           ctoVisibility = newVisibility;
-                          // Atualizar mapa
                           displayResultsOnMap();
                         }}
-                        style="cursor: pointer; width: 18px; height: 18px;"
-                        aria-label="Marcar/desmarcar todas as CTOs"
-                        title="Marcar/desmarcar todas as CTOs"
                       />
                     </th>
                     <th>CTO</th>
@@ -1717,46 +1920,46 @@
                   </tr>
                 </thead>
                 <tbody>
-                  {#each ctos as cto}
+                  {#each ctos as cto (getCTOKey(cto))}
                     {@const ctoKey = getCTOKey(cto)}
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
-                    {@const caminhoTotal = getCaminhoRedeTotal(cto)}
+                    {@const caminhoKey = getCaminhoRedeKey(cto)}
+                    {@const total = caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0}
+                    {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5}
+                    {@const pctOcup = parseFloat(cto.pct_ocup || 0)}
+                    {@const occupationClass = pctOcup < 50 ? 'low' : pctOcup >= 50 && pctOcup < 80 ? 'medium' : 'high'}
                     <tr>
-                      <td style="text-align: center; padding: 0.5rem;">
+                      <td class="checkbox-cell">
                         <input 
                           type="checkbox" 
                           checked={isVisible}
                           on:change={(e) => {
                             ctoVisibility.set(ctoKey, e.target.checked);
-                            // Atualizar mapa quando checkbox mudar
+                            ctoVisibility = ctoVisibility;
                             displayResultsOnMap();
                           }}
-                          style="cursor: pointer; width: 18px; height: 18px;"
-                          aria-label="Mostrar/ocultar CTO no mapa"
                         />
                       </td>
-                      <td><strong>{cto.nome}</strong></td>
-                      <td>{cto.cidade}</td>
+                      <td><strong>{cto.nome || ''}</strong></td>
+                      <td>{cto.cidade || 'N/A'}</td>
                       <td>{cto.pop || 'N/A'}</td>
                       <td>{cto.olt || 'N/A'}</td>
                       <td>{cto.slot || 'N/A'}</td>
                       <td>{cto.pon || 'N/A'}</td>
                       <td>{cto.id_cto || cto.id || 'N/A'}</td>
-                      <td>{cto.vagas_total}</td>
-                      <td>{cto.clientes_conectados}</td>
-                      <td>{cto.vagas_total - cto.clientes_conectados}</td>
+                      <td class="numeric">{cto.vagas_total || 0}</td>
+                      <td class="numeric">{cto.clientes_conectados || 0}</td>
+                      <td class="numeric">{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
                       <td>
-                        <span class="occupation-badge" 
-                          class:low={parseFloat(cto.pct_ocup || 0) < 50}
-                          class:medium={parseFloat(cto.pct_ocup || 0) >= 50 && parseFloat(cto.pct_ocup || 0) < 80}
-                          class:high={parseFloat(cto.pct_ocup || 0) >= 80}
-                        >
-                          {formatPercentage(cto.pct_ocup)}
-                        </span>
+                        <span class="occupation-badge {occupationClass}">{pctOcup.toFixed(1)}%</span>
                       </td>
                       <td>{cto.status_cto || 'N/A'}</td>
-                      <td>
-                        <strong>{caminhoTotal}</strong>
+                      <td class="numeric">
+                        {#if estaCarregando}
+                          <span class="loading-text">Carregando...</span>
+                        {:else}
+                          <strong>{total}</strong>
+                        {/if}
                       </td>
                     </tr>
                   {/each}
@@ -2308,42 +2511,7 @@
     background: #555;
   }
 
-  .results-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.875rem;
-    table-layout: auto;
-  }
-  
-  /* Garantir que o tbody não tenha restrições de altura */
-  .results-table tbody {
-    display: table-row-group;
-  }
-
-  .results-table thead {
-    background: #f9fafb;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-
-  .results-table th {
-    padding: 0.75rem;
-    text-align: left;
-    font-weight: 600;
-    color: #374151;
-    border-bottom: 2px solid #e5e7eb;
-  }
-
-  .results-table td {
-    padding: 0.75rem;
-    border-bottom: 1px solid #e5e7eb;
-    color: #4b5563;
-  }
-
-  .results-table tbody tr:hover {
-    background: #f9fafb;
-  }
+  /* Estilos CSS da tabela HTML */
 
   .occupation-badge {
     padding: 0.25rem 0.5rem;
@@ -2433,6 +2601,75 @@
     }
   }
 
+  /* ============================================
+     ESTILOS TABELA HTML
+     ============================================ */
+  
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+  
+  .results-table thead {
+    background-color: #f9fafb;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  
+  .results-table th {
+    padding: 0.75rem;
+    text-align: left;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 2px solid #e5e7eb;
+    white-space: nowrap;
+  }
+  
+  .results-table th:first-child {
+    text-align: center;
+    width: 50px;
+  }
+  
+  .results-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+    color: #4b5563;
+  }
+  
+  .results-table tbody tr:hover {
+    background-color: #f9fafb;
+  }
+  
+  .results-table tbody tr:nth-child(even) {
+    background-color: #ffffff;
+  }
+  
+  .results-table tbody tr:nth-child(even):hover {
+    background-color: #f9fafb;
+  }
+  
+  .results-table .checkbox-cell {
+    text-align: center;
+  }
+  
+  .results-table .checkbox-cell input[type="checkbox"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+  }
+  
+  .results-table .numeric {
+    text-align: right;
+  }
+  
+  .results-table .loading-text {
+    color: #666;
+    font-style: italic;
+    font-size: 0.9em;
+  }
+
   @media (max-width: 768px) {
     .main-layout {
       padding: 0.75rem;
@@ -2445,7 +2682,7 @@
     .results-table {
       font-size: 0.75rem;
     }
-
+    
     .results-table th,
     .results-table td {
       padding: 0.5rem;
