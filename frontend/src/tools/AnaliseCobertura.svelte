@@ -4,7 +4,7 @@
   import Loading from '../Loading.svelte';
   import { getApiUrl } from '../config.js';
   // Importar AG Grid
-  import { AgGridSvelte } from 'ag-grid-svelte';
+  import AgGridSvelte from 'ag-grid-svelte';
   import { ModuleRegistry } from 'ag-grid-community';
   import { ClientSideRowModelModule } from 'ag-grid-community';
   
