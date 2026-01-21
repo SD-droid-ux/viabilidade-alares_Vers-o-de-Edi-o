@@ -187,7 +187,7 @@
     
     caminhoRedeLoading.clear();
     
-    console.log(`🔍 Calculando totais para ${caminhosUnicos.size} caminhos de rede únicos:`, Array.from(caminhosUnicos));
+    console.log(`● Calculando totais para ${caminhosUnicos.size} caminhos de rede únicos:`, Array.from(caminhosUnicos));
     
     if (caminhosUnicos.size === 0) {
       console.warn('⚠️ Nenhum caminho de rede válido encontrado nas CTOs');
@@ -550,10 +550,12 @@
     showFilterMenu = null;
   }
   
-  // Função para alternar visibilidade de coluna
+  // Função para alternar visibilidade de coluna (minimizar ao invés de ocultar)
   function toggleColumnVisibility(columnName) {
     if (!columnVisibility) columnVisibility = {};
-    columnVisibility[columnName] = !columnVisibility[columnName];
+    // false/undefined = normal, true = minimizada
+    const currentState = columnVisibility[columnName];
+    columnVisibility[columnName] = !currentState;
     columnVisibility = columnVisibility; // Forçar reatividade
   }
   
@@ -890,7 +892,7 @@
         return;
       }
 
-      console.log(`🔍 Buscando ${ctoNames.length} CTO(s):`, ctoNames);
+      console.log(`● Buscando ${ctoNames.length} CTO(s):`, ctoNames);
 
       const allCTOsMap = new Map(); // CTOs próximas - chave: coordenadas (para evitar duplicatas entre próximas)
       const searchedCTOsList = []; // Lista de TODAS as CTOs pesquisadas pelo usuário (incluindo duplicatas por coordenadas)
@@ -1091,7 +1093,7 @@
       console.log(`✅ Total final: ${searchedCTOs.length} CTO(s) pesquisada(s) + ${nearbyCTOs.length} CTO(s) próxima(s) = ${ctos.length} CTO(s) no total`);
       console.log(`📋 CTOs pesquisadas na lista: ${searchedCTOsList.length}, CTOs pesquisadas no resultado: ${searchedCTOs.length}, CTOs próximas: ${nearbyCTOs.length}`);
       console.log(`📝 Nomes das CTOs pesquisadas:`, searchedCTOs.map(cto => cto.nome).join(', '));
-      console.log(`🔍 Verificação: Array ctos tem ${ctos.length} elementos`);
+      console.log(`● Verificação: Array ctos tem ${ctos.length} elementos`);
       
       // Verificar se há duplicatas
       const uniqueKeys = new Set();
@@ -1308,7 +1310,7 @@
       
       console.log(`📋 Total de entradas processadas: ${addressesInputs.length}`, addressesInputs);
 
-      console.log(`🔍 Buscando ${addressesInputs.length} endereço(s)/coordenada(s):`, addressesInputs);
+      console.log(`● Buscando ${addressesInputs.length} endereço(s)/coordenada(s):`, addressesInputs);
 
       // Processar cada endereço/coordenada em paralelo
       const searchPromises = addressesInputs.map(async (input) => {
@@ -2442,7 +2444,7 @@
                         }}
                       />
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.numero === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.numero === false}>
                       <div class="header-content">
                         <span>#</span>
                         <div class="header-controls">
@@ -2454,10 +2456,10 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'numero' ? null : 'numero'} title="Filtrar">
-                            {filters.numero ? '🔍' : '⚙️'}
+                            {filters.numero ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('numero')} title="Ocultar coluna">
-                            👁️
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('numero')} title={columnVisibility.numero === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                            {columnVisibility.numero === true ? '⇥' : '⇤'}
                           </button>
                         </div>
                       </div>
@@ -2468,7 +2470,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.nome === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.nome === true}>
                       <div class="header-content">
                         <span>CTO</span>
                         <div class="header-controls">
@@ -2480,9 +2482,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'nome' ? null : 'nome'} title="Filtrar">
-                            {filters.nome ? '🔍' : '⚙️'}
+                            {filters.nome ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('nome')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('nome')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2494,7 +2496,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.cidade === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.cidade === false}>
                       <div class="header-content">
                         <span>Cidade</span>
                         <div class="header-controls">
@@ -2506,9 +2508,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'cidade' ? null : 'cidade'} title="Filtrar">
-                            {filters.cidade ? '🔍' : '⚙️'}
+                            {filters.cidade ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('cidade')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('cidade')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2520,7 +2522,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.pop === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.pop === false}>
                       <div class="header-content">
                         <span>POP</span>
                         <div class="header-controls">
@@ -2532,9 +2534,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'pop' ? null : 'pop'} title="Filtrar">
-                            {filters.pop ? '🔍' : '⚙️'}
+                            {filters.pop ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('pop')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('pop')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2546,7 +2548,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.chasse === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.chasse === false}>
                       <div class="header-content">
                         <span>CHASSE</span>
                         <div class="header-controls">
@@ -2558,9 +2560,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'chasse' ? null : 'chasse'} title="Filtrar">
-                            {filters.chasse ? '🔍' : '⚙️'}
+                            {filters.chasse ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('chasse')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('chasse')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2572,7 +2574,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.placa === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.placa === false}>
                       <div class="header-content">
                         <span>PLACA</span>
                         <div class="header-controls">
@@ -2584,9 +2586,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'placa' ? null : 'placa'} title="Filtrar">
-                            {filters.placa ? '🔍' : '⚙️'}
+                            {filters.placa ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('placa')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('placa')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2598,7 +2600,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.olt === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.olt === false}>
                       <div class="header-content">
                         <span>OLT</span>
                         <div class="header-controls">
@@ -2610,9 +2612,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'olt' ? null : 'olt'} title="Filtrar">
-                            {filters.olt ? '🔍' : '⚙️'}
+                            {filters.olt ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('olt')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('olt')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2624,7 +2626,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.id_cto === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.id_cto === false}>
                       <div class="header-content">
                         <span>ID CTO</span>
                         <div class="header-controls">
@@ -2636,9 +2638,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'id_cto' ? null : 'id_cto'} title="Filtrar">
-                            {filters.id_cto ? '🔍' : '⚙️'}
+                            {filters.id_cto ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('id_cto')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('id_cto')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2650,7 +2652,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.portas_total === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.portas_total === false}>
                       <div class="header-content">
                         <span>Portas Total</span>
                         <div class="header-controls">
@@ -2662,9 +2664,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'portas_total' ? null : 'portas_total'} title="Filtrar">
-                            {filters.portas_total ? '🔍' : '⚙️'}
+                            {filters.portas_total ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('portas_total')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('portas_total')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2682,7 +2684,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.ocupadas === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.ocupadas === false}>
                       <div class="header-content">
                         <span>Ocupadas</span>
                         <div class="header-controls">
@@ -2694,9 +2696,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'ocupadas' ? null : 'ocupadas'} title="Filtrar">
-                            {filters.ocupadas ? '🔍' : '⚙️'}
+                            {filters.ocupadas ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupadas')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupadas')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2714,7 +2716,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.disponiveis === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.disponiveis === false}>
                       <div class="header-content">
                         <span>Disponíveis</span>
                         <div class="header-controls">
@@ -2726,9 +2728,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'disponiveis' ? null : 'disponiveis'} title="Filtrar">
-                            {filters.disponiveis ? '🔍' : '⚙️'}
+                            {filters.disponiveis ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('disponiveis')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('disponiveis')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2746,7 +2748,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.ocupacao === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.ocupacao === false}>
                       <div class="header-content">
                         <span>Ocupação</span>
                         <div class="header-controls">
@@ -2758,9 +2760,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'ocupacao' ? null : 'ocupacao'} title="Filtrar">
-                            {filters.ocupacao ? '🔍' : '⚙️'}
+                            {filters.ocupacao ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupacao')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupacao')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2778,7 +2780,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.status === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.status === false}>
                       <div class="header-content">
                         <span>Status</span>
                         <div class="header-controls">
@@ -2790,9 +2792,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'status' ? null : 'status'} title="Filtrar">
-                            {filters.status ? '🔍' : '⚙️'}
+                            {filters.status ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('status')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('status')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2804,7 +2806,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.total_portas_caminho === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.total_portas_caminho === false}>
                       <div class="header-content">
                         <span>Total de Portas no Caminho de Rede</span>
                         <div class="header-controls">
@@ -2816,9 +2818,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'total_portas_caminho' ? null : 'total_portas_caminho'} title="Filtrar">
-                            {filters.total_portas_caminho ? '🔍' : '⚙️'}
+                            {filters.total_portas_caminho ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_portas_caminho')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_portas_caminho')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2836,7 +2838,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header" class:hidden={columnVisibility.total_ctos_caminho === false}>
+                    <th class="sortable-header" class:minimized={columnVisibility.total_ctos_caminho === false}>
                       <div class="header-content">
                         <span>Total de CTOs no Caminho de Rede</span>
                         <div class="header-controls">
@@ -2848,9 +2850,9 @@
                             {/if}
                           </button>
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'total_ctos_caminho' ? null : 'total_ctos_caminho'} title="Filtrar">
-                            {filters.total_ctos_caminho ? '🔍' : '⚙️'}
+                            {filters.total_ctos_caminho ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_ctos_caminho')} title="Ocultar coluna">
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_ctos_caminho')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2892,29 +2894,29 @@
                           }}
                         />
                       </td>
-                      <td class="numeric" class:hidden={columnVisibility.numero === false}>{ctoNumbers.get(cto) || '-'}</td>
-                      <td class="cto-name-cell" class:hidden={columnVisibility.nome === false}><strong>{cto.nome || ''}</strong></td>
-                      <td class:hidden={columnVisibility.cidade === false}>{cto.cidade || 'N/A'}</td>
-                      <td class:hidden={columnVisibility.pop === false}>{cto.pop || 'N/A'}</td>
-                      <td class:hidden={columnVisibility.chasse === false}>{cto.olt || 'N/A'}</td>
-                      <td class:hidden={columnVisibility.placa === false}>{cto.slot || 'N/A'}</td>
-                      <td class:hidden={columnVisibility.olt === false}>{cto.pon || 'N/A'}</td>
-                      <td class:hidden={columnVisibility.id_cto === false}>{cto.id_cto || cto.id || 'N/A'}</td>
-                      <td class="numeric" class:hidden={columnVisibility.portas_total === false}>{cto.vagas_total || 0}</td>
-                      <td class="numeric" class:hidden={columnVisibility.ocupadas === false}>{cto.clientes_conectados || 0}</td>
-                      <td class="numeric" class:hidden={columnVisibility.disponiveis === false}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
-                      <td class:hidden={columnVisibility.ocupacao === false}>
+                      <td class="numeric" class:minimized={columnVisibility.numero === false}>{ctoNumbers.get(cto) || '-'}</td>
+                      <td class="cto-name-cell" class:minimized={columnVisibility.nome === false}><strong>{cto.nome || ''}</strong></td>
+                      <td class:minimized={columnVisibility.cidade === false}>{cto.cidade || 'N/A'}</td>
+                      <td class:minimized={columnVisibility.pop === false}>{cto.pop || 'N/A'}</td>
+                      <td class:minimized={columnVisibility.chasse === false}>{cto.olt || 'N/A'}</td>
+                      <td class:minimized={columnVisibility.placa === false}>{cto.slot || 'N/A'}</td>
+                      <td class:minimized={columnVisibility.olt === false}>{cto.pon || 'N/A'}</td>
+                      <td class:minimized={columnVisibility.id_cto === false}>{cto.id_cto || cto.id || 'N/A'}</td>
+                      <td class="numeric" class:minimized={columnVisibility.portas_total === false}>{cto.vagas_total || 0}</td>
+                      <td class="numeric" class:minimized={columnVisibility.ocupadas === false}>{cto.clientes_conectados || 0}</td>
+                      <td class="numeric" class:minimized={columnVisibility.disponiveis === false}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
+                      <td class:minimized={columnVisibility.ocupacao === false}>
                         <span class="occupation-badge {occupationClass}">{pctOcup.toFixed(1)}%</span>
                       </td>
-                      <td class:hidden={columnVisibility.status === false}>{cto.status_cto || 'N/A'}</td>
-                      <td class="numeric" class:hidden={columnVisibility.total_portas_caminho === false}>
+                      <td class:minimized={columnVisibility.status === false}>{cto.status_cto || 'N/A'}</td>
+                      <td class="numeric" class:minimized={columnVisibility.total_portas_caminho === false}>
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
                           <strong>{total}</strong>
                         {/if}
                       </td>
-                      <td class="numeric" class:hidden={columnVisibility.total_ctos_caminho === false}>
+                      <td class="numeric" class:minimized={columnVisibility.total_ctos_caminho === false}>
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
@@ -2943,7 +2945,7 @@
               </button>
             </div>
             {#if !isTableMinimized}
-              <p>🔍 Realize uma busca para ver os resultados aqui</p>
+              <p>● Realize uma busca para ver os resultados aqui</p>
             {/if}
           </div>
         {/if}
@@ -3582,20 +3584,42 @@
   }
   
   .results-table th {
-    padding: 0.75rem 0.5rem;
+    padding: 0.65rem 0.5rem !important;
     text-align: center;
     font-weight: 600;
     color: #374151;
     border-bottom: 2px solid #e5e7eb;
     border-left: 1px solid #e5e7eb;
-    white-space: normal;
+    white-space: nowrap !important;
     position: relative;
-    vertical-align: top;
-    min-height: 90px;
+    vertical-align: middle !important;
+    min-height: auto !important;
   }
   
   .results-table th.hidden,
   .results-table td.hidden {
+    display: none;
+  }
+  
+  .results-table th.minimized,
+  .results-table td.minimized {
+    width: 30px !important;
+    min-width: 30px !important;
+    max-width: 30px !important;
+    padding: 0.5rem 0.25rem !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .results-table th.minimized .header-content > span,
+  .results-table td.minimized {
+    font-size: 0.7rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .results-table th.minimized .header-controls {
     display: none;
   }
   
@@ -3632,23 +3656,38 @@
   .sort-button,
   .filter-button,
   .toggle-column-button {
-    background: rgba(123, 104, 238, 0.25) !important;
-    border: 2px solid rgba(123, 104, 238, 0.8) !important;
-    border-radius: 6px;
-    padding: 0.4rem 0.6rem !important;
+    background: transparent !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    border-radius: 4px;
+    padding: 0.2rem 0.35rem !important;
     cursor: pointer;
-    font-size: 1rem !important;
-    color: #7B68EE !important;
-    transition: all 0.2s;
-    min-width: 36px !important;
-    height: 32px !important;
+    font-size: 0.75rem !important;
+    color: #6b7280 !important;
+    transition: all 0.15s ease;
+    width: 22px !important;
+    height: 22px !important;
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    margin: 0.125rem 0.25rem;
-    font-weight: 700;
+    margin: 0 0.15rem;
+    font-weight: 400;
     line-height: 1;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    box-shadow: none;
+  }
+  
+  .sort-button:hover,
+  .filter-button:hover,
+  .toggle-column-button:hover {
+    background: rgba(123, 104, 238, 0.08) !important;
+    border-color: rgba(123, 104, 238, 0.3) !important;
+    color: #7B68EE !important;
+  }
+  
+  .sort-button:active,
+  .filter-button:active,
+  .toggle-column-button:active {
+    transform: scale(0.95);
+    background: rgba(123, 104, 238, 0.12) !important;
   }
   
   .sort-button:hover,
