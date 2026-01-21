@@ -43,6 +43,16 @@
   // Mapa para controlar quais CTOs estão visíveis no mapa (key: identificador único da CTO)
   let ctoVisibility = new Map(); // Map<ctoKey, boolean>
   
+  // Estados de ordenação e filtros
+  let sortColumn = null; // Nome da coluna sendo ordenada
+  let sortDirection = 'asc'; // 'asc' ou 'desc'
+  let filters = {}; // Objeto com filtros por coluna: { coluna: { type: 'text'|'number'|'min', value: ... } }
+  let columnVisibility = {}; // Objeto com visibilidade de colunas: { coluna: true/false }
+  let showFilterMenu = null; // Coluna que está mostrando o menu de filtro
+  
+  // CTOs filtradas e ordenadas
+  let filteredAndSortedCTOs = [];
+  
   // Função para gerar uma chave única para uma CTO (declarada aqui para uso nos reactive statements)
   function getCTOKey(cto) {
     // Usar nome + coordenadas para criar chave única
@@ -399,6 +409,175 @@
     const ctoKey = getCTOKey(cto);
     return ctoVisibility.get(ctoKey) === true;
   }) && !allCTOsVisible;
+  
+  // Função para obter valor da célula para ordenação/filtro
+  function getCellValue(cto, columnName) {
+    switch(columnName) {
+      case 'nome': return cto.nome || '';
+      case 'cidade': return cto.cidade || '';
+      case 'pop': return cto.pop || '';
+      case 'chasse': return cto.olt || '';
+      case 'placa': return cto.slot || '';
+      case 'olt': return cto.pon || '';
+      case 'id_cto': return cto.id_cto || cto.id || '';
+      case 'portas_total': return parseFloat(cto.vagas_total || 0);
+      case 'ocupadas': return parseFloat(cto.clientes_conectados || 0);
+      case 'disponiveis': return parseFloat((cto.vagas_total || 0) - (cto.clientes_conectados || 0));
+      case 'ocupacao': return parseFloat(cto.pct_ocup || 0);
+      case 'status': return cto.status_cto || '';
+      case 'total_portas_caminho': return getCaminhoRedeTotal(cto);
+      case 'total_ctos_caminho': return getCaminhoRedeCTOsTotal(cto);
+      default: return '';
+    }
+  }
+  
+  // Função para aplicar filtros
+  function applyFilters(ctosList) {
+    if (!filters || Object.keys(filters).length === 0) {
+      return ctosList;
+    }
+    
+    return ctosList.filter(cto => {
+      for (const [columnName, filter] of Object.entries(filters)) {
+        if (!filter || !filter.value) continue;
+        
+        const cellValue = getCellValue(cto, columnName);
+        const filterValue = filter.value.toString().toLowerCase().trim();
+        
+        if (filter.type === 'text') {
+          // Filtro de texto (contém)
+          if (!cellValue.toString().toLowerCase().includes(filterValue)) {
+            return false;
+          }
+        } else if (filter.type === 'number') {
+          // Filtro numérico (maior/menor)
+          const numValue = parseFloat(cellValue) || 0;
+          const numFilter = parseFloat(filterValue) || 0;
+          
+          if (filter.operator === 'greater') {
+            if (numValue <= numFilter) return false;
+          } else if (filter.operator === 'less') {
+            if (numValue >= numFilter) return false;
+          } else if (filter.operator === 'equal') {
+            if (numValue !== numFilter) return false;
+          }
+        } else if (filter.type === 'min') {
+          // Filtro mínimo
+          const numValue = parseFloat(cellValue) || 0;
+          const numFilter = parseFloat(filterValue) || 0;
+          if (numValue < numFilter) return false;
+        }
+      }
+      return true;
+    });
+  }
+  
+  // Função para ordenar CTOs
+  function sortCTOs(ctosList) {
+    if (!sortColumn) {
+      return ctosList;
+    }
+    
+    const sorted = [...ctosList];
+    sorted.sort((a, b) => {
+      const aValue = getCellValue(a, sortColumn);
+      const bValue = getCellValue(b, sortColumn);
+      
+      // Comparação numérica ou textual
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+      } else {
+        const aStr = aValue.toString().toLowerCase();
+        const bStr = bValue.toString().toLowerCase();
+        if (sortDirection === 'asc') {
+          return aStr.localeCompare(bStr, 'pt-BR');
+        } else {
+          return bStr.localeCompare(aStr, 'pt-BR');
+        }
+      }
+    });
+    
+    return sorted;
+  }
+  
+  // Aplicar filtros e ordenação quando necessário
+  $: {
+    if (ctos && ctos.length > 0) {
+      let result = [...ctos];
+      result = applyFilters(result);
+      result = sortCTOs(result);
+      filteredAndSortedCTOs = result;
+    } else {
+      filteredAndSortedCTOs = [];
+    }
+  }
+  
+  // Função para ordenar por coluna
+  function handleSort(columnName) {
+    if (sortColumn === columnName) {
+      // Alternar direção se já está ordenando por essa coluna
+      sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      // Nova coluna, começar com ascendente
+      sortColumn = columnName;
+      sortDirection = 'asc';
+    }
+  }
+  
+  // Função para aplicar filtro
+  function applyFilter(columnName, filterType, value, operator = null) {
+    if (!filters) filters = {};
+    
+    if (!value || value.toString().trim() === '') {
+      // Remover filtro se vazio
+      delete filters[columnName];
+      filters = filters; // Forçar reatividade
+    } else {
+      filters[columnName] = {
+        type: filterType,
+        value: value,
+        operator: operator
+      };
+      filters = filters; // Forçar reatividade
+    }
+    
+    showFilterMenu = null; // Fechar menu
+  }
+  
+  // Função para limpar todos os filtros
+  function clearAllFilters() {
+    filters = {};
+    showFilterMenu = null;
+  }
+  
+  // Função para alternar visibilidade de coluna
+  function toggleColumnVisibility(columnName) {
+    if (!columnVisibility) columnVisibility = {};
+    columnVisibility[columnName] = !columnVisibility[columnName];
+    columnVisibility = columnVisibility; // Forçar reatividade
+  }
+  
+  // Inicializar visibilidade de todas as colunas como visível
+  $: if (ctos.length > 0 && Object.keys(columnVisibility).length === 0) {
+    columnVisibility = {
+      checkbox: true,
+      numero: true,
+      nome: true,
+      cidade: true,
+      pop: true,
+      chasse: true,
+      placa: true,
+      olt: true,
+      id_cto: true,
+      portas_total: true,
+      ocupadas: true,
+      disponiveis: true,
+      ocupacao: true,
+      status: true,
+      total_portas_caminho: true,
+      total_ctos_caminho: true
+    };
+  }
   
   // Redimensionamento de boxes - usar variáveis que o Svelte detecta como reativas
   let sidebarWidth = 400; // Largura inicial da sidebar em pixels (aumentada para melhor visibilidade)
@@ -2224,7 +2403,12 @@
         {#if ctos.length > 0}
           <div class="results-table-container" class:minimized={isTableMinimized} style="flex: {isTableMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isTableMinimized ? '60px' : '200px'};">
             <div class="table-header">
-              <h3>Resultados ({ctos.length})</h3>
+              <h3>Resultados ({filteredAndSortedCTOs.length}{Object.keys(filters).length > 0 ? ` de ${ctos.length}` : ''})</h3>
+              {#if Object.keys(filters).length > 0}
+                <button class="clear-filters-button" on:click={clearAllFilters} title="Limpar todos os filtros">
+                  🗑️ Limpar Filtros
+                </button>
+              {/if}
               <button 
                 class="minimize-button" 
                 disabled={isResizingSidebar || isResizingMapTable}
@@ -2258,25 +2442,436 @@
                         }}
                       />
                     </th>
-                    <th>#</th>
-                    <th>CTO</th>
-                    <th>Cidade</th>
-                    <th>POP</th>
-                    <th>CHASSE</th>
-                    <th>PLACA</th>
-                    <th>OLT</th>
-                    <th>ID CTO</th>
-                    <th>Portas Total</th>
-                    <th>Ocupadas</th>
-                    <th>Disponíveis</th>
-                    <th>Ocupação</th>
-                    <th>Status</th>
-                    <th>Total de Portas no Caminho de Rede</th>
-                    <th>Total de CTOs no Caminho de Rede</th>
+                    <th class="sortable-header" class:hidden={columnVisibility.numero === false}>
+                      <div class="header-content">
+                        <span>#</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('numero')} title="Ordenar">
+                            {#if sortColumn === 'numero'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'numero' ? null : 'numero'} title="Filtrar">
+                            {filters.numero ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('numero')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'numero'}
+                        <div class="filter-menu">
+                          <input type="number" placeholder="Filtrar por número" bind:value={filters.numero?.value || ''} on:input={(e) => applyFilter('numero', 'number', e.target.value, 'equal')} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.nome === false}>
+                      <div class="header-content">
+                        <span>CTO</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('nome')} title="Ordenar A-Z / Z-A">
+                            {#if sortColumn === 'nome'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'nome' ? null : 'nome'} title="Filtrar">
+                            {filters.nome ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('nome')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'nome'}
+                        <div class="filter-menu">
+                          <input type="text" placeholder="Buscar CTO..." bind:value={filters.nome?.value || ''} on:input={(e) => applyFilter('nome', 'text', e.target.value)} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.cidade === false}>
+                      <div class="header-content">
+                        <span>Cidade</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('cidade')} title="Ordenar A-Z / Z-A">
+                            {#if sortColumn === 'cidade'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'cidade' ? null : 'cidade'} title="Filtrar">
+                            {filters.cidade ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('cidade')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'cidade'}
+                        <div class="filter-menu">
+                          <input type="text" placeholder="Buscar cidade..." bind:value={filters.cidade?.value || ''} on:input={(e) => applyFilter('cidade', 'text', e.target.value)} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.pop === false}>
+                      <div class="header-content">
+                        <span>POP</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('pop')} title="Ordenar A-Z / Z-A">
+                            {#if sortColumn === 'pop'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'pop' ? null : 'pop'} title="Filtrar">
+                            {filters.pop ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('pop')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'pop'}
+                        <div class="filter-menu">
+                          <input type="text" placeholder="Buscar POP..." bind:value={filters.pop?.value || ''} on:input={(e) => applyFilter('pop', 'text', e.target.value)} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.chasse === false}>
+                      <div class="header-content">
+                        <span>CHASSE</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('chasse')} title="Ordenar A-Z / Z-A">
+                            {#if sortColumn === 'chasse'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'chasse' ? null : 'chasse'} title="Filtrar">
+                            {filters.chasse ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('chasse')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'chasse'}
+                        <div class="filter-menu">
+                          <input type="text" placeholder="Buscar CHASSE..." bind:value={filters.chasse?.value || ''} on:input={(e) => applyFilter('chasse', 'text', e.target.value)} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.placa === false}>
+                      <div class="header-content">
+                        <span>PLACA</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('placa')} title="Ordenar A-Z / Z-A">
+                            {#if sortColumn === 'placa'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'placa' ? null : 'placa'} title="Filtrar">
+                            {filters.placa ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('placa')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'placa'}
+                        <div class="filter-menu">
+                          <input type="text" placeholder="Buscar PLACA..." bind:value={filters.placa?.value || ''} on:input={(e) => applyFilter('placa', 'text', e.target.value)} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.olt === false}>
+                      <div class="header-content">
+                        <span>OLT</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('olt')} title="Ordenar A-Z / Z-A">
+                            {#if sortColumn === 'olt'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'olt' ? null : 'olt'} title="Filtrar">
+                            {filters.olt ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('olt')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'olt'}
+                        <div class="filter-menu">
+                          <input type="text" placeholder="Buscar OLT..." bind:value={filters.olt?.value || ''} on:input={(e) => applyFilter('olt', 'text', e.target.value)} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.id_cto === false}>
+                      <div class="header-content">
+                        <span>ID CTO</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('id_cto')} title="Ordenar">
+                            {#if sortColumn === 'id_cto'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'id_cto' ? null : 'id_cto'} title="Filtrar">
+                            {filters.id_cto ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('id_cto')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'id_cto'}
+                        <div class="filter-menu">
+                          <input type="text" placeholder="Buscar ID..." bind:value={filters.id_cto?.value || ''} on:input={(e) => applyFilter('id_cto', 'text', e.target.value)} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.portas_total === false}>
+                      <div class="header-content">
+                        <span>Portas Total</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('portas_total')} title="Ordenar Maior/Menor">
+                            {#if sortColumn === 'portas_total'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'portas_total' ? null : 'portas_total'} title="Filtrar">
+                            {filters.portas_total ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('portas_total')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'portas_total'}
+                        <div class="filter-menu">
+                          <select bind:value={filters.portas_total?.operator || 'greater'} on:change={(e) => applyFilter('portas_total', 'number', filters.portas_total?.value || '', e.target.value)}>
+                            <option value="greater">Maior que</option>
+                            <option value="less">Menor que</option>
+                            <option value="equal">Igual a</option>
+                            <option value="min">Mínimo</option>
+                          </select>
+                          <input type="number" placeholder="Valor" bind:value={filters.portas_total?.value || ''} on:input={(e) => applyFilter('portas_total', 'number', e.target.value, filters.portas_total?.operator || 'greater')} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.ocupadas === false}>
+                      <div class="header-content">
+                        <span>Ocupadas</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('ocupadas')} title="Ordenar Maior/Menor">
+                            {#if sortColumn === 'ocupadas'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'ocupadas' ? null : 'ocupadas'} title="Filtrar">
+                            {filters.ocupadas ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupadas')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'ocupadas'}
+                        <div class="filter-menu">
+                          <select bind:value={filters.ocupadas?.operator || 'greater'} on:change={(e) => applyFilter('ocupadas', 'number', filters.ocupadas?.value || '', e.target.value)}>
+                            <option value="greater">Maior que</option>
+                            <option value="less">Menor que</option>
+                            <option value="equal">Igual a</option>
+                            <option value="min">Mínimo</option>
+                          </select>
+                          <input type="number" placeholder="Valor" bind:value={filters.ocupadas?.value || ''} on:input={(e) => applyFilter('ocupadas', 'number', e.target.value, filters.ocupadas?.operator || 'greater')} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.disponiveis === false}>
+                      <div class="header-content">
+                        <span>Disponíveis</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('disponiveis')} title="Ordenar Maior/Menor">
+                            {#if sortColumn === 'disponiveis'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'disponiveis' ? null : 'disponiveis'} title="Filtrar">
+                            {filters.disponiveis ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('disponiveis')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'disponiveis'}
+                        <div class="filter-menu">
+                          <select bind:value={filters.disponiveis?.operator || 'greater'} on:change={(e) => applyFilter('disponiveis', 'number', filters.disponiveis?.value || '', e.target.value)}>
+                            <option value="greater">Maior que</option>
+                            <option value="less">Menor que</option>
+                            <option value="equal">Igual a</option>
+                            <option value="min">Mínimo</option>
+                          </select>
+                          <input type="number" placeholder="Valor" bind:value={filters.disponiveis?.value || ''} on:input={(e) => applyFilter('disponiveis', 'number', e.target.value, filters.disponiveis?.operator || 'greater')} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.ocupacao === false}>
+                      <div class="header-content">
+                        <span>Ocupação</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('ocupacao')} title="Ordenar Maior/Menor">
+                            {#if sortColumn === 'ocupacao'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'ocupacao' ? null : 'ocupacao'} title="Filtrar">
+                            {filters.ocupacao ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupacao')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'ocupacao'}
+                        <div class="filter-menu">
+                          <select bind:value={filters.ocupacao?.operator || 'greater'} on:change={(e) => applyFilter('ocupacao', 'number', filters.ocupacao?.value || '', e.target.value)}>
+                            <option value="greater">Maior que</option>
+                            <option value="less">Menor que</option>
+                            <option value="equal">Igual a</option>
+                            <option value="min">Mínimo</option>
+                          </select>
+                          <input type="number" placeholder="Valor (%)" bind:value={filters.ocupacao?.value || ''} on:input={(e) => applyFilter('ocupacao', 'number', e.target.value, filters.ocupacao?.operator || 'greater')} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.status === false}>
+                      <div class="header-content">
+                        <span>Status</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('status')} title="Ordenar A-Z / Z-A">
+                            {#if sortColumn === 'status'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'status' ? null : 'status'} title="Filtrar">
+                            {filters.status ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('status')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'status'}
+                        <div class="filter-menu">
+                          <input type="text" placeholder="Buscar status..." bind:value={filters.status?.value || ''} on:input={(e) => applyFilter('status', 'text', e.target.value)} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.total_portas_caminho === false}>
+                      <div class="header-content">
+                        <span>Total de Portas no Caminho de Rede</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('total_portas_caminho')} title="Ordenar Maior/Menor">
+                            {#if sortColumn === 'total_portas_caminho'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'total_portas_caminho' ? null : 'total_portas_caminho'} title="Filtrar">
+                            {filters.total_portas_caminho ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_portas_caminho')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'total_portas_caminho'}
+                        <div class="filter-menu">
+                          <select bind:value={filters.total_portas_caminho?.operator || 'greater'} on:change={(e) => applyFilter('total_portas_caminho', 'number', filters.total_portas_caminho?.value || '', e.target.value)}>
+                            <option value="greater">Maior que</option>
+                            <option value="less">Menor que</option>
+                            <option value="equal">Igual a</option>
+                            <option value="min">Mínimo</option>
+                          </select>
+                          <input type="number" placeholder="Valor" bind:value={filters.total_portas_caminho?.value || ''} on:input={(e) => applyFilter('total_portas_caminho', 'number', e.target.value, filters.total_portas_caminho?.operator || 'greater')} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
+                    <th class="sortable-header" class:hidden={columnVisibility.total_ctos_caminho === false}>
+                      <div class="header-content">
+                        <span>Total de CTOs no Caminho de Rede</span>
+                        <div class="header-controls">
+                          <button class="sort-button" on:click={() => handleSort('total_ctos_caminho')} title="Ordenar Maior/Menor">
+                            {#if sortColumn === 'total_ctos_caminho'}
+                              {sortDirection === 'asc' ? '↑' : '↓'}
+                            {:else}
+                              ⇅
+                            {/if}
+                          </button>
+                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'total_ctos_caminho' ? null : 'total_ctos_caminho'} title="Filtrar">
+                            {filters.total_ctos_caminho ? '🔍' : '⚙️'}
+                          </button>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_ctos_caminho')} title="Ocultar coluna">
+                            👁️
+                          </button>
+                        </div>
+                      </div>
+                      {#if showFilterMenu === 'total_ctos_caminho'}
+                        <div class="filter-menu">
+                          <select bind:value={filters.total_ctos_caminho?.operator || 'greater'} on:change={(e) => applyFilter('total_ctos_caminho', 'number', filters.total_ctos_caminho?.value || '', e.target.value)}>
+                            <option value="greater">Maior que</option>
+                            <option value="less">Menor que</option>
+                            <option value="equal">Igual a</option>
+                            <option value="min">Mínimo</option>
+                          </select>
+                          <input type="number" placeholder="Valor" bind:value={filters.total_ctos_caminho?.value || ''} on:input={(e) => applyFilter('total_ctos_caminho', 'number', e.target.value, filters.total_ctos_caminho?.operator || 'greater')} />
+                          <button on:click={() => showFilterMenu = null}>Fechar</button>
+                        </div>
+                      {/if}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {#each ctos as cto (getCTOKey(cto))}
+                  {#each filteredAndSortedCTOs as cto (getCTOKey(cto))}
                     {@const ctoKey = getCTOKey(cto)}
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
                     {@const caminhoKey = getCaminhoRedeKey(cto)}
@@ -2297,29 +2892,29 @@
                           }}
                         />
                       </td>
-                      <td class="numeric">{ctoNumbers.get(cto) || '-'}</td>
-                      <td class="cto-name-cell"><strong>{cto.nome || ''}</strong></td>
-                      <td>{cto.cidade || 'N/A'}</td>
-                      <td>{cto.pop || 'N/A'}</td>
-                      <td>{cto.olt || 'N/A'}</td>
-                      <td>{cto.slot || 'N/A'}</td>
-                      <td>{cto.pon || 'N/A'}</td>
-                      <td>{cto.id_cto || cto.id || 'N/A'}</td>
-                      <td class="numeric">{cto.vagas_total || 0}</td>
-                      <td class="numeric">{cto.clientes_conectados || 0}</td>
-                      <td class="numeric">{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
-                      <td>
+                      <td class="numeric" class:hidden={columnVisibility.numero === false}>{ctoNumbers.get(cto) || '-'}</td>
+                      <td class="cto-name-cell" class:hidden={columnVisibility.nome === false}><strong>{cto.nome || ''}</strong></td>
+                      <td class:hidden={columnVisibility.cidade === false}>{cto.cidade || 'N/A'}</td>
+                      <td class:hidden={columnVisibility.pop === false}>{cto.pop || 'N/A'}</td>
+                      <td class:hidden={columnVisibility.chasse === false}>{cto.olt || 'N/A'}</td>
+                      <td class:hidden={columnVisibility.placa === false}>{cto.slot || 'N/A'}</td>
+                      <td class:hidden={columnVisibility.olt === false}>{cto.pon || 'N/A'}</td>
+                      <td class:hidden={columnVisibility.id_cto === false}>{cto.id_cto || cto.id || 'N/A'}</td>
+                      <td class="numeric" class:hidden={columnVisibility.portas_total === false}>{cto.vagas_total || 0}</td>
+                      <td class="numeric" class:hidden={columnVisibility.ocupadas === false}>{cto.clientes_conectados || 0}</td>
+                      <td class="numeric" class:hidden={columnVisibility.disponiveis === false}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
+                      <td class:hidden={columnVisibility.ocupacao === false}>
                         <span class="occupation-badge {occupationClass}">{pctOcup.toFixed(1)}%</span>
                       </td>
-                      <td>{cto.status_cto || 'N/A'}</td>
-                      <td class="numeric">
+                      <td class:hidden={columnVisibility.status === false}>{cto.status_cto || 'N/A'}</td>
+                      <td class="numeric" class:hidden={columnVisibility.total_portas_caminho === false}>
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
                           <strong>{total}</strong>
                         {/if}
                       </td>
-                      <td class="numeric">
+                      <td class="numeric" class:hidden={columnVisibility.total_ctos_caminho === false}>
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
@@ -2995,6 +3590,122 @@
     border-left: 1px solid #e5e7eb;
     white-space: nowrap;
     position: relative;
+  }
+  
+  .results-table th.hidden,
+  .results-table td.hidden {
+    display: none;
+  }
+  
+  .sortable-header {
+    cursor: pointer;
+    user-select: none;
+  }
+  
+  .header-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    align-items: center;
+  }
+  
+  .header-controls {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .sort-button,
+  .filter-button,
+  .toggle-column-button {
+    background: transparent;
+    border: 1px solid rgba(123, 104, 238, 0.3);
+    border-radius: 4px;
+    padding: 0.125rem 0.375rem;
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: #7B68EE;
+    transition: all 0.2s;
+    min-width: 24px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .sort-button:hover,
+  .filter-button:hover,
+  .toggle-column-button:hover {
+    background: rgba(100, 149, 237, 0.1);
+    border-color: #7B68EE;
+    color: #4c1d95;
+  }
+  
+  .sort-button:active,
+  .filter-button:active,
+  .toggle-column-button:active {
+    transform: scale(0.95);
+  }
+  
+  .filter-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 2px solid #7B68EE;
+    border-radius: 8px;
+    padding: 0.75rem;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    margin-top: 0.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .filter-menu input,
+  .filter-menu select {
+    padding: 0.5rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  
+  .filter-menu button {
+    padding: 0.5rem;
+    background: linear-gradient(135deg, #6495ED 0%, #7B68EE 100%);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  
+  .filter-menu button:hover {
+    opacity: 0.9;
+  }
+  
+  .clear-filters-button {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-left: 1rem;
+    transition: all 0.2s;
+  }
+  
+  .clear-filters-button:hover {
+    background: #fecaca;
+    border-color: #fca5a5;
   }
   
   .results-table th:first-child {
