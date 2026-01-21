@@ -415,10 +415,11 @@
       }
       
       // Usar as mesmas bibliotecas que ViabilidadeAlares para evitar conflitos
+      // Adicionar 'marker' para suportar AdvancedMarkerElement
       const loader = new Loader({
         apiKey: GOOGLE_MAPS_API_KEY,
         version: 'weekly',
-        libraries: ['places', 'geometry'] // Mesmas bibliotecas que ViabilidadeAlares
+        libraries: ['places', 'geometry', 'marker'] // Adicionar 'marker' para AdvancedMarkerElement
       });
       
       await loader.load();
@@ -723,16 +724,22 @@
       console.log(`✅ ${searchedCTOsList.length} CTO(s) pesquisada(s) encontrada(s)`);
 
       // Criar marcadores azuis para TODAS as CTOs pesquisadas
+      // Usando AdvancedMarkerElement (API moderna recomendada pelo Google)
       if (map) {
         for (const { cto, lat, lng } of searchedCTOsList) {
-          const marker = new google.maps.Marker({
-            position: { lat, lng },
+          // Criar ícone personalizado usando PinElement
+          const pinElement = new google.maps.marker.PinElement({
+            background: '#4285F4', // Azul do Google Maps
+            borderColor: '#FFFFFF',
+            glyphColor: '#FFFFFF',
+            scale: 1.2
+          });
+          
+          const marker = new google.maps.marker.AdvancedMarkerElement({
             map: map,
+            position: { lat, lng },
             title: `CTO pesquisada: ${cto.nome}`,
-            icon: {
-              url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
-              scaledSize: new google.maps.Size(32, 32)
-            },
+            content: pinElement.element,
             zIndex: 999
           });
           searchMarkers.push(marker);
@@ -1116,17 +1123,23 @@
       console.log(`✅ ${validPoints.length} ponto(s) válido(s) encontrado(s)`);
 
       // Criar marcadores e círculos para cada ponto pesquisado
+      // Usando AdvancedMarkerElement (API moderna recomendada pelo Google)
       if (map) {
         for (const { lat, lng, title } of validPoints) {
           // Marcador azul para o ponto pesquisado
-          const marker = new google.maps.Marker({
-            position: { lat, lng },
+          // Criar ícone personalizado usando PinElement
+          const pinElement = new google.maps.marker.PinElement({
+            background: '#4285F4', // Azul do Google Maps
+            borderColor: '#FFFFFF',
+            glyphColor: '#FFFFFF',
+            scale: 1.2
+          });
+          
+          const marker = new google.maps.marker.AdvancedMarkerElement({
             map: map,
+            position: { lat, lng },
             title: title,
-            icon: {
-              url: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
-              scaledSize: new google.maps.Size(32, 32)
-            },
+            content: pinElement.element,
             zIndex: 999
           });
           searchMarkers.push(marker);
@@ -1329,32 +1342,33 @@
       // Criar label com todos os números (ex: "1/9" ou "1/9/15")
       const labelText = numbers.join('/');
 
-      // Configuração do ícone (círculo colorido com label numérico)
-      const iconConfig = {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 18,
-        fillColor: ctoColor,
-        fillOpacity: 1,
-        strokeColor: '#000000',
-        strokeWeight: 3,
-        anchor: new google.maps.Point(0, 0) // Centro do círculo
-      };
-
       try {
-        // Criar marcador único para este grupo
-        const marker = new google.maps.Marker({
-          position: position,
+        // Criar marcador único para este grupo usando AdvancedMarkerElement
+        // Criar elemento HTML customizado para replicar o círculo colorido com label
+        const markerElement = document.createElement('div');
+        markerElement.style.width = '36px';
+        markerElement.style.height = '36px';
+        markerElement.style.borderRadius = '50%';
+        markerElement.style.backgroundColor = ctoColor;
+        markerElement.style.border = '3px solid #000000';
+        markerElement.style.display = 'flex';
+        markerElement.style.alignItems = 'center';
+        markerElement.style.justifyContent = 'center';
+        markerElement.style.color = '#FFFFFF';
+        markerElement.style.fontSize = '14px';
+        markerElement.style.fontWeight = 'bold';
+        markerElement.style.fontFamily = 'Arial, sans-serif';
+        markerElement.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+        markerElement.style.cursor = 'pointer';
+        markerElement.textContent = labelText;
+        markerElement.title = `${groupCTOs.length} CTO(s) neste ponto: ${groupCTOs.map(cto => cto.nome).join(', ')}`;
+        
+        const marker = new google.maps.marker.AdvancedMarkerElement({
           map: map,
+          position: position,
           title: `${groupCTOs.length} CTO(s) neste ponto: ${groupCTOs.map(cto => cto.nome).join(', ')}`,
-          icon: iconConfig,
-          label: {
-            text: labelText,
-            color: '#FFFFFF',
-            fontSize: '14px',
-            fontWeight: 'bold'
-          },
-          zIndex: 1000 + numbers[0],
-          optimized: false
+          content: markerElement,
+          zIndex: 1000 + numbers[0]
         });
         
         console.log(`Marcador ${labelText} criado para ${groupCTOs.length} CTO(s) em`, position);
@@ -1408,8 +1422,13 @@
           content: infoWindowContent
         });
 
-        marker.addListener('click', () => {
-          infoWindow.open(map, marker);
+        // Event listener para AdvancedMarkerElement
+        // AdvancedMarkerElement usa addEventListener diretamente no elemento DOM
+        markerElement.addEventListener('click', () => {
+          infoWindow.open({
+            anchor: marker,
+            map: map
+          });
         });
 
         markers.push(marker);
@@ -2181,6 +2200,7 @@
                 rowData={ctos}
                 {columnDefs}
                 {onGridReady}
+                rowSelection="multiple"
                 style="width: 100%; height: 100%; min-height: 400px;"
               />
             </div>
