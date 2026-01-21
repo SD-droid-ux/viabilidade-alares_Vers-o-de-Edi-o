@@ -288,6 +288,43 @@
     return total;
   }
   
+  // Função para calcular o número de uma CTO na sequência (mesma lógica do mapa)
+  // Retorna um Map com CTO como chave e número como valor
+  function calculateCTONumbers() {
+    const ctoToNumber = new Map();
+    let markerNumber = 1;
+    
+    // Iterar pelas CTOs na mesma ordem que o displayResultsOnMap()
+    for (const cto of ctos) {
+      const ctoKey = getCTOKey(cto);
+      const isVisible = ctoVisibility.get(ctoKey) !== false; // Padrão: true (visível)
+      
+      // Apenas numerar CTOs visíveis (mesma lógica do mapa)
+      if (isVisible) {
+        // Validar coordenadas
+        if (cto.latitude && cto.longitude && !isNaN(cto.latitude) && !isNaN(cto.longitude)) {
+          ctoToNumber.set(cto, markerNumber);
+          markerNumber++;
+        }
+      }
+    }
+    
+    return ctoToNumber;
+  }
+  
+  // Map reativo para armazenar números das CTOs
+  let ctoNumbers = new Map();
+  let ctoNumbersVersion = 0; // Versão para forçar atualização
+  
+  // Recalcular números quando CTOs ou visibilidade mudarem
+  $: if (ctos && ctos.length > 0) {
+    // Forçar recálculo - ctoNumbersVersion será incrementado quando visibilidade mudar
+    const _ = ctoNumbersVersion;
+    ctoNumbers = calculateCTONumbers();
+  } else {
+    ctoNumbers = new Map();
+  }
+  
   // Variável reativa para forçar atualização quando os totais mudarem
   let caminhoRedeTotalsVersion = 0;
   
@@ -847,6 +884,7 @@
           ctoVisibility.set(ctoKey, true); // Todas visíveis por padrão
         }
       }
+      ctoNumbersVersion++; // Forçar atualização da numeração
 
       console.log(`✅ Total final: ${searchedCTOs.length} CTO(s) pesquisada(s) + ${nearbyCTOs.length} CTO(s) próxima(s) = ${ctos.length} CTO(s) no total`);
       console.log(`📋 CTOs pesquisadas na lista: ${searchedCTOsList.length}, CTOs pesquisadas no resultado: ${searchedCTOs.length}, CTOs próximas: ${nearbyCTOs.length}`);
@@ -1202,6 +1240,7 @@
           ctoVisibility.set(ctoKey, true); // Todas visíveis por padrão
         }
       }
+      ctoNumbersVersion++; // Forçar atualização da numeração
 
       if (ctos.length === 0) {
         error = 'Nenhuma CTO encontrada dentro de 250m dos pontos pesquisados.';
@@ -1900,10 +1939,12 @@
                             newVisibility.set(ctoKey, isChecked);
                           }
                           ctoVisibility = newVisibility;
+                          ctoNumbersVersion++; // Forçar atualização da numeração
                           displayResultsOnMap();
                         }}
                       />
                     </th>
+                    <th>#</th>
                     <th>CTO</th>
                     <th>Cidade</th>
                     <th>POP</th>
@@ -1936,11 +1977,13 @@
                           on:change={(e) => {
                             ctoVisibility.set(ctoKey, e.target.checked);
                             ctoVisibility = ctoVisibility;
+                            ctoNumbersVersion++; // Forçar atualização da numeração
                             displayResultsOnMap();
                           }}
                         />
                       </td>
-                      <td><strong>{cto.nome || ''}</strong></td>
+                      <td class="numeric">{ctoNumbers.get(cto) || '-'}</td>
+                      <td class="cto-name-cell"><strong>{cto.nome || ''}</strong></td>
                       <td>{cto.cidade || 'N/A'}</td>
                       <td>{cto.pop || 'N/A'}</td>
                       <td>{cto.olt || 'N/A'}</td>
@@ -2632,10 +2675,20 @@
     width: 50px;
   }
   
+  .results-table th:nth-child(2) {
+    text-align: center;
+    width: 50px;
+  }
+  
   .results-table td {
     padding: 0.75rem;
     border-bottom: 1px solid #e5e7eb;
     color: #4b5563;
+  }
+  
+  .results-table .cto-name-cell {
+    white-space: nowrap;
+    min-width: 150px;
   }
   
   .results-table tbody tr:hover {
