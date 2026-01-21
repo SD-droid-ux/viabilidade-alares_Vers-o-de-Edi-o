@@ -29,22 +29,40 @@ export default defineConfig({
     cssMinify: true, // Minificar CSS também
     cssCodeSplit: true, // Code splitting para CSS
     reportCompressedSize: false, // Desabilitar relatório de tamanho (acelera build)
+    // Aumentar limites para evitar travamentos em builds grandes
+    chunkSizeWarningLimit: 2000, // Aumentar limite de warning
+    // Configurar timeouts maiores para builds pesados
+    buildTimeout: 300000, // 5 minutos de timeout
     rollupOptions: {
       output: {
-        manualChunks: {
-          'google-maps': ['@googlemaps/js-api-loader'],
-          'utils': ['xlsx', 'html2canvas'],
+        manualChunks: (id) => {
+          // Separar node_modules em chunks menores para melhor cache
+          if (id.includes('node_modules')) {
+            if (id.includes('@googlemaps')) {
+              return 'google-maps';
+            }
+            if (id.includes('xlsx') || id.includes('html2canvas')) {
+              return 'utils';
+            }
+            if (id.includes('svelte')) {
+              return 'svelte-vendor';
+            }
+            // Agrupar outras dependências menores
+            return 'vendor';
+          }
         },
         // Otimizar nomes de arquivos para melhor cache
         entryFileNames: 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]',
       },
+      // Otimizações adicionais para evitar travamentos
+      maxParallelFileOps: 5, // Limitar operações paralelas
     },
-    chunkSizeWarningLimit: 1000, // Aumentar limite de warning
     // Tree-shaking agressivo
     treeshake: {
       moduleSideEffects: false,
+      preset: 'smallest', // Usar preset menor para reduzir tamanho do bundle
     },
   },
 });
