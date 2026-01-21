@@ -25,7 +25,7 @@
     "html2canvas": "^1.4.1",
     "serve": "^14.2.0",
     "ag-grid-community": "^30.2.0",
-    "ag-grid-svelte": "^30.2.0"
+    "ag-grid-svelte": "^0.3.0"
   }
 }
 
