@@ -1806,71 +1806,70 @@
             const startColIndex = getCellColumnIndex(startCell);
             const endColIndex = getCellColumnIndex(endCell);
             
-            // Se estão na mesma coluna, permitir seleção vertical (múltiplas linhas da mesma coluna)
+            // Se estão na mesma coluna, extrair apenas os valores dessa coluna
             if (startColIndex === endColIndex && startColIndex !== -1) {
-              // Verificar se a seleção é realmente vertical (mesma coluna)
-              // Se sim, permitir e extrair apenas o texto dessa coluna
-              const selectedText = selection.toString();
-              const lines = selectedText.split('\n');
+              // Extrair apenas o conteúdo da coluna selecionada
+              const startRow = startCell.parentNode;
+              const endRow = endCell.parentNode;
+              const rows = Array.from(table.querySelectorAll('tbody tr'));
+              const startRowIndex = rows.indexOf(startRow);
+              const endRowIndex = rows.indexOf(endRow);
               
-              // Verificar se o texto selecionado contém conteúdo de múltiplas colunas (separado por tabulação ou espaços excessivos)
-              const hasMultipleColumns = lines.some(line => {
-                // Se a linha contém muitos espaços ou tabulações, provavelmente tem múltiplas colunas
-                const parts = line.split(/\s+/).filter(p => p.length > 0);
-                return parts.length > 2; // Mais de 2 partes indica múltiplas colunas
-              });
-              
-              if (hasMultipleColumns) {
-                // Extrair apenas o conteúdo da coluna selecionada
-                const startRow = startCell.parentNode;
-                const endRow = endCell.parentNode;
-                const rows = Array.from(table.querySelectorAll('tbody tr'));
-                const startRowIndex = rows.indexOf(startRow);
-                const endRowIndex = rows.indexOf(endRow);
+              if (startRowIndex !== -1 && endRowIndex !== -1) {
+                // Extrair apenas os valores da coluna selecionada
+                const columnValues = [];
+                const minRow = Math.min(startRowIndex, endRowIndex);
+                const maxRow = Math.max(startRowIndex, endRowIndex);
                 
-                if (startRowIndex !== -1 && endRowIndex !== -1) {
-                  // Extrair apenas os valores da coluna selecionada
-                  const columnValues = [];
-                  const minRow = Math.min(startRowIndex, endRowIndex);
-                  const maxRow = Math.max(startRowIndex, endRowIndex);
-                  
-                  for (let i = minRow; i <= maxRow; i++) {
-                    const row = rows[i];
-                    if (row) {
-                      const cells = Array.from(row.querySelectorAll('td'));
-                      if (cells[startColIndex]) {
-                        const cellText = cells[startColIndex].textContent.trim();
-                        if (cellText) {
-                          columnValues.push(cellText);
-                        }
+                for (let i = minRow; i <= maxRow; i++) {
+                  const row = rows[i];
+                  if (row) {
+                    const cells = Array.from(row.querySelectorAll('td'));
+                    if (cells[startColIndex]) {
+                      // Ignorar células de checkbox (primeira coluna)
+                      // Ignorar células de número (#) se for a segunda coluna
+                      const cellText = cells[startColIndex].textContent.trim();
+                      if (cellText && !cellText.match(/^\d+$/)) {
+                        columnValues.push(cellText);
+                      } else if (cellText) {
+                        // Se for número, verificar se não é checkbox ou #
+                        columnValues.push(cellText);
                       }
                     }
                   }
+                }
+                
+                // Se encontrou valores, substituir o clipboard com apenas essa coluna
+                if (columnValues.length > 0) {
+                  // Criar evento de cópia para interceptar
+                  e.preventDefault();
                   
-                  // Limpar seleção atual
-                  selection.removeAllRanges();
+                  // Copiar apenas os valores da coluna para o clipboard
+                  const columnText = columnValues.join('\n');
                   
-                  // Criar uma seleção temporária apenas para copiar
-                  const tempDiv = document.createElement('div');
-                  tempDiv.style.position = 'absolute';
-                  tempDiv.style.left = '-9999px';
-                  tempDiv.textContent = columnValues.join('\n');
-                  document.body.appendChild(tempDiv);
-                  
-                  const newRange = document.createRange();
-                  newRange.selectNodeContents(tempDiv);
-                  selection.addRange(newRange);
-                  
-                  // Copiar para clipboard
-                  document.execCommand('copy');
-                  
-                  // Remover elemento temporário após um breve delay
-                  setTimeout(() => {
-                    document.body.removeChild(tempDiv);
+                  // Usar Clipboard API moderna se disponível
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(columnText).then(() => {
+                      console.log('✅ Apenas coluna copiada:', columnValues);
+                      selection.removeAllRanges();
+                    }).catch(err => {
+                      console.error('Erro ao copiar:', err);
+                    });
+                  } else {
+                    // Fallback para método antigo
+                    const tempTextarea = document.createElement('textarea');
+                    tempTextarea.value = columnText;
+                    tempTextarea.style.position = 'fixed';
+                    tempTextarea.style.left = '-9999px';
+                    document.body.appendChild(tempTextarea);
+                    tempTextarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(tempTextarea);
                     selection.removeAllRanges();
-                  }, 100);
+                    console.log('✅ Apenas coluna copiada (fallback):', columnValues);
+                  }
                   
-                  console.log('✅ Apenas coluna selecionada:', columnValues);
+                  mouseDownCell = null;
                   return;
                 }
               }
@@ -1924,6 +1923,78 @@
     table.addEventListener('mousedown', selectionHandler.mousedown, true);
     table.addEventListener('mouseup', selectionHandler.mouseup, true);
     table.addEventListener('selectstart', selectionHandler.selectstart, true);
+    
+    // Interceptar evento de cópia para garantir que apenas a coluna seja copiada
+    table.addEventListener('copy', (e) => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      
+      const range = selection.getRangeAt(0);
+      if (!range) return;
+      
+      let startCell = range.startContainer;
+      let endCell = range.endContainer;
+      
+      const findParentCell = (node) => {
+        while (node && node.nodeType !== 1) {
+          node = node.parentNode;
+        }
+        while (node && node.tagName !== 'TD' && node.tagName !== 'TH') {
+          node = node.parentNode;
+        }
+        return node;
+      };
+      
+      const getCellColumnIndex = (cell) => {
+        if (!cell) return -1;
+        const row = cell.parentNode;
+        if (!row) return -1;
+        const cells = Array.from(row.children);
+        return cells.indexOf(cell);
+      };
+      
+      startCell = findParentCell(startCell);
+      endCell = findParentCell(endCell);
+      
+      // Se está selecionando múltiplas células na mesma coluna
+      if (startCell && endCell && startCell !== endCell) {
+        const startColIndex = getCellColumnIndex(startCell);
+        const endColIndex = getCellColumnIndex(endCell);
+        
+        if (startColIndex === endColIndex && startColIndex !== -1) {
+          const startRow = startCell.parentNode;
+          const endRow = endCell.parentNode;
+          const rows = Array.from(table.querySelectorAll('tbody tr'));
+          const startRowIndex = rows.indexOf(startRow);
+          const endRowIndex = rows.indexOf(endRow);
+          
+          if (startRowIndex !== -1 && endRowIndex !== -1) {
+            const columnValues = [];
+            const minRow = Math.min(startRowIndex, endRowIndex);
+            const maxRow = Math.max(startRowIndex, endRowIndex);
+            
+            for (let i = minRow; i <= maxRow; i++) {
+              const row = rows[i];
+              if (row) {
+                const cells = Array.from(row.querySelectorAll('td'));
+                if (cells[startColIndex]) {
+                  const cellText = cells[startColIndex].textContent.trim();
+                  if (cellText) {
+                    columnValues.push(cellText);
+                  }
+                }
+              }
+            }
+            
+            if (columnValues.length > 0) {
+              e.preventDefault();
+              e.clipboardData.setData('text/plain', columnValues.join('\n'));
+              console.log('✅ Clipboard interceptado - apenas coluna:', columnValues);
+            }
+          }
+        }
+      }
+    }, true);
   }
 
   // Inicializar ferramenta
