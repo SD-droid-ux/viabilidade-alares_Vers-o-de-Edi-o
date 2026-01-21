@@ -1839,36 +1839,15 @@
                   }
                 }
                 
-                // Se encontrou valores, substituir o clipboard com apenas essa coluna
+                // Armazenar os valores da coluna para uso no evento copy
                 if (columnValues.length > 0) {
-                  // Criar evento de cópia para interceptar
-                  e.preventDefault();
+                  table.setAttribute('data-selected-column', JSON.stringify({
+                    values: columnValues,
+                    colIndex: startColIndex
+                  }));
                   
-                  // Copiar apenas os valores da coluna para o clipboard
-                  const columnText = columnValues.join('\n');
-                  
-                  // Usar Clipboard API moderna se disponível
-                  if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(columnText).then(() => {
-                      console.log('✅ Apenas coluna copiada:', columnValues);
-                      selection.removeAllRanges();
-                    }).catch(err => {
-                      console.error('Erro ao copiar:', err);
-                    });
-                  } else {
-                    // Fallback para método antigo
-                    const tempTextarea = document.createElement('textarea');
-                    tempTextarea.value = columnText;
-                    tempTextarea.style.position = 'fixed';
-                    tempTextarea.style.left = '-9999px';
-                    document.body.appendChild(tempTextarea);
-                    tempTextarea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(tempTextarea);
-                    selection.removeAllRanges();
-                    console.log('✅ Apenas coluna copiada (fallback):', columnValues);
-                  }
-                  
+                  console.log('✅ Coluna selecionada - valores armazenados:', columnValues);
+                  // Não copiar aqui, apenas armazenar para o evento 'copy' usar
                   mouseDownCell = null;
                   return;
                 }
@@ -1926,6 +1905,33 @@
     
     // Interceptar evento de cópia para garantir que apenas a coluna seja copiada
     table.addEventListener('copy', (e) => {
+      // Verificar se há uma coluna selecionada armazenada
+      const selectedColumnData = table.getAttribute('data-selected-column');
+      
+      if (selectedColumnData) {
+        try {
+          const columnInfo = JSON.parse(selectedColumnData);
+          
+          if (columnInfo.values && columnInfo.values.length > 0) {
+            // Prevenir comportamento padrão
+            e.preventDefault();
+            
+            // Substituir o clipboard apenas com os valores da coluna
+            const columnText = columnInfo.values.join('\n');
+            e.clipboardData.setData('text/plain', columnText);
+            
+            console.log('✅ Clipboard interceptado - apenas coluna:', columnInfo.values);
+            
+            // Limpar o atributo após usar
+            table.removeAttribute('data-selected-column');
+            return;
+          }
+        } catch (err) {
+          console.error('Erro ao processar dados da coluna:', err);
+        }
+      }
+      
+      // Se não há coluna selecionada armazenada, tentar detectar agora
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return;
       
@@ -1989,11 +1995,15 @@
             if (columnValues.length > 0) {
               e.preventDefault();
               e.clipboardData.setData('text/plain', columnValues.join('\n'));
-              console.log('✅ Clipboard interceptado - apenas coluna:', columnValues);
+              console.log('✅ Clipboard interceptado (detecção no copy) - apenas coluna:', columnValues);
+              return;
             }
           }
         }
       }
+      
+      // Se chegou aqui, a seleção cruza múltiplas colunas - limpar
+      table.removeAttribute('data-selected-column');
     }, true);
   }
 
