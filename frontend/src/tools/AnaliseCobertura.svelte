@@ -3,14 +3,6 @@
   import { Loader } from '@googlemaps/js-api-loader';
   import Loading from '../Loading.svelte';
   import { getApiUrl } from '../config.js';
-  import {
-    createColumnHelper,
-    createTable,
-    getCoreRowModel,
-    getSortedRowModel,
-    getFilteredRowModel,
-    getPaginationRowModel
-  } from '@tanstack/table-core';
 
   // Props do componente
   export let currentUser = '';
@@ -50,297 +42,6 @@
   
   // Mapa para controlar quais CTOs estão visíveis no mapa (key: identificador único da CTO)
   let ctoVisibility = new Map(); // Map<ctoKey, boolean>
-  
-  // Estados de ordenação e filtros
-  let sortColumn = null; // Nome da coluna sendo ordenada
-  let sortDirection = 'asc'; // 'asc' ou 'desc'
-  let filters = {}; // Objeto com filtros por coluna: { coluna: { type: 'text'|'number'|'min', value: ... } }
-  let columnVisibility = {}; // Objeto com visibilidade de colunas: { coluna: true/false }
-  let showFilterMenu = null; // Coluna que está mostrando o menu de filtro
-  let columnWidths = {}; // Objeto com larguras de colunas: { coluna: '100px' }
-  let resizingColumn = null; // Coluna sendo redimensionada
-  let columnResizeStartX = 0;
-  let columnResizeStartWidth = 0;
-  
-  // CTOs filtradas e ordenadas
-  let filteredAndSortedCTOs = [];
-  
-  // TanStack Table - Configuração (usando core e adaptando para Svelte)
-  let table;
-  let tableSorting = [];
-  let tableColumnFilters = [];
-  let tablePagination = { pageIndex: 0, pageSize: 0 }; // 0 = mostrar todos os resultados
-  
-  // Definir colunas da tabela usando TanStack Table
-  // Usando tipo genérico any para flexibilidade
-  const columnHelper = createColumnHelper();
-  const tableColumns = [
-    columnHelper.accessor('nome', {
-      header: 'CTO',
-      size: 150,
-    }),
-    columnHelper.accessor('cidade', {
-      header: 'Cidade',
-      size: 120,
-    }),
-    columnHelper.accessor('pop', {
-      header: 'POP',
-      size: 100,
-    }),
-    columnHelper.accessor((row) => row.olt || 'N/A', {
-      id: 'chasse',
-      header: 'CHASSE',
-      size: 100,
-    }),
-    columnHelper.accessor((row) => row.slot || 'N/A', {
-      id: 'placa',
-      header: 'PLACA',
-      size: 100,
-    }),
-    columnHelper.accessor((row) => row.pon || 'N/A', {
-      id: 'olt',
-      header: 'OLT',
-      size: 100,
-    }),
-    columnHelper.accessor((row) => row.id_cto || row.id || 'N/A', {
-      id: 'id_cto',
-      header: 'ID CTO',
-      size: 100,
-    }),
-    columnHelper.accessor((row) => row.vagas_total || 0, {
-      id: 'portas_total',
-      header: 'Portas Total',
-      size: 110,
-    }),
-    columnHelper.accessor((row) => row.clientes_conectados || 0, {
-      id: 'ocupadas',
-      header: 'Ocupadas',
-      size: 100,
-    }),
-    columnHelper.accessor((row) => (row.vagas_total || 0) - (row.clientes_conectados || 0), {
-      id: 'disponiveis',
-      header: 'Disponíveis',
-      size: 110,
-    }),
-    columnHelper.accessor((row) => parseFloat(row.pct_ocup || 0), {
-      id: 'ocupacao',
-      header: 'Ocupação',
-      size: 110,
-    }),
-    columnHelper.accessor((row) => row.status_cto || 'N/A', {
-      id: 'status',
-      header: 'Status',
-      size: 100,
-    }),
-    columnHelper.accessor((row) => {
-      const caminhoKey = getCaminhoRedeKey(row);
-      return caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0;
-    }, {
-      id: 'total_portas_caminho',
-      header: 'Total de Portas no Caminho de Rede',
-      size: 200,
-    }),
-    columnHelper.accessor((row) => getCaminhoRedeCTOsTotal(row), {
-      id: 'total_ctos_caminho',
-      header: 'Total de CTOs no Caminho de Rede',
-      size: 200,
-    })
-  ];
-  
-  // Sincronizar sorting do TanStack Table com o sistema atual
-  $: if (table && tableSorting.length > 0) {
-    const sortState = tableSorting[0];
-    if (sortState) {
-      sortColumn = sortState.id;
-      sortDirection = sortState.desc ? 'desc' : 'asc';
-    }
-  }
-  
-  // Flag para controlar se TanStack Table está disponível
-  let tanStackAvailable = false;
-  
-  // Inicializar tabela quando ctos mudar
-  $: if (ctos && ctos.length > 0) {
-    // Tentar usar TanStack Table se disponível
-    if (typeof createTable === 'function' && typeof createColumnHelper === 'function') {
-      try {
-        table = createTable({
-          data: ctos,
-          columns: tableColumns,
-          state: {
-            sorting: tableSorting,
-            columnFilters: tableColumnFilters,
-            pagination: tablePagination
-          },
-          onSortingChange: (updater) => {
-            tableSorting = typeof updater === 'function' ? updater(tableSorting) : updater;
-          },
-          onColumnFiltersChange: (updater) => {
-            tableColumnFilters = typeof updater === 'function' ? updater(tableColumnFilters) : updater;
-          },
-          onPaginationChange: (updater) => {
-            tablePagination = typeof updater === 'function' ? updater(tablePagination) : updater;
-          },
-          getCoreRowModel: getCoreRowModel(),
-          getSortedRowModel: getSortedRowModel(),
-          getFilteredRowModel: getFilteredRowModel(),
-          getPaginationRowModel: getPaginationRowModel(),
-        });
-        
-        tanStackAvailable = true;
-        console.log('✅ TanStack Table inicializado com sucesso');
-      } catch (err) {
-        console.error('❌ Erro ao criar tabela TanStack:', err);
-        tanStackAvailable = false;
-        table = null;
-      }
-    } else {
-      console.warn('⚠️ TanStack Table não disponível, usando implementação manual');
-      tanStackAvailable = false;
-      table = null;
-    }
-  } else {
-    filteredAndSortedCTOs = [];
-    table = null;
-  }
-  
-  // Atualizar filteredAndSortedCTOs quando table, filtros ou ordenação mudarem
-  // SEMPRE usar implementação manual por enquanto para garantir que funcione
-  $: if (ctos && ctos.length > 0) {
-    // Sempre usar implementação manual para garantir funcionamento
-    let result = [...ctos];
-    result = applyFilters(result);
-    result = sortCTOs(result);
-    
-    // Aplicar paginação manual APENAS se pageSize for maior que 0 e menor que total
-    // Por padrão (pageSize = 0), mostrar todos os resultados
-    if (tablePagination && tablePagination.pageSize > 0 && tablePagination.pageSize < result.length) {
-      const start = Math.max(0, tablePagination.pageIndex * tablePagination.pageSize);
-      const end = Math.min(start + tablePagination.pageSize, result.length);
-      filteredAndSortedCTOs = result.slice(start, end);
-    } else {
-      // Mostrar todos os resultados se não houver paginação (pageSize = 0) ou se pageSize >= total
-      filteredAndSortedCTOs = result;
-    }
-    
-    // Debug: verificar se os dados estão sendo populados
-    if (filteredAndSortedCTOs.length === 0 && result.length > 0) {
-      console.warn('⚠️ filteredAndSortedCTOs está vazio mas result tem dados:', result.length);
-    }
-  } else {
-    filteredAndSortedCTOs = [];
-  }
-  
-  // Função para iniciar redimensionamento de coluna
-  function startResizeColumn(e, columnName) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    
-    resizingColumn = columnName;
-    columnResizeStartX = e.clientX || e.touches?.[0]?.clientX || 0;
-    
-    const header = e.target.closest('th');
-    if (header) {
-      columnResizeStartWidth = header.offsetWidth;
-      header.classList.add('resizing');
-    }
-    
-    // Adicionar listeners globais
-    document.addEventListener('mousemove', handleResizeColumn, { passive: false, capture: true });
-    document.addEventListener('mouseup', stopResizeColumn, { once: true, capture: true });
-    document.addEventListener('touchmove', handleResizeColumn, { passive: false, capture: true });
-    document.addEventListener('touchend', stopResizeColumn, { once: true, capture: true });
-    
-    // Prevenir seleção de texto durante redimensionamento
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'col-resize';
-  }
-  
-  function handleResizeColumn(e) {
-    if (!resizingColumn) return;
-    
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const clientX = e.clientX || e.touches?.[0]?.clientX || 0;
-    const diff = clientX - columnResizeStartX;
-    const newWidth = Math.max(50, columnResizeStartWidth + diff); // Mínimo de 50px
-    
-    // Atualizar o objeto de larguras
-    columnWidths[resizingColumn] = `${newWidth}px`;
-    columnWidths = columnWidths; // Forçar reatividade
-    
-    // Atualizar todas as células da coluna em tempo real via DOM
-    const columnIndex = getColumnIndex(resizingColumn);
-    if (columnIndex > 0) {
-      const table = document.querySelector('.results-table');
-      if (table) {
-        const headers = table.querySelectorAll(`th:nth-child(${columnIndex})`);
-        const cells = table.querySelectorAll(`td:nth-child(${columnIndex})`);
-        
-        headers.forEach(el => {
-          el.style.width = `${newWidth}px`;
-          el.style.minWidth = `${newWidth}px`;
-          el.style.maxWidth = `${newWidth}px`;
-        });
-        
-        cells.forEach(el => {
-          el.style.width = `${newWidth}px`;
-          el.style.minWidth = `${newWidth}px`;
-          el.style.maxWidth = `${newWidth}px`;
-        });
-      }
-    }
-  }
-  
-  // Função auxiliar para obter o índice da coluna
-  function getColumnIndex(columnName) {
-    const columnMap = {
-      'checkbox': 1,
-      'numero': 2,
-      'nome': 3,
-      'cidade': 4,
-      'pop': 5,
-      'chasse': 6,
-      'placa': 7,
-      'olt': 8,
-      'id_cto': 9,
-      'portas_total': 10,
-      'ocupadas': 11,
-      'disponiveis': 12,
-      'ocupacao': 13,
-      'status': 14,
-      'total_portas_caminho': 15,
-      'total_ctos_caminho': 16
-    };
-    return columnMap[columnName] || 1;
-  }
-  
-  function stopResizeColumn() {
-    if (resizingColumn) {
-      const columnIndex = getColumnIndex(resizingColumn);
-      if (columnIndex > 0) {
-        const table = document.querySelector('.results-table');
-        if (table) {
-          const headers = table.querySelectorAll(`th:nth-child(${columnIndex})`);
-          headers.forEach(h => h.classList.remove('resizing'));
-        }
-      }
-    }
-    
-    // Remover listeners
-    document.removeEventListener('mousemove', handleResizeColumn, { capture: true });
-    document.removeEventListener('mouseup', stopResizeColumn, { capture: true });
-    document.removeEventListener('touchmove', handleResizeColumn, { capture: true });
-    document.removeEventListener('touchend', stopResizeColumn, { capture: true });
-    
-    // Restaurar seleção de texto
-    document.body.style.userSelect = '';
-    document.body.style.cursor = '';
-    
-    resizingColumn = null;
-  }
   
   // Função para gerar uma chave única para uma CTO (declarada aqui para uso nos reactive statements)
   function getCTOKey(cto) {
@@ -476,7 +177,7 @@
     
     caminhoRedeLoading.clear();
     
-    console.log(`● Calculando totais para ${caminhosUnicos.size} caminhos de rede únicos:`, Array.from(caminhosUnicos));
+    console.log(`🔍 Calculando totais para ${caminhosUnicos.size} caminhos de rede únicos:`, Array.from(caminhosUnicos));
     
     if (caminhosUnicos.size === 0) {
       console.warn('⚠️ Nenhum caminho de rede válido encontrado nas CTOs');
@@ -698,180 +399,6 @@
     const ctoKey = getCTOKey(cto);
     return ctoVisibility.get(ctoKey) === true;
   }) && !allCTOsVisible;
-  
-  // Função para obter valor da célula para ordenação/filtro
-  function getCellValue(cto, columnName) {
-    switch(columnName) {
-      case 'nome': return cto.nome || '';
-      case 'cidade': return cto.cidade || '';
-      case 'pop': return cto.pop || '';
-      case 'chasse': return cto.olt || '';
-      case 'placa': return cto.slot || '';
-      case 'olt': return cto.pon || '';
-      case 'id_cto': return cto.id_cto || cto.id || '';
-      case 'portas_total': return parseFloat(cto.vagas_total || 0);
-      case 'ocupadas': return parseFloat(cto.clientes_conectados || 0);
-      case 'disponiveis': return parseFloat((cto.vagas_total || 0) - (cto.clientes_conectados || 0));
-      case 'ocupacao': return parseFloat(cto.pct_ocup || 0);
-      case 'status': return cto.status_cto || '';
-      case 'total_portas_caminho': return getCaminhoRedeTotal(cto);
-      case 'total_ctos_caminho': return getCaminhoRedeCTOsTotal(cto);
-      default: return '';
-    }
-  }
-  
-  // Função para aplicar filtros
-  function applyFilters(ctosList) {
-    if (!filters || Object.keys(filters).length === 0) {
-      return ctosList;
-    }
-    
-    return ctosList.filter(cto => {
-      for (const [columnName, filter] of Object.entries(filters)) {
-        if (!filter || !filter.value) continue;
-        
-        const cellValue = getCellValue(cto, columnName);
-        const filterValue = filter.value.toString().toLowerCase().trim();
-        
-        if (filter.type === 'text') {
-          // Filtro de texto (contém)
-          if (!cellValue.toString().toLowerCase().includes(filterValue)) {
-            return false;
-          }
-        } else if (filter.type === 'number') {
-          // Filtro numérico (maior/menor)
-          const numValue = parseFloat(cellValue) || 0;
-          const numFilter = parseFloat(filterValue) || 0;
-          
-          if (filter.operator === 'greater') {
-            if (numValue <= numFilter) return false;
-          } else if (filter.operator === 'less') {
-            if (numValue >= numFilter) return false;
-          } else if (filter.operator === 'equal') {
-            if (numValue !== numFilter) return false;
-          }
-        } else if (filter.type === 'min') {
-          // Filtro mínimo
-          const numValue = parseFloat(cellValue) || 0;
-          const numFilter = parseFloat(filterValue) || 0;
-          if (numValue < numFilter) return false;
-        }
-      }
-      return true;
-    });
-  }
-  
-  // Função para ordenar CTOs
-  function sortCTOs(ctosList) {
-    if (!sortColumn) {
-      return ctosList;
-    }
-    
-    const sorted = [...ctosList];
-    sorted.sort((a, b) => {
-      const aValue = getCellValue(a, sortColumn);
-      const bValue = getCellValue(b, sortColumn);
-      
-      // Comparação numérica ou textual
-      if (typeof aValue === 'number' && typeof bValue === 'number') {
-        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
-      } else {
-        const aStr = aValue.toString().toLowerCase();
-        const bStr = bValue.toString().toLowerCase();
-        if (sortDirection === 'asc') {
-          return aStr.localeCompare(bStr, 'pt-BR');
-        } else {
-          return bStr.localeCompare(aStr, 'pt-BR');
-        }
-      }
-    });
-    
-    return sorted;
-  }
-  
-  // Função para ordenar por coluna - integrado com TanStack Table
-  function handleSort(columnName) {
-    if (table) {
-      // Usar TanStack Table para ordenação
-      const currentSort = tableSorting.find(s => s.id === columnName);
-      if (currentSort) {
-        // Alternar direção
-        tableSorting = tableSorting.map(s => 
-          s.id === columnName 
-            ? { ...s, desc: !s.desc }
-            : s
-        );
-      } else {
-        // Nova coluna, começar com ascendente
-        tableSorting = [{ id: columnName, desc: false }];
-      }
-    } else {
-      // Fallback para implementação manual
-      if (sortColumn === columnName) {
-        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
-      } else {
-        sortColumn = columnName;
-        sortDirection = 'asc';
-      }
-    }
-  }
-  
-  // Função para aplicar filtro
-  function applyFilter(columnName, filterType, value, operator = null) {
-    if (!filters) filters = {};
-    
-    if (!value || value.toString().trim() === '') {
-      // Remover filtro se vazio
-      delete filters[columnName];
-      filters = filters; // Forçar reatividade
-    } else {
-      filters[columnName] = {
-        type: filterType,
-        value: value,
-        operator: operator
-      };
-      filters = filters; // Forçar reatividade
-    }
-    
-    showFilterMenu = null; // Fechar menu
-  }
-  
-  // Função para limpar todos os filtros
-  function clearAllFilters() {
-    filters = {};
-    showFilterMenu = null;
-  }
-  
-  // Função para alternar visibilidade de coluna (minimizar ao invés de ocultar)
-  function toggleColumnVisibility(columnName) {
-    if (!columnVisibility) columnVisibility = {};
-    // false/undefined = normal, true = minimizada
-    const currentState = columnVisibility[columnName];
-    columnVisibility[columnName] = !currentState;
-    columnVisibility = columnVisibility; // Forçar reatividade
-  }
-  
-  // Inicializar visibilidade de todas as colunas como visível
-  $: if (ctos.length > 0 && Object.keys(columnVisibility).length === 0) {
-    columnVisibility = {
-      checkbox: true,
-      numero: true,
-      nome: true,
-      cidade: true,
-      pop: true,
-      chasse: true,
-      placa: true,
-      olt: true,
-      id_cto: true,
-      portas_total: true,
-      ocupadas: true,
-      disponiveis: true,
-      ocupacao: true,
-      status: true,
-      total_portas_caminho: true,
-      total_ctos_caminho: true
-    };
-  }
   
   // Redimensionamento de boxes - usar variáveis que o Svelte detecta como reativas
   let sidebarWidth = 400; // Largura inicial da sidebar em pixels (aumentada para melhor visibilidade)
@@ -1184,7 +711,7 @@
         return;
       }
 
-      console.log(`● Buscando ${ctoNames.length} CTO(s):`, ctoNames);
+      console.log(`🔍 Buscando ${ctoNames.length} CTO(s):`, ctoNames);
 
       const allCTOsMap = new Map(); // CTOs próximas - chave: coordenadas (para evitar duplicatas entre próximas)
       const searchedCTOsList = []; // Lista de TODAS as CTOs pesquisadas pelo usuário (incluindo duplicatas por coordenadas)
@@ -1385,7 +912,7 @@
       console.log(`✅ Total final: ${searchedCTOs.length} CTO(s) pesquisada(s) + ${nearbyCTOs.length} CTO(s) próxima(s) = ${ctos.length} CTO(s) no total`);
       console.log(`📋 CTOs pesquisadas na lista: ${searchedCTOsList.length}, CTOs pesquisadas no resultado: ${searchedCTOs.length}, CTOs próximas: ${nearbyCTOs.length}`);
       console.log(`📝 Nomes das CTOs pesquisadas:`, searchedCTOs.map(cto => cto.nome).join(', '));
-      console.log(`● Verificação: Array ctos tem ${ctos.length} elementos`);
+      console.log(`🔍 Verificação: Array ctos tem ${ctos.length} elementos`);
       
       // Verificar se há duplicatas
       const uniqueKeys = new Set();
@@ -1602,7 +1129,7 @@
       
       console.log(`📋 Total de entradas processadas: ${addressesInputs.length}`, addressesInputs);
 
-      console.log(`● Buscando ${addressesInputs.length} endereço(s)/coordenada(s):`, addressesInputs);
+      console.log(`🔍 Buscando ${addressesInputs.length} endereço(s)/coordenada(s):`, addressesInputs);
 
       // Processar cada endereço/coordenada em paralelo
       const searchPromises = addressesInputs.map(async (input) => {
@@ -2206,280 +1733,6 @@
   }
 
 
-  // Função para limitar seleção de texto a uma única célula
-  let selectionHandler = null;
-  let mouseDownCell = null;
-  
-  function limitSelectionToSingleCell() {
-    const table = document.querySelector('.results-table');
-    if (!table) return;
-    
-    // Remover listeners anteriores se existirem
-    if (selectionHandler) {
-      table.removeEventListener('mousedown', selectionHandler.mousedown);
-      table.removeEventListener('mouseup', selectionHandler.mouseup);
-      table.removeEventListener('selectstart', selectionHandler.selectstart);
-    }
-    
-    // Criar novos handlers
-    selectionHandler = {
-      mousedown: (e) => {
-        // Encontrar a célula onde o mouse foi pressionado
-        let target = e.target;
-        while (target && target.tagName !== 'TD' && target.tagName !== 'TH') {
-          target = target.parentNode;
-        }
-        mouseDownCell = target;
-      },
-      
-      mouseup: (e) => {
-        // Aguardar um pouco para permitir que a seleção seja completada
-        setTimeout(() => {
-          const selection = window.getSelection();
-          if (!selection || selection.rangeCount === 0) {
-            mouseDownCell = null;
-            return;
-          }
-          
-          const range = selection.getRangeAt(0);
-          if (!range) {
-            mouseDownCell = null;
-            return;
-          }
-          
-          // Encontrar células que contêm o início e fim da seleção
-          let startCell = range.startContainer;
-          let endCell = range.endContainer;
-          
-          // Função auxiliar para encontrar célula pai
-          const findParentCell = (node) => {
-            while (node && node.nodeType !== 1) {
-              node = node.parentNode;
-            }
-            while (node && node.tagName !== 'TD' && node.tagName !== 'TH') {
-              node = node.parentNode;
-            }
-            return node;
-          };
-          
-          // Função auxiliar para obter o índice da coluna de uma célula
-          const getCellColumnIndex = (cell) => {
-            if (!cell) return -1;
-            const row = cell.parentNode;
-            if (!row) return -1;
-            const cells = Array.from(row.children);
-            return cells.indexOf(cell);
-          };
-          
-          startCell = findParentCell(startCell);
-          endCell = findParentCell(endCell);
-          
-          // Se a seleção cruza múltiplas células
-          if (startCell && endCell && startCell !== endCell) {
-            const startColIndex = getCellColumnIndex(startCell);
-            const endColIndex = getCellColumnIndex(endCell);
-            
-            // Se estão na mesma coluna, extrair apenas os valores dessa coluna
-            if (startColIndex === endColIndex && startColIndex !== -1) {
-              // Extrair apenas o conteúdo da coluna selecionada
-              const startRow = startCell.parentNode;
-              const endRow = endCell.parentNode;
-              const rows = Array.from(table.querySelectorAll('tbody tr'));
-              const startRowIndex = rows.indexOf(startRow);
-              const endRowIndex = rows.indexOf(endRow);
-              
-              if (startRowIndex !== -1 && endRowIndex !== -1) {
-                // Extrair apenas os valores da coluna selecionada
-                const columnValues = [];
-                const minRow = Math.min(startRowIndex, endRowIndex);
-                const maxRow = Math.max(startRowIndex, endRowIndex);
-                
-                for (let i = minRow; i <= maxRow; i++) {
-                  const row = rows[i];
-                  if (row) {
-                    const cells = Array.from(row.querySelectorAll('td'));
-                    if (cells[startColIndex]) {
-                      // Ignorar células de checkbox (primeira coluna)
-                      // Ignorar células de número (#) se for a segunda coluna
-                      const cellText = cells[startColIndex].textContent.trim();
-                      if (cellText && !cellText.match(/^\d+$/)) {
-                        columnValues.push(cellText);
-                      } else if (cellText) {
-                        // Se for número, verificar se não é checkbox ou #
-                        columnValues.push(cellText);
-                      }
-                    }
-                  }
-                }
-                
-                // Armazenar os valores da coluna para uso no evento copy
-                if (columnValues.length > 0) {
-                  table.setAttribute('data-selected-column', JSON.stringify({
-                    values: columnValues,
-                    colIndex: startColIndex
-                  }));
-                  
-                  console.log('✅ Coluna selecionada - valores armazenados:', columnValues);
-                  // Não copiar aqui, apenas armazenar para o evento 'copy' usar
-                  mouseDownCell = null;
-                  return;
-                }
-              }
-            } else {
-              // Se não estão na mesma coluna, limitar a apenas uma célula
-              const targetCell = mouseDownCell || startCell;
-              
-              if (targetCell) {
-                // Limpar seleção atual
-                selection.removeAllRanges();
-                
-                // Selecionar apenas o conteúdo da célula alvo
-                const newRange = document.createRange();
-                newRange.selectNodeContents(targetCell);
-                selection.addRange(newRange);
-                
-                console.log('✅ Seleção limitada à célula:', targetCell.textContent.trim());
-              }
-            }
-          } else if (mouseDownCell && startCell && startCell !== mouseDownCell) {
-            // Se apenas uma célula foi selecionada mas diferente da inicial
-            if (mouseDownCell) {
-              selection.removeAllRanges();
-              const newRange = document.createRange();
-              newRange.selectNodeContents(mouseDownCell);
-              selection.addRange(newRange);
-            }
-          }
-          
-          mouseDownCell = null;
-        }, 50); // Aumentar timeout para garantir que a seleção seja capturada
-      },
-      
-      selectstart: (e) => {
-        // Se o usuário começar a selecionar, verificar se está dentro de uma célula
-        let target = e.target;
-        while (target && target.tagName !== 'TD' && target.tagName !== 'TH' && target !== table) {
-          target = target.parentNode;
-        }
-        
-        // Se não estiver em uma célula, permitir seleção normal
-        if (!target || target === table) return;
-        
-        // Armazenar a célula inicial
-        mouseDownCell = target;
-        console.log('📍 Seleção iniciada na célula:', target.textContent.trim());
-      }
-    };
-    
-    // Adicionar listeners
-    table.addEventListener('mousedown', selectionHandler.mousedown, true);
-    table.addEventListener('mouseup', selectionHandler.mouseup, true);
-    table.addEventListener('selectstart', selectionHandler.selectstart, true);
-    
-    // Interceptar evento de cópia para garantir que apenas a coluna seja copiada
-    table.addEventListener('copy', (e) => {
-      // Verificar se há uma coluna selecionada armazenada
-      const selectedColumnData = table.getAttribute('data-selected-column');
-      
-      if (selectedColumnData) {
-        try {
-          const columnInfo = JSON.parse(selectedColumnData);
-          
-          if (columnInfo.values && columnInfo.values.length > 0) {
-            // Prevenir comportamento padrão
-            e.preventDefault();
-            
-            // Substituir o clipboard apenas com os valores da coluna
-            const columnText = columnInfo.values.join('\n');
-            e.clipboardData.setData('text/plain', columnText);
-            
-            console.log('✅ Clipboard interceptado - apenas coluna:', columnInfo.values);
-            
-            // Limpar o atributo após usar
-            table.removeAttribute('data-selected-column');
-            return;
-          }
-        } catch (err) {
-          console.error('Erro ao processar dados da coluna:', err);
-        }
-      }
-      
-      // Se não há coluna selecionada armazenada, tentar detectar agora
-      const selection = window.getSelection();
-      if (!selection || selection.rangeCount === 0) return;
-      
-      const range = selection.getRangeAt(0);
-      if (!range) return;
-      
-      let startCell = range.startContainer;
-      let endCell = range.endContainer;
-      
-      const findParentCell = (node) => {
-        while (node && node.nodeType !== 1) {
-          node = node.parentNode;
-        }
-        while (node && node.tagName !== 'TD' && node.tagName !== 'TH') {
-          node = node.parentNode;
-        }
-        return node;
-      };
-      
-      const getCellColumnIndex = (cell) => {
-        if (!cell) return -1;
-        const row = cell.parentNode;
-        if (!row) return -1;
-        const cells = Array.from(row.children);
-        return cells.indexOf(cell);
-      };
-      
-      startCell = findParentCell(startCell);
-      endCell = findParentCell(endCell);
-      
-      // Se está selecionando múltiplas células na mesma coluna
-      if (startCell && endCell && startCell !== endCell) {
-        const startColIndex = getCellColumnIndex(startCell);
-        const endColIndex = getCellColumnIndex(endCell);
-        
-        if (startColIndex === endColIndex && startColIndex !== -1) {
-          const startRow = startCell.parentNode;
-          const endRow = endCell.parentNode;
-          const rows = Array.from(table.querySelectorAll('tbody tr'));
-          const startRowIndex = rows.indexOf(startRow);
-          const endRowIndex = rows.indexOf(endRow);
-          
-          if (startRowIndex !== -1 && endRowIndex !== -1) {
-            const columnValues = [];
-            const minRow = Math.min(startRowIndex, endRowIndex);
-            const maxRow = Math.max(startRowIndex, endRowIndex);
-            
-            for (let i = minRow; i <= maxRow; i++) {
-              const row = rows[i];
-              if (row) {
-                const cells = Array.from(row.querySelectorAll('td'));
-                if (cells[startColIndex]) {
-                  const cellText = cells[startColIndex].textContent.trim();
-                  if (cellText) {
-                    columnValues.push(cellText);
-                  }
-                }
-              }
-            }
-            
-            if (columnValues.length > 0) {
-              e.preventDefault();
-              e.clipboardData.setData('text/plain', columnValues.join('\n'));
-              console.log('✅ Clipboard interceptado (detecção no copy) - apenas coluna:', columnValues);
-              return;
-            }
-          }
-        }
-      }
-      
-      // Se chegou aqui, a seleção cruza múltiplas colunas - limpar
-      table.removeAttribute('data-selected-column');
-    }, true);
-  }
-
   // Inicializar ferramenta
   onMount(async () => {
     try {
@@ -2503,12 +1756,6 @@
       
       // Inicializar a ferramenta (carrega Google Maps, verifica base, inicializa mapa)
       await initializeTool();
-      
-      // Aguardar a tabela estar disponível antes de adicionar o listener
-      await tick();
-      setTimeout(() => {
-        limitSelectionToSingleCell();
-      }, 500);
     } catch (err) {
       console.error('Erro ao inicializar ferramenta:', err);
       error = 'Erro ao inicializar ferramenta: ' + err.message;
@@ -2522,17 +1769,6 @@
     if (mapObserver) {
       mapObserver.disconnect();
       mapObserver = null;
-    }
-    
-    // Limpar handler de seleção se existir
-    if (selectionHandler) {
-      const table = document.querySelector('.results-table');
-      if (table && selectionHandler) {
-        table.removeEventListener('mousedown', selectionHandler.mousedown, true);
-        table.removeEventListener('mouseup', selectionHandler.mouseup, true);
-        table.removeEventListener('selectstart', selectionHandler.selectstart, true);
-      }
-      selectionHandler = null;
     }
   });
 </script>
@@ -2697,35 +1933,16 @@
         {#if ctos.length > 0}
           <div class="results-table-container" class:minimized={isTableMinimized} style="flex: {isTableMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isTableMinimized ? '60px' : '200px'};">
             <div class="table-header">
-              <h3>Resultados ({filteredAndSortedCTOs.length}{Object.keys(filters).length > 0 ? ` de ${ctos.length}` : ''})</h3>
-              <div class="table-actions">
-                {#if Object.keys(filters).length > 0}
-                  <button class="action-button" on:click={clearAllFilters} title="Limpar todos os filtros">
-                    🗑️
-                  </button>
-                {/if}
-                <button class="action-button" title="Buscar">
-                  🔍
-                </button>
-                <button class="action-button" title="Filtrar">
-                  ⚙️
-                </button>
-                <button class="action-button" title="Exportar">
-                  ⬇️
-                </button>
-                <button 
-                  class="minimize-button" 
-                  disabled={isResizingSidebar || isResizingMapTable}
-                  on:click|stopPropagation={() => {
-                    isTableMinimized = !isTableMinimized;
-                    console.log('Tabela minimizada:', isTableMinimized);
-                  }}
-                  aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
-                  title={isTableMinimized ? 'Expandir' : 'Minimizar'}
-                >
-                  {isTableMinimized ? '⬆️' : '⬇️'}
-                </button>
-              </div>
+              <h3>Resultados ({ctos.length})</h3>
+              <button 
+                class="minimize-button" 
+                disabled={isResizingSidebar || isResizingMapTable}
+                on:click={() => isTableMinimized = !isTableMinimized}
+                aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
+                title={isTableMinimized ? 'Expandir' : 'Minimizar'}
+              >
+                {isTableMinimized ? '⬆️' : '⬇️'}
+              </button>
             </div>
             {#if !isTableMinimized}
             <div class="table-wrapper">
@@ -2750,451 +1967,25 @@
                         }}
                       />
                     </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.numero === true} style="width: {columnWidths.numero || '60px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'numero')}></div>
-                      <div class="header-content">
-                        <span>#</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('numero')} title="Ordenar">
-                            {#if sortColumn === 'numero'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'numero' ? null : 'numero'} title="Filtrar">
-                            {filters.numero ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('numero')} title={columnVisibility.numero === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            {columnVisibility.numero === true ? '⇥' : '⇤'}
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'numero'}
-                        <div class="filter-menu">
-                            <input type="number" placeholder="Filtrar por número" value={filters.numero?.value || ''} on:input={(e) => applyFilter('numero', 'number', e.target.value, 'equal')} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.nome === true} style="width: {columnWidths.nome || '200px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'nome')}></div>
-                      <div class="header-content">
-                        <span>CTO</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('nome')} title="Ordenar A-Z / Z-A">
-                            {#if sortColumn === 'nome'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'nome' ? null : 'nome'} title="Filtrar">
-                            {filters.nome ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('nome')} title={columnVisibility.nome === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'nome'}
-                        <div class="filter-menu">
-                          <input type="text" placeholder="Buscar CTO..." value={filters.nome?.value || ''} on:input={(e) => applyFilter('nome', 'text', e.target.value)} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.cidade === true} style="width: {columnWidths.cidade || '120px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'cidade')}></div>
-                      <div class="header-content">
-                        <span>Cidade</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('cidade')} title="Ordenar A-Z / Z-A">
-                            {#if sortColumn === 'cidade'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'cidade' ? null : 'cidade'} title="Filtrar">
-                            {filters.cidade ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('cidade')} title={columnVisibility.cidade === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'cidade'}
-                        <div class="filter-menu">
-                          <input type="text" placeholder="Buscar cidade..." value={filters.cidade?.value || ''} on:input={(e) => applyFilter('cidade', 'text', e.target.value)} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.pop === true} style="width: {columnWidths.pop || '100px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'pop')}></div>
-                      <div class="header-content">
-                        <span>POP</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('pop')} title="Ordenar A-Z / Z-A">
-                            {#if sortColumn === 'pop'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'pop' ? null : 'pop'} title="Filtrar">
-                            {filters.pop ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('pop')} title={columnVisibility.pop === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'pop'}
-                        <div class="filter-menu">
-                          <input type="text" placeholder="Buscar POP..." value={filters.pop?.value || ''} on:input={(e) => applyFilter('pop', 'text', e.target.value)} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.chasse === true} style="width: {columnWidths.chasse || '100px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'chasse')}></div>
-                      <div class="header-content">
-                        <span>CHASSE</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('chasse')} title="Ordenar A-Z / Z-A">
-                            {#if sortColumn === 'chasse'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'chasse' ? null : 'chasse'} title="Filtrar">
-                            {filters.chasse ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('chasse')} title={columnVisibility.chasse === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'chasse'}
-                        <div class="filter-menu">
-                          <input type="text" placeholder="Buscar CHASSE..." value={filters.chasse?.value || ''} on:input={(e) => applyFilter('chasse', 'text', e.target.value)} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.placa === true} style="width: {columnWidths.placa || '100px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'placa')}></div>
-                      <div class="header-content">
-                        <span>PLACA</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('placa')} title="Ordenar A-Z / Z-A">
-                            {#if sortColumn === 'placa'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'placa' ? null : 'placa'} title="Filtrar">
-                            {filters.placa ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('placa')} title={columnVisibility.placa === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'placa'}
-                        <div class="filter-menu">
-                          <input type="text" placeholder="Buscar PLACA..." value={filters.placa?.value || ''} on:input={(e) => applyFilter('placa', 'text', e.target.value)} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.olt === true} style="width: {columnWidths.olt || '100px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'olt')}></div>
-                      <div class="header-content">
-                        <span>OLT</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('olt')} title="Ordenar A-Z / Z-A">
-                            {#if sortColumn === 'olt'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'olt' ? null : 'olt'} title="Filtrar">
-                            {filters.olt ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('olt')} title={columnVisibility.olt === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'olt'}
-                        <div class="filter-menu">
-                          <input type="text" placeholder="Buscar OLT..." value={filters.olt?.value || ''} on:input={(e) => applyFilter('olt', 'text', e.target.value)} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.id_cto === true} style="width: {columnWidths.id_cto || '100px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'id_cto')}></div>
-                      <div class="header-content">
-                        <span>ID CTO</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('id_cto')} title="Ordenar">
-                            {#if sortColumn === 'id_cto'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'id_cto' ? null : 'id_cto'} title="Filtrar">
-                            {filters.id_cto ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('id_cto')} title={columnVisibility.id_cto === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'id_cto'}
-                        <div class="filter-menu">
-                          <input type="text" placeholder="Buscar ID..." value={filters.id_cto?.value || ''} on:input={(e) => applyFilter('id_cto', 'text', e.target.value)} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.portas_total === true} style="width: {columnWidths.portas_total || '110px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'portas_total')}></div>
-                      <div class="header-content">
-                        <span>Portas Total</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('portas_total')} title="Ordenar Maior/Menor">
-                            {#if sortColumn === 'portas_total'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'portas_total' ? null : 'portas_total'} title="Filtrar">
-                            {filters.portas_total ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('portas_total')} title={columnVisibility.portas_total === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'portas_total'}
-                        <div class="filter-menu">
-                          <select value={filters.portas_total?.operator || 'greater'} on:change={(e) => applyFilter('portas_total', 'number', filters.portas_total?.value || '', e.target.value)}>
-                            <option value="greater">Maior que</option>
-                            <option value="less">Menor que</option>
-                            <option value="equal">Igual a</option>
-                            <option value="min">Mínimo</option>
-                          </select>
-                          <input type="number" placeholder="Valor" value={filters.portas_total?.value || ''} on:input={(e) => applyFilter('portas_total', 'number', e.target.value, filters.portas_total?.operator || 'greater')} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.ocupadas === true} style="width: {columnWidths.ocupadas || '100px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'ocupadas')}></div>
-                      <div class="header-content">
-                        <span>Ocupadas</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('ocupadas')} title="Ordenar Maior/Menor">
-                            {#if sortColumn === 'ocupadas'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'ocupadas' ? null : 'ocupadas'} title="Filtrar">
-                            {filters.ocupadas ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupadas')} title={columnVisibility.ocupadas === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'ocupadas'}
-                        <div class="filter-menu">
-                          <select value={filters.ocupadas?.operator || 'greater'} on:change={(e) => applyFilter('ocupadas', 'number', filters.ocupadas?.value || '', e.target.value)}>
-                            <option value="greater">Maior que</option>
-                            <option value="less">Menor que</option>
-                            <option value="equal">Igual a</option>
-                            <option value="min">Mínimo</option>
-                          </select>
-                          <input type="number" placeholder="Valor" value={filters.ocupadas?.value || ''} on:input={(e) => applyFilter('ocupadas', 'number', e.target.value, filters.ocupadas?.operator || 'greater')} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.disponiveis === true} style="width: {columnWidths.disponiveis || '110px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'disponiveis')}></div>
-                      <div class="header-content">
-                        <span>Disponíveis</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('disponiveis')} title="Ordenar Maior/Menor">
-                            {#if sortColumn === 'disponiveis'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'disponiveis' ? null : 'disponiveis'} title="Filtrar">
-                            {filters.disponiveis ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('disponiveis')} title={columnVisibility.disponiveis === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'disponiveis'}
-                        <div class="filter-menu">
-                          <select value={filters.disponiveis?.operator || 'greater'} on:change={(e) => applyFilter('disponiveis', 'number', filters.disponiveis?.value || '', e.target.value)}>
-                            <option value="greater">Maior que</option>
-                            <option value="less">Menor que</option>
-                            <option value="equal">Igual a</option>
-                            <option value="min">Mínimo</option>
-                          </select>
-                          <input type="number" placeholder="Valor" value={filters.disponiveis?.value || ''} on:input={(e) => applyFilter('disponiveis', 'number', e.target.value, filters.disponiveis?.operator || 'greater')} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.ocupacao === true} style="width: {columnWidths.ocupacao || '110px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'ocupacao')}></div>
-                      <div class="header-content">
-                        <span>Ocupação</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('ocupacao')} title="Ordenar Maior/Menor">
-                            {#if sortColumn === 'ocupacao'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'ocupacao' ? null : 'ocupacao'} title="Filtrar">
-                            {filters.ocupacao ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupacao')} title={columnVisibility.ocupacao === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'ocupacao'}
-                        <div class="filter-menu">
-                          <select value={filters.ocupacao?.operator || 'greater'} on:change={(e) => applyFilter('ocupacao', 'number', filters.ocupacao?.value || '', e.target.value)}>
-                            <option value="greater">Maior que</option>
-                            <option value="less">Menor que</option>
-                            <option value="equal">Igual a</option>
-                            <option value="min">Mínimo</option>
-                          </select>
-                          <input type="number" placeholder="Valor (%)" value={filters.ocupacao?.value || ''} on:input={(e) => applyFilter('ocupacao', 'number', e.target.value, filters.ocupacao?.operator || 'greater')} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.status === true} style="width: {columnWidths.status || '100px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'status')}></div>
-                      <div class="header-content">
-                        <span>Status</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('status')} title="Ordenar A-Z / Z-A">
-                            {#if sortColumn === 'status'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'status' ? null : 'status'} title="Filtrar">
-                            {filters.status ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('status')} title={columnVisibility.status === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'status'}
-                        <div class="filter-menu">
-                          <input type="text" placeholder="Buscar status..." value={filters.status?.value || ''} on:input={(e) => applyFilter('status', 'text', e.target.value)} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.total_portas_caminho === true} style="width: {columnWidths.total_portas_caminho || '200px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'total_portas_caminho')}></div>
-                      <div class="header-content">
-                        <span>Total de Portas no Caminho de Rede</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('total_portas_caminho')} title="Ordenar Maior/Menor">
-                            {#if sortColumn === 'total_portas_caminho'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'total_portas_caminho' ? null : 'total_portas_caminho'} title="Filtrar">
-                            {filters.total_portas_caminho ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_portas_caminho')} title={columnVisibility.total_portas_caminho === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'total_portas_caminho'}
-                        <div class="filter-menu">
-                          <select value={filters.total_portas_caminho?.operator || 'greater'} on:change={(e) => applyFilter('total_portas_caminho', 'number', filters.total_portas_caminho?.value || '', e.target.value)}>
-                            <option value="greater">Maior que</option>
-                            <option value="less">Menor que</option>
-                            <option value="equal">Igual a</option>
-                            <option value="min">Mínimo</option>
-                          </select>
-                          <input type="number" placeholder="Valor" value={filters.total_portas_caminho?.value || ''} on:input={(e) => applyFilter('total_portas_caminho', 'number', e.target.value, filters.total_portas_caminho?.operator || 'greater')} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.total_ctos_caminho === true} style="width: {columnWidths.total_ctos_caminho || '200px'};">
-                      <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'total_ctos_caminho')}></div>
-                      <div class="header-content">
-                        <span>Total de CTOs no Caminho de Rede</span>
-                        <div class="header-controls">
-                          <button class="sort-button" on:click={() => handleSort('total_ctos_caminho')} title="Ordenar Maior/Menor">
-                            {#if sortColumn === 'total_ctos_caminho'}
-                              {sortDirection === 'asc' ? '↑' : '↓'}
-                            {:else}
-                              ⇅
-                            {/if}
-                          </button>
-                          <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'total_ctos_caminho' ? null : 'total_ctos_caminho'} title="Filtrar">
-                            {filters.total_ctos_caminho ? '●' : '○'}
-                          </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_ctos_caminho')} title={columnVisibility.total_ctos_caminho === true ? 'Expandir coluna' : 'Minimizar coluna'}>
-                            👁️
-                          </button>
-                        </div>
-                      </div>
-                      {#if showFilterMenu === 'total_ctos_caminho'}
-                        <div class="filter-menu">
-                          <select value={filters.total_ctos_caminho?.operator || 'greater'} on:change={(e) => applyFilter('total_ctos_caminho', 'number', filters.total_ctos_caminho?.value || '', e.target.value)}>
-                            <option value="greater">Maior que</option>
-                            <option value="less">Menor que</option>
-                            <option value="equal">Igual a</option>
-                            <option value="min">Mínimo</option>
-                          </select>
-                          <input type="number" placeholder="Valor" value={filters.total_ctos_caminho?.value || ''} on:input={(e) => applyFilter('total_ctos_caminho', 'number', e.target.value, filters.total_ctos_caminho?.operator || 'greater')} />
-                          <button on:click={() => showFilterMenu = null}>Fechar</button>
-                        </div>
-                      {/if}
-                    </th>
+                    <th>#</th>
+                    <th>CTO</th>
+                    <th>Cidade</th>
+                    <th>POP</th>
+                    <th>CHASSE</th>
+                    <th>PLACA</th>
+                    <th>OLT</th>
+                    <th>ID CTO</th>
+                    <th>Portas Total</th>
+                    <th>Ocupadas</th>
+                    <th>Disponíveis</th>
+                    <th>Ocupação</th>
+                    <th>Status</th>
+                    <th>Total de Portas no Caminho de Rede</th>
+                    <th>Total de CTOs no Caminho de Rede</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {#each filteredAndSortedCTOs as cto (getCTOKey(cto))}
+                  {#each ctos as cto (getCTOKey(cto))}
                     {@const ctoKey = getCTOKey(cto)}
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
                     {@const caminhoKey = getCaminhoRedeKey(cto)}
@@ -3215,29 +2006,29 @@
                           }}
                         />
                       </td>
-                      <td class="numeric" class:minimized={columnVisibility.numero === true} style="width: {columnWidths.numero || '60px'};">{ctoNumbers.get(cto) || '-'}</td>
-                      <td class="cto-name-cell" class:minimized={columnVisibility.nome === true} style="width: {columnWidths.nome || '200px'};"><strong>{cto.nome || ''}</strong></td>
-                      <td class:minimized={columnVisibility.cidade === true} style="width: {columnWidths.cidade || '120px'};">{cto.cidade || 'N/A'}</td>
-                      <td class:minimized={columnVisibility.pop === true} style="width: {columnWidths.pop || '100px'};">{cto.pop || 'N/A'}</td>
-                      <td class:minimized={columnVisibility.chasse === true} style="width: {columnWidths.chasse || '100px'};">{cto.olt || 'N/A'}</td>
-                      <td class:minimized={columnVisibility.placa === true} style="width: {columnWidths.placa || '100px'};">{cto.slot || 'N/A'}</td>
-                      <td class:minimized={columnVisibility.olt === true} style="width: {columnWidths.olt || '100px'};">{cto.pon || 'N/A'}</td>
-                      <td class:minimized={columnVisibility.id_cto === true} style="width: {columnWidths.id_cto || '100px'};">{cto.id_cto || cto.id || 'N/A'}</td>
-                      <td class="numeric" class:minimized={columnVisibility.portas_total === true} style="width: {columnWidths.portas_total || '110px'};">{cto.vagas_total || 0}</td>
-                      <td class="numeric" class:minimized={columnVisibility.ocupadas === true} style="width: {columnWidths.ocupadas || '100px'};">{cto.clientes_conectados || 0}</td>
-                      <td class="numeric" class:minimized={columnVisibility.disponiveis === true} style="width: {columnWidths.disponiveis || '110px'};">{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
-                      <td class:minimized={columnVisibility.ocupacao === true} style="width: {columnWidths.ocupacao || '110px'};">
+                      <td class="numeric">{ctoNumbers.get(cto) || '-'}</td>
+                      <td class="cto-name-cell"><strong>{cto.nome || ''}</strong></td>
+                      <td>{cto.cidade || 'N/A'}</td>
+                      <td>{cto.pop || 'N/A'}</td>
+                      <td>{cto.olt || 'N/A'}</td>
+                      <td>{cto.slot || 'N/A'}</td>
+                      <td>{cto.pon || 'N/A'}</td>
+                      <td>{cto.id_cto || cto.id || 'N/A'}</td>
+                      <td class="numeric">{cto.vagas_total || 0}</td>
+                      <td class="numeric">{cto.clientes_conectados || 0}</td>
+                      <td class="numeric">{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
+                      <td>
                         <span class="occupation-badge {occupationClass}">{pctOcup.toFixed(1)}%</span>
                       </td>
-                      <td class:minimized={columnVisibility.status === true} style="width: {columnWidths.status || '100px'};">{cto.status_cto || 'N/A'}</td>
-                      <td class="numeric" class:minimized={columnVisibility.total_portas_caminho === true} style="width: {columnWidths.total_portas_caminho || '200px'};">
+                      <td>{cto.status_cto || 'N/A'}</td>
+                      <td class="numeric">
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
                           <strong>{total}</strong>
                         {/if}
                       </td>
-                      <td class="numeric" class:minimized={columnVisibility.total_ctos_caminho === true} style="width: {columnWidths.total_ctos_caminho || '200px'};">
+                      <td class="numeric">
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
@@ -3249,93 +2040,6 @@
                 </tbody>
               </table>
             </div>
-            
-            <!-- Controles de Paginação -->
-            {#if !isTableMinimized && filteredAndSortedCTOs.length > 0 && ctos.length > 0}
-              {@const totalRows = table && tanStackAvailable ? table.getRowCount() : ctos.length}
-              {@const currentPage = tablePagination.pageIndex}
-              {@const pageSize = tablePagination.pageSize}
-              {@const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))}
-              {@const startRow = currentPage * pageSize + 1}
-              {@const endRow = Math.min((currentPage + 1) * pageSize, totalRows)}
-              {@const canPrevious = currentPage > 0}
-              {@const canNext = currentPage < totalPages - 1}
-              
-              {#if totalPages > 1 || pageSize < totalRows}
-                <div class="pagination-controls">
-                  <div class="pagination-info">
-                    <span>
-                      Mostrando {startRow} a {endRow} de {totalRows} resultados
-                    </span>
-                    <span class="pagination-size">
-                      Itens por página:
-                      <select 
-                        value={pageSize}
-                        on:change={(e) => {
-                          const newSize = Number(e.target.value);
-                          tablePagination = { pageIndex: 0, pageSize: newSize };
-                        }}
-                      >
-                        <option value="25">25</option>
-                        <option value="50">50</option>
-                        <option value="100">100</option>
-                        <option value="200">200</option>
-                        {#if totalRows > 200}
-                          <option value={totalRows}>Todos ({totalRows})</option>
-                        {/if}
-                      </select>
-                    </span>
-                  </div>
-                  {#if totalPages > 1}
-                    <div class="pagination-buttons">
-                      <button 
-                        class="pagination-btn"
-                        disabled={!canPrevious}
-                        on:click={() => {
-                          tablePagination = { ...tablePagination, pageIndex: 0 };
-                        }}
-                        title="Primeira página"
-                      >
-                        ⏮️
-                      </button>
-                      <button 
-                        class="pagination-btn"
-                        disabled={!canPrevious}
-                        on:click={() => {
-                          tablePagination = { ...tablePagination, pageIndex: currentPage - 1 };
-                        }}
-                        title="Página anterior"
-                      >
-                        ⬅️
-                      </button>
-                      <span class="pagination-page-info">
-                        Página {currentPage + 1} de {totalPages}
-                      </span>
-                      <button 
-                        class="pagination-btn"
-                        disabled={!canNext}
-                        on:click={() => {
-                          tablePagination = { ...tablePagination, pageIndex: currentPage + 1 };
-                        }}
-                        title="Próxima página"
-                      >
-                        ➡️
-                      </button>
-                      <button 
-                        class="pagination-btn"
-                        disabled={!canNext}
-                        on:click={() => {
-                          tablePagination = { ...tablePagination, pageIndex: totalPages - 1 };
-                        }}
-                        title="Última página"
-                      >
-                        ⏭️
-                      </button>
-                    </div>
-                  {/if}
-                </div>
-              {/if}
-            {/if}
             {/if}
           </div>
         {:else if !isLoading && !error}
@@ -3353,7 +2057,7 @@
               </button>
             </div>
             {#if !isTableMinimized}
-              <p>● Realize uma busca para ver os resultados aqui</p>
+              <p>🔍 Realize uma busca para ver os resultados aqui</p>
             {/if}
           </div>
         {/if}
@@ -3832,46 +2536,15 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem;
-    background-color: white;
-    border-bottom: 1px solid #e0e0e0;
-    margin-bottom: 0;
+    margin-bottom: 1rem;
     flex-shrink: 0;
   }
 
   .table-header h3 {
     margin: 0;
-    font-size: 1rem;
+    color: #4c1d95;
+    font-size: 1.125rem;
     font-weight: 600;
-    color: #333333;
-  }
-  
-  .table-actions {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-  }
-  
-  .action-button {
-    background: transparent;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    padding: 0.5rem;
-    cursor: pointer;
-    font-size: 1rem;
-    color: #666666;
-    transition: all 0.2s;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  
-  .action-button:hover {
-    background-color: #f5f5f5;
-    border-color: #d0d0d0;
-    color: #333333;
   }
 
   .results-table-container.minimized {
@@ -4008,318 +2681,27 @@
   
   .results-table {
     width: 100%;
-    border-collapse: separate;
-    border-spacing: 2px;
+    border-collapse: collapse;
     font-size: 0.875rem;
-    table-layout: fixed;
-    border: none;
-    background-color: transparent;
-    box-shadow: none;
   }
   
   .results-table thead {
-    background-color: #ffffff;
+    background-color: #f9fafb;
     position: sticky;
     top: 0;
     z-index: 10;
   }
   
   .results-table th {
-    padding: 0.75rem 0.5rem !important;
+    padding: 0.75rem;
     text-align: center;
     font-weight: 600;
-    color: #333333;
-    border: 1px solid #d1d5db !important;
-    border-bottom: 2px solid #9ca3af !important;
-    white-space: nowrap !important;
-    position: relative;
-    vertical-align: middle !important;
-    min-height: auto !important;
-    background-color: #ffffff;
-    font-size: 0.8125rem;
-    box-sizing: border-box;
-  }
-  
-  .results-table td {
-    padding: 0.75rem 0.5rem;
-    text-align: center;
-    border: 1px solid #d1d5db !important;
-    border-bottom: 1px solid #e5e7eb !important;
+    color: #374151;
+    border-bottom: 2px solid #e5e7eb;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    background-color: white;
-    font-size: 0.8125rem;
-    color: #333333;
-    box-sizing: border-box;
-    isolation: isolate;
-  }
-  
-  .results-table tbody tr {
-    background-color: white;
-  }
-  
-  .results-table tbody tr:nth-child(even) td {
-    background-color: #fafafa;
-  }
-  
-  .results-table tbody tr:hover td {
-    background-color: #f5f5f5;
-  }
-  
-  .results-table tbody tr:last-child td {
-    border-bottom: 1px solid #e0e0e0;
-  }
-  
-  /* Resizable column handles */
-  .resizable-header {
-    position: relative !important;
-    overflow: visible !important;
-  }
-  
-  .resize-handle {
-    position: absolute;
-    top: 0;
-    right: -3px;
-    width: 10px;
-    height: 100%;
-    cursor: col-resize !important;
-    background-color: transparent;
-    z-index: 30 !important;
-    user-select: none !important;
-    -webkit-user-select: none !important;
-    pointer-events: auto !important;
-    touch-action: none !important;
-    -webkit-touch-callout: none;
-  }
-  
-  .resize-handle:hover {
-    background-color: rgba(123, 104, 238, 0.3);
-  }
-  
-  .resize-handle:active {
-    background-color: rgba(123, 104, 238, 0.5);
-    cursor: col-resize !important;
-  }
-  
-  .resizable-header.resizing {
-    user-select: none !important;
-    cursor: col-resize !important;
-  }
-  
-  .resizable-header.resizing * {
-    pointer-events: none;
-  }
-  
-  .resizable-header.resizing .resize-handle {
-    pointer-events: auto !important;
-  }
-  
-  .resizable-header.resizing {
-    user-select: none;
-  }
-  
-  .resizable-header {
-    position: relative;
-  }
-  
-  .results-table th.hidden,
-  .results-table td.hidden {
-    display: none;
-  }
-  
-  .results-table th.minimized,
-  .results-table td.minimized {
-    width: 30px !important;
-    min-width: 30px !important;
-    max-width: 30px !important;
-    padding: 0.5rem 0.25rem !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  .results-table th.minimized .header-content > span,
-  .results-table td.minimized {
-    font-size: 0.7rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  
-  .results-table th.minimized .header-controls {
-    display: none;
-  }
-  
-  .sortable-header {
-    cursor: pointer;
-    user-select: none;
-  }
-  
-  .header-content {
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    width: 100% !important;
-    gap: 0.5rem;
-    padding: 0 0.25rem;
-  }
-  
-  .header-content > span {
-    font-weight: 600 !important;
-    font-size: 0.8125rem !important;
-    flex: 1;
-    text-align: center;
-    color: #333333 !important;
-    display: block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    white-space: nowrap !important;
-  }
-  
-  .header-controls {
-    display: flex !important;
-    gap: 0.2rem !important;
-    align-items: center !important;
-    justify-content: flex-end !important;
-    flex-shrink: 0;
-    visibility: visible !important;
-    opacity: 1 !important;
-  }
-  
-  .sort-button,
-  .filter-button,
-  .toggle-column-button {
-    background: transparent !important;
-    border: 1px solid rgba(0, 0, 0, 0.1) !important;
-    border-radius: 3px;
-    padding: 0.2rem 0.35rem !important;
-    cursor: pointer !important;
-    font-size: 0.7rem !important;
-    color: #666666 !important;
-    transition: all 0.15s ease;
-    width: 22px !important;
-    height: 22px !important;
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
-    margin: 0 0.1rem;
-    font-weight: 400;
-    line-height: 1;
-    box-shadow: none;
-    pointer-events: auto !important;
-    z-index: 20 !important;
-    position: relative;
-  }
-  
-  .sort-button:active,
-  .filter-button:active,
-  .toggle-column-button:active {
-    transform: scale(0.95);
-  }
-  
-  .sort-button:active,
-  .filter-button:active,
-  .toggle-column-button:active {
-    transform: scale(0.95);
-  }
-  
-  .sort-button:hover,
-  .filter-button:hover,
-  .toggle-column-button:hover {
-    background: #f5f5f5 !important;
-    border-color: #d0d0d0 !important;
-    color: #333333 !important;
-  }
-  
-  .sort-button:active,
-  .filter-button:active,
-  .toggle-column-button:active {
-    transform: scale(0.95);
-    background: #eeeeee !important;
-  }
-  
-  .filter-button:has-text("●") {
-    color: #7B68EE !important;
-    border-color: rgba(123, 104, 238, 0.3) !important;
-  }
-  
-  .sort-button:hover,
-  .filter-button:hover,
-  .toggle-column-button:hover {
-    background: rgba(100, 149, 237, 0.1);
-    border-color: #7B68EE;
-    color: #4c1d95;
-  }
-  
-  .sort-button:active,
-  .filter-button:active,
-  .toggle-column-button:active {
-    transform: scale(0.95);
-  }
-  
-  .filter-menu {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: white;
-    border: 2px solid #7B68EE;
-    border-radius: 8px;
-    padding: 0.75rem;
-    z-index: 1000;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    margin-top: 0.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  
-  .filter-menu input,
-  .filter-menu select {
-    padding: 0.5rem;
-    border: 1px solid #e5e7eb;
-    border-radius: 4px;
-    font-size: 0.875rem;
-    width: 100%;
-    box-sizing: border-box;
-  }
-  
-  .filter-menu button {
-    padding: 0.5rem;
-    background: linear-gradient(135deg, #6495ED 0%, #7B68EE 100%);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 500;
-  }
-  
-  .filter-menu button:hover {
-    opacity: 0.9;
-  }
-  
-  .clear-filters-button {
-    background: #fee2e2;
-    color: #991b1b;
-    border: 1px solid #fecaca;
-    border-radius: 6px;
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 500;
-    margin-left: 1rem;
-    transition: all 0.2s;
-  }
-  
-  .clear-filters-button:hover {
-    background: #fecaca;
-    border-color: #fca5a5;
   }
   
   .results-table th:first-child {
-    border-left: none;
     text-align: center;
     width: 50px;
   }
@@ -4332,8 +2714,6 @@
   .results-table td {
     padding: 0.75rem;
     border-bottom: 1px solid #e5e7eb;
-    border-left: 1px solid #d1d5db;
-    border-right: 1px solid #d1d5db;
     color: #4b5563;
     text-align: center;
     user-select: text;
@@ -4341,105 +2721,17 @@
     -moz-user-select: text;
     -ms-user-select: text;
     cursor: text;
-    position: relative;
-    /* Prevenir que a seleção se estenda para células adjacentes */
-    isolation: isolate;
-    /* Criar contexto de empilhamento para isolar seleção */
-    z-index: 0;
-  }
-  
-  /* Quando uma célula está sendo selecionada, aumentar z-index para isolá-la */
-  .results-table td:active {
-    z-index: 1;
-  }
-  
-  /* Prevenir seleção entre células usando pointer-events nas bordas */
-  .results-table td::before,
-  .results-table td::after {
-    pointer-events: auto;
-    user-select: none;
-    -webkit-user-select: none;
-  }
-  
-  /* Criar zona não selecionável entre colunas usando pseudo-elementos */
-  .results-table td::before {
-    content: '';
-    position: absolute;
-    left: -2px;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: transparent;
-    user-select: none;
-    -webkit-user-select: none;
-    pointer-events: none;
-    z-index: 1;
-  }
-  
-  .results-table td::after {
-    content: '';
-    position: absolute;
-    right: -2px;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: transparent;
-    user-select: none;
-    -webkit-user-select: none;
-    pointer-events: none;
-    z-index: 1;
-  }
-  
-  /* Bordas sempre visíveis - removido hover */
-  .results-table td:first-child {
-    border-left: none !important;
-  }
-  
-  .results-table td:first-child::before {
-    display: none;
-  }
-  
-  .results-table td:last-child {
-    border-right: none !important;
-  }
-  
-  .results-table td:last-child::after {
-    display: none;
-  }
-  
-  /* Garantir que as células tenham espaço suficiente para evitar seleção cruzada */
-  .results-table td {
-    box-sizing: border-box;
-  }
-  
-  /* Removido padding extra - cada célula é individual */
-  
-  /* Cada célula é completamente individual - bordas completas em todas */
-  .results-table th,
-  .results-table td {
-    border: 1px solid #d1d5db !important;
-  }
-  
-  .results-table th {
-    border-bottom: 2px solid #9ca3af !important;
-  }
-  
-  .results-table td {
-    border-bottom: 1px solid #e5e7eb !important;
   }
   
   .results-table .cto-name-cell {
-    white-space: normal;
-    word-wrap: break-word;
-    min-width: 200px;
-    max-width: none;
+    white-space: nowrap;
+    min-width: 150px;
     text-align: center;
     user-select: text;
     -webkit-user-select: text;
     -moz-user-select: text;
     -ms-user-select: text;
     cursor: text;
-    overflow: visible;
   }
   
   .results-table tbody tr:hover {
@@ -4499,117 +2791,6 @@
     .results-table th,
     .results-table td {
       padding: 0.5rem;
-    }
-  }
-
-  /* Controles de Paginação */
-  .pagination-controls {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem;
-    background: white;
-    border-top: 1px solid #e0e0e0;
-    border-radius: 0 0 8px 8px;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .pagination-info {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    font-size: 0.875rem;
-    color: #666;
-  }
-
-  .pagination-size {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .pagination-size select {
-    padding: 0.375rem 0.5rem;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    background: white;
-    font-size: 0.875rem;
-    color: #333;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-
-  .pagination-size select:hover {
-    border-color: #7B68EE;
-  }
-
-  .pagination-size select:focus {
-    outline: none;
-    border-color: #7B68EE;
-    box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.1);
-  }
-
-  .pagination-buttons {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .pagination-btn {
-    background: white;
-    border: 1px solid #d1d5db;
-    color: #333;
-    padding: 0.5rem 0.75rem;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.875rem;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 36px;
-    height: 36px;
-  }
-
-  .pagination-btn:hover:not(:disabled) {
-    background: #f9fafb;
-    border-color: #7B68EE;
-    color: #4c1d95;
-  }
-
-  .pagination-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    background: #f5f5f5;
-  }
-
-  .pagination-btn:active:not(:disabled) {
-    background: #f0f0f0;
-    transform: scale(0.95);
-  }
-
-  .pagination-page-info {
-    padding: 0 0.75rem;
-    font-size: 0.875rem;
-    color: #666;
-    font-weight: 500;
-  }
-
-  @media (max-width: 768px) {
-    .pagination-controls {
-      flex-direction: column;
-      align-items: stretch;
-    }
-
-    .pagination-info {
-      justify-content: space-between;
-      width: 100%;
-    }
-
-    .pagination-buttons {
-      justify-content: center;
-      width: 100%;
     }
   }
 </style>
