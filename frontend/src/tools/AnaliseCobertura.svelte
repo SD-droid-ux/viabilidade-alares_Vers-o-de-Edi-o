@@ -2041,6 +2041,127 @@
     const RADIUS_M = 250; // Raio em metros
     const RADIUS_DEG = RADIUS_M / 111000; // Raio em graus (aproximação)
     
+    // Para grupos muito grandes (200+), usar abordagem otimizada mas precisa
+    // Isso evita processamento desnecessário e garante performance mesmo com 1000+ CTOs
+    // Mas mantém uma forma visualmente agradável que segue a distribuição dos círculos
+    if (ctos.length > 200) {
+      // Estratégia: amostrar pontos estratégicos dos círculos e calcular convex hull simplificado
+      // Isso cria uma forma que segue melhor a distribuição real, não apenas um retângulo
+      const allPoints = [];
+      const circleCenters = [];
+      
+      // Amostrar CTOs para grupos muito grandes (manter performance)
+      const sampleSize = Math.min(200, ctos.length); // Limitar a 200 CTOs para cálculo
+      const step = Math.max(1, Math.floor(ctos.length / sampleSize));
+      const sampledCTOs = [];
+      for (let i = 0; i < ctos.length; i += step) {
+        sampledCTOs.push(ctos[i]);
+      }
+      
+      // Adicionar sempre a primeira e última CTO para garantir bordas corretas
+      if (sampledCTOs.length > 0 && !sampledCTOs.includes(ctos[0])) {
+        sampledCTOs[0] = ctos[0];
+      }
+      if (sampledCTOs.length > 0 && !sampledCTOs.includes(ctos[ctos.length - 1])) {
+        sampledCTOs[sampledCTOs.length - 1] = ctos[ctos.length - 1];
+      }
+      
+      // Criar pontos estratégicos dos círculos amostrados
+      const pointsPerCircle = 24; // Reduzido para performance, mas suficiente para forma
+      for (const cto of sampledCTOs) {
+        const lat = parseFloat(cto.latitude);
+        const lng = parseFloat(cto.longitude);
+        circleCenters.push({ lat, lng });
+        
+        const latRadius = RADIUS_DEG;
+        const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
+        
+        // Adicionar pontos nos 8 direções principais + alguns intermediários
+        for (let i = 0; i < pointsPerCircle; i++) {
+          const angle = (i * 2 * Math.PI) / pointsPerCircle;
+          allPoints.push({
+            lat: lat + (latRadius * Math.cos(angle)),
+            lng: lng + (lngRadius * Math.sin(angle))
+          });
+        }
+      }
+      
+      // Adicionar pontos dos extremos de TODAS as CTOs (não apenas amostradas)
+      // Isso garante que o polígono cubra todas as áreas
+      for (const cto of ctos) {
+        const lat = parseFloat(cto.latitude);
+        const lng = parseFloat(cto.longitude);
+        const latRadius = RADIUS_DEG * 1.05; // 5% de margem
+        const lngRadius = (RADIUS_DEG * 1.05) / Math.cos(lat * Math.PI / 180);
+        
+        // Adicionar apenas os 4 pontos cardinais (N, S, L, O) para garantir cobertura
+        allPoints.push(
+          { lat: lat + latRadius, lng: lng }, // Norte
+          { lat: lat - latRadius, lng: lng }, // Sul
+          { lat: lat, lng: lng + lngRadius }, // Leste
+          { lat: lat, lng: lng - lngRadius }  // Oeste
+        );
+      }
+      
+      // Calcular convex hull dos pontos (rápido mesmo com muitos pontos)
+      let hull;
+      try {
+        // Limitar pontos para o convex hull se houver muitos
+        const pointsForHull = allPoints.length > 5000 
+          ? allPoints.filter((_, idx) => idx % Math.ceil(allPoints.length / 5000) === 0)
+          : allPoints;
+        hull = computeConvexHull([...pointsForHull]);
+      } catch (hullErr) {
+        console.warn('⚠️ Erro ao calcular convex hull para grupo grande:', hullErr);
+        hull = null;
+      }
+      
+      // Se o convex hull falhar, usar bounding box expandido como fallback
+      if (!hull || hull.length < 3) {
+        let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+        for (const cto of ctos) {
+          const lat = parseFloat(cto.latitude);
+          const lng = parseFloat(cto.longitude);
+          const latRadius = RADIUS_DEG * 1.1;
+          const lngRadius = (RADIUS_DEG * 1.1) / Math.cos(lat * Math.PI / 180);
+          minLat = Math.min(minLat, lat - latRadius);
+          maxLat = Math.max(maxLat, lat + latRadius);
+          minLng = Math.min(minLng, lng - lngRadius);
+          maxLng = Math.max(maxLng, lng + lngRadius);
+        }
+        hull = [
+          { lat: minLat, lng: minLng },
+          { lat: maxLat, lng: minLng },
+          { lat: maxLat, lng: maxLng },
+          { lat: minLat, lng: maxLng }
+        ];
+      }
+      
+      // Suavizar o polígono (poucos passos para manter performance)
+      let smoothedHull;
+      try {
+        smoothedHull = smoothPolygonEdges(hull);
+        if (!smoothedHull || smoothedHull.length < 3) {
+          smoothedHull = hull;
+        }
+      } catch (smoothErr) {
+        smoothedHull = hull;
+      }
+      
+      return new google.maps.Polygon({
+        paths: smoothedHull,
+        strokeColor: '#7B68EE',
+        strokeOpacity: 0.6,
+        strokeWeight: 2,
+        fillColor: '#6495ED',
+        fillOpacity: 0.08,
+        map: showRadiusCircles ? map : null,
+        zIndex: 1,
+        geodesic: true
+      });
+    }
+    
+    // Para grupos menores (≤200), usar lógica completa com convex hull
     // Para múltiplas CTOs, criar um polígono que representa a união real dos círculos
     // Estratégia melhorada: usar convex hull refinado + pontos de interseção entre círculos
     // Isso cria uma forma muito mais precisa que representa a verdadeira área de cobertura
@@ -2146,39 +2267,29 @@
       return null;
     }
     
-    // Filtrar pontos que estão dentro de outros círculos (não são parte da borda externa)
-    // Para grupos muito grandes, usar amostragem para melhorar performance
+    // Para grupos médios/grandes (50-200), usar filtragem otimizada
     const margin = ctos.length > 20 ? 1.05 : 1.02;
     let pointsToFilter = allPoints;
     
-    // Para grupos muito grandes, fazer amostragem inteligente antes da filtragem
-    // Mantém mais pontos para preservar qualidade das bordas
-    if (ctos.length > 100) {
-      // Amostrar pontos mantendo distribuição uniforme, mas com mais pontos para qualidade
-      const sampleSize = Math.min(8000, allPoints.length); // Aumentado para 8000 pontos
+    // Amostragem para grupos grandes (50-200)
+    if (ctos.length > 50) {
+      const sampleSize = Math.min(10000, allPoints.length);
       const step = Math.max(1, Math.floor(allPoints.length / sampleSize));
       pointsToFilter = [];
-      
-      // Amostragem estratificada: garantir que pontos de diferentes áreas sejam incluídos
       for (let i = 0; i < allPoints.length; i += step) {
         pointsToFilter.push(allPoints[i]);
       }
-      
-      // Adicionar pontos adicionais nas bordas (últimos pontos de cada círculo)
-      // Isso ajuda a preservar detalhes importantes das bordas
-      const additionalPoints = Math.min(1000, allPoints.length - pointsToFilter.length);
-      const additionalStep = Math.max(1, Math.floor(allPoints.length / additionalPoints));
-      for (let i = 0; i < allPoints.length && pointsToFilter.length < sampleSize + additionalPoints; i += additionalStep) {
-        if (!pointsToFilter.includes(allPoints[i])) {
-          pointsToFilter.push(allPoints[i]);
-        }
-      }
     }
     
+    // Filtrar pontos da borda externa (otimizado para grupos grandes)
     const boundaryPoints = pointsToFilter.filter(point => {
-      // Verificar se este ponto está na borda externa (não dentro de todos os círculos)
       let isInsideAll = true;
-      for (const circle of circles) {
+      // Para grupos grandes, verificar apenas uma amostra dos círculos (mais rápido)
+      const circlesToCheck = ctos.length > 100 
+        ? circles.filter((_, idx) => idx % Math.ceil(circles.length / 50) === 0) // Amostrar círculos
+        : circles;
+      
+      for (const circle of circlesToCheck) {
         const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
         const distDeg = dist / 111000;
         const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
@@ -2192,10 +2303,10 @@
     });
     
     // Se não temos pontos suficientes na borda, usar todos os pontos
-    const pointsToUse = boundaryPoints.length >= 3 ? boundaryPoints : allPoints;
+    let pointsToUse = boundaryPoints.length >= 3 ? boundaryPoints : allPoints;
     
-    // Para grupos grandes, adicionar pontos estratégicos para melhor cobertura
-    if (ctos.length > 20) {
+    // Para grupos médios (20-200), adicionar pontos estratégicos para melhor cobertura
+    if (ctos.length > 20 && ctos.length <= 200) {
       // Adicionar pontos nos 8 direções principais de cada círculo (mais precisão)
       for (const center of circleCenters) {
         const latRadius = RADIUS_DEG;
@@ -2212,7 +2323,7 @@
           { lat: center.lat - latRadius * sqrt2, lng: center.lng - lngRadius * sqrt2 }  // SO
         );
       }
-    } else {
+    } else if (ctos.length <= 20) {
       // Para grupos menores, adicionar apenas 4 quadrantes
       for (const center of circleCenters) {
         const latRadius = RADIUS_DEG;
@@ -2226,9 +2337,27 @@
       }
     }
     
+    // Limitar pontos para o convex hull (evitar problemas com muitos pontos)
+    let pointsForHull = pointsToUse;
+    if (pointsToUse.length > 5000) {
+      // Amostrar pontos para o convex hull se houver muitos
+      const hullSampleSize = 5000;
+      const hullStep = Math.max(1, Math.floor(pointsToUse.length / hullSampleSize));
+      pointsForHull = [];
+      for (let i = 0; i < pointsToUse.length; i += hullStep) {
+        pointsForHull.push(pointsToUse[i]);
+      }
+    }
+    
     // Calcular o convex hull (envoltória convexa) dos pontos da borda
     // Isso cria um polígono que envolve todos os círculos de forma natural e precisa
-    const hull = computeConvexHull(pointsToUse);
+    let hull;
+    try {
+      hull = computeConvexHull([...pointsForHull]); // Criar cópia para não modificar original
+    } catch (hullErr) {
+      console.warn('⚠️ Erro ao calcular convex hull:', hullErr);
+      hull = null;
+    }
     
     // Se o convex hull falhar ou tiver poucos pontos, usar bounding box expandido
     if (!hull || hull.length < 3) {
