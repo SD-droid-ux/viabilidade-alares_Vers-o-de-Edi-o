@@ -235,8 +235,10 @@
   function startResizeColumn(e, columnName) {
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
+    
     resizingColumn = columnName;
-    columnResizeStartX = e.clientX;
+    columnResizeStartX = e.clientX || e.touches?.[0]?.clientX || 0;
     
     const header = e.target.closest('th');
     if (header) {
@@ -244,8 +246,15 @@
       header.classList.add('resizing');
     }
     
-    document.addEventListener('mousemove', handleResizeColumn, { passive: false });
-    document.addEventListener('mouseup', stopResizeColumn, { once: true });
+    // Adicionar listeners globais
+    document.addEventListener('mousemove', handleResizeColumn, { passive: false, capture: true });
+    document.addEventListener('mouseup', stopResizeColumn, { once: true, capture: true });
+    document.addEventListener('touchmove', handleResizeColumn, { passive: false, capture: true });
+    document.addEventListener('touchend', stopResizeColumn, { once: true, capture: true });
+    
+    // Prevenir seleção de texto durante redimensionamento
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
   }
   
   function handleResizeColumn(e) {
@@ -254,29 +263,34 @@
     e.preventDefault();
     e.stopPropagation();
     
-    const diff = e.clientX - columnResizeStartX;
+    const clientX = e.clientX || e.touches?.[0]?.clientX || 0;
+    const diff = clientX - columnResizeStartX;
     const newWidth = Math.max(50, columnResizeStartWidth + diff); // Mínimo de 50px
     
+    // Atualizar o objeto de larguras
     columnWidths[resizingColumn] = `${newWidth}px`;
     columnWidths = columnWidths; // Forçar reatividade
     
-    // Atualizar todas as células da coluna em tempo real
+    // Atualizar todas as células da coluna em tempo real via DOM
     const columnIndex = getColumnIndex(resizingColumn);
     if (columnIndex > 0) {
-      const headers = document.querySelectorAll(`.results-table th:nth-child(${columnIndex})`);
-      const cells = document.querySelectorAll(`.results-table td:nth-child(${columnIndex})`);
-      
-      headers.forEach(el => {
-        el.style.width = `${newWidth}px`;
-        el.style.minWidth = `${newWidth}px`;
-        el.style.maxWidth = `${newWidth}px`;
-      });
-      
-      cells.forEach(el => {
-        el.style.width = `${newWidth}px`;
-        el.style.minWidth = `${newWidth}px`;
-        el.style.maxWidth = `${newWidth}px`;
-      });
+      const table = document.querySelector('.results-table');
+      if (table) {
+        const headers = table.querySelectorAll(`th:nth-child(${columnIndex})`);
+        const cells = table.querySelectorAll(`td:nth-child(${columnIndex})`);
+        
+        headers.forEach(el => {
+          el.style.width = `${newWidth}px`;
+          el.style.minWidth = `${newWidth}px`;
+          el.style.maxWidth = `${newWidth}px`;
+        });
+        
+        cells.forEach(el => {
+          el.style.width = `${newWidth}px`;
+          el.style.minWidth = `${newWidth}px`;
+          el.style.maxWidth = `${newWidth}px`;
+        });
+      }
     }
   }
   
@@ -305,14 +319,27 @@
   
   function stopResizeColumn() {
     if (resizingColumn) {
-      const header = document.querySelector(`.results-table th[style*="${resizingColumn}"]`);
-      if (header) {
-        header.classList.remove('resizing');
+      const columnIndex = getColumnIndex(resizingColumn);
+      if (columnIndex > 0) {
+        const table = document.querySelector('.results-table');
+        if (table) {
+          const headers = table.querySelectorAll(`th:nth-child(${columnIndex})`);
+          headers.forEach(h => h.classList.remove('resizing'));
+        }
       }
     }
     
+    // Remover listeners
+    document.removeEventListener('mousemove', handleResizeColumn, { capture: true });
+    document.removeEventListener('mouseup', stopResizeColumn, { capture: true });
+    document.removeEventListener('touchmove', handleResizeColumn, { capture: true });
+    document.removeEventListener('touchend', stopResizeColumn, { capture: true });
+    
+    // Restaurar seleção de texto
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+    
     resizingColumn = null;
-    document.removeEventListener('mousemove', handleResizeColumn);
   }
   
   // Função para gerar uma chave única para uma CTO (declarada aqui para uso nos reactive statements)
@@ -4046,31 +4073,46 @@
   
   /* Resizable column handles */
   .resizable-header {
-    position: relative;
+    position: relative !important;
+    overflow: visible !important;
   }
   
   .resize-handle {
     position: absolute;
     top: 0;
-    right: -2px;
-    width: 8px;
+    right: -3px;
+    width: 10px;
     height: 100%;
     cursor: col-resize !important;
     background-color: transparent;
-    z-index: 25 !important;
-    user-select: none;
-    -webkit-user-select: none;
+    z-index: 30 !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
     pointer-events: auto !important;
-    touch-action: none;
+    touch-action: none !important;
+    -webkit-touch-callout: none;
   }
   
   .resize-handle:hover {
-    background-color: rgba(123, 104, 238, 0.4);
+    background-color: rgba(123, 104, 238, 0.3);
   }
   
   .resize-handle:active {
-    background-color: rgba(123, 104, 238, 0.6);
+    background-color: rgba(123, 104, 238, 0.5);
     cursor: col-resize !important;
+  }
+  
+  .resizable-header.resizing {
+    user-select: none !important;
+    cursor: col-resize !important;
+  }
+  
+  .resizable-header.resizing * {
+    pointer-events: none;
+  }
+  
+  .resizable-header.resizing .resize-handle {
+    pointer-events: auto !important;
   }
   
   .resizable-header.resizing {
