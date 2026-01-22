@@ -156,57 +156,72 @@
     }
   }
   
+  // Flag para controlar se TanStack Table está disponível
+  let tanStackAvailable = false;
+  
   // Inicializar tabela quando ctos mudar
   $: if (ctos && ctos.length > 0) {
-    try {
-      table = createTable({
-        data: ctos,
-        columns: tableColumns,
-        state: {
-          sorting: tableSorting,
-          columnFilters: tableColumnFilters,
-          pagination: tablePagination
-        },
-        onSortingChange: (updater) => {
-          tableSorting = typeof updater === 'function' ? updater(tableSorting) : updater;
-        },
-        onColumnFiltersChange: (updater) => {
-          tableColumnFilters = typeof updater === 'function' ? updater(tableColumnFilters) : updater;
-        },
-        onPaginationChange: (updater) => {
-          tablePagination = typeof updater === 'function' ? updater(tablePagination) : updater;
-        },
-        getCoreRowModel: getCoreRowModel(),
-        getSortedRowModel: getSortedRowModel(),
-        getFilteredRowModel: getFilteredRowModel(),
-        getPaginationRowModel: getPaginationRowModel(),
-      });
-      
-      // Atualizar filteredAndSortedCTOs usando TanStack Table
-      if (table) {
-        filteredAndSortedCTOs = table.getRowModel().rows.map(row => row.original);
+    // Tentar usar TanStack Table se disponível
+    if (typeof createTable === 'function' && typeof createColumnHelper === 'function') {
+      try {
+        table = createTable({
+          data: ctos,
+          columns: tableColumns,
+          state: {
+            sorting: tableSorting,
+            columnFilters: tableColumnFilters,
+            pagination: tablePagination
+          },
+          onSortingChange: (updater) => {
+            tableSorting = typeof updater === 'function' ? updater(tableSorting) : updater;
+          },
+          onColumnFiltersChange: (updater) => {
+            tableColumnFilters = typeof updater === 'function' ? updater(tableColumnFilters) : updater;
+          },
+          onPaginationChange: (updater) => {
+            tablePagination = typeof updater === 'function' ? updater(tablePagination) : updater;
+          },
+          getCoreRowModel: getCoreRowModel(),
+          getSortedRowModel: getSortedRowModel(),
+          getFilteredRowModel: getFilteredRowModel(),
+          getPaginationRowModel: getPaginationRowModel(),
+        });
+        
+        tanStackAvailable = true;
+        console.log('✅ TanStack Table inicializado com sucesso');
+      } catch (err) {
+        console.error('❌ Erro ao criar tabela TanStack:', err);
+        tanStackAvailable = false;
+        table = null;
       }
-    } catch (err) {
-      console.error('Erro ao criar tabela TanStack:', err);
-      // Fallback para implementação manual se TanStack falhar
-      let result = [...ctos];
-      result = applyFilters(result);
-      result = sortCTOs(result);
+    } else {
+      console.warn('⚠️ TanStack Table não disponível, usando implementação manual');
+      tanStackAvailable = false;
+      table = null;
+    }
+  } else {
+    filteredAndSortedCTOs = [];
+    table = null;
+  }
+  
+  // Atualizar filteredAndSortedCTOs quando table, filtros ou ordenação mudarem
+  // SEMPRE usar implementação manual por enquanto para garantir que funcione
+  $: if (ctos && ctos.length > 0) {
+    // Sempre usar implementação manual para garantir funcionamento
+    let result = [...ctos];
+    result = applyFilters(result);
+    result = sortCTOs(result);
+    
+    // Aplicar paginação manual se necessário
+    if (tablePagination && tablePagination.pageSize < result.length) {
+      const start = tablePagination.pageIndex * tablePagination.pageSize;
+      const end = start + tablePagination.pageSize;
+      filteredAndSortedCTOs = result.slice(start, end);
+    } else {
       filteredAndSortedCTOs = result;
     }
   } else {
     filteredAndSortedCTOs = [];
-  }
-  
-  // Atualizar filteredAndSortedCTOs quando table, filtros ou ordenação mudarem
-  $: if (table && ctos && ctos.length > 0) {
-    filteredAndSortedCTOs = table.getRowModel().rows.map(row => row.original);
-  } else if (ctos && ctos.length > 0 && !table) {
-    // Fallback manual se TanStack não estiver disponível
-    let result = [...ctos];
-    result = applyFilters(result);
-    result = sortCTOs(result);
-    filteredAndSortedCTOs = result;
   }
   
   // Função para iniciar redimensionamento de coluna
@@ -3146,8 +3161,8 @@
             </div>
             
             <!-- Controles de Paginação -->
-            {#if table && !isTableMinimized && filteredAndSortedCTOs.length > 0}
-              {@const totalRows = table.getRowCount()}
+            {#if !isTableMinimized && filteredAndSortedCTOs.length > 0 && ctos.length > 0}
+              {@const totalRows = table && tanStackAvailable ? table.getRowCount() : ctos.length}
               {@const currentPage = tablePagination.pageIndex}
               {@const pageSize = tablePagination.pageSize}
               {@const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))}
