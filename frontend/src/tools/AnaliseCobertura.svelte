@@ -735,17 +735,12 @@
   // Map para rastrear a ordem de marcação individual (usado quando nem todas as CTOs estão marcadas)
   let ctoMarkOrder = new Map(); // Map<ctoKey, number> - armazena a ordem em que cada CTO foi marcada
   let markOrderCounter = 0; // Contador para a ordem de marcação
+  let useVisualOrder = false; // Flag: true = usar ordem visual (quando usa "marcar todos" no header), false = usar ordem de marcação
   
   function calculateCTONumbers() {
     const ctoToNumber = new Map();
     
-    // Verificar se todas as CTOs estão marcadas
-    const allMarked = ctos.length > 0 && ctos.every(cto => {
-      const ctoKey = getCTOKey(cto);
-      return ctoVisibility.get(ctoKey) !== false;
-    });
-    
-    if (allMarked) {
+    if (useVisualOrder) {
       // Lógica 1: Todas marcadas - usar ordem visual (ordem do array ctos)
       let markerNumber = 1;
       for (const cto of ctos) {
@@ -2457,8 +2452,9 @@
                           }
                           ctoVisibility = newVisibility;
                           
-                          // Se marcou todas ou desmarcou todas usando o header, limpar a ordem de marcação individual e resetar contador
-                          // Isso faz com que volte a usar a lógica de ordem visual quando todas estão marcadas
+                          // Quando usa o checkbox "marcar todos" no header, ativar ordem visual
+                          // e limpar a ordem de marcação individual
+                          useVisualOrder = true;
                           ctoMarkOrder = new Map();
                           markOrderCounter = 0;
                           
@@ -2523,6 +2519,9 @@
                             const isChecked = e.target.checked;
                             ctoVisibility.set(ctoKey, isChecked);
                             ctoVisibility = ctoVisibility;
+                            
+                            // Quando marca/desmarca individualmente, usar ordem de marcação (não ordem visual)
+                            useVisualOrder = false;
                             
                             // Rastrear ordem de marcação individual
                             if (isChecked) {
