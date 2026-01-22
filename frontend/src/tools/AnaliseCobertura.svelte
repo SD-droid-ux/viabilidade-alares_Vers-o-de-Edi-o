@@ -828,8 +828,11 @@
     ctoNumbers = calculateCTONumbers();
     
     // Atualizar o mapa sempre que a numeração mudar
+    // Usar setTimeout para garantir que a atualização aconteça após o ciclo de reatividade
     if (map && google?.maps) {
-      displayResultsOnMap();
+      setTimeout(() => {
+        displayResultsOnMap();
+      }, 0);
     }
   } else {
     ctoNumbers = new Map();
@@ -1819,6 +1822,8 @@
     }
     
     console.log(`🗺️ Exibindo ${ctos.length} CTOs no mapa (sem limite)`);
+    console.log('📊 ctoNumbers size:', ctoNumbers.size);
+    console.log('📊 useVisualOrder:', useVisualOrder);
 
     // Limpar apenas marcadores das CTOs (mantendo círculos e marcadores de busca)
     // Os círculos e marcadores de busca das CTOs pesquisadas devem ser preservados
@@ -1869,9 +1874,24 @@
       // Usar o número da tabela (sincronizado com a lógica de numeração da tabela)
       // A CTO só aparece no mapa se tiver um número na tabela (está numerada)
       const tableNumber = ctoNumbers.get(cto);
-      // Verificar se o número existe (não é undefined/null) e é um número válido
-      if (tableNumber === undefined || tableNumber === null || (typeof tableNumber !== 'number' && tableNumber !== '-')) {
-        // CTO visível mas sem número válido na tabela - não exibir no mapa
+      
+      // Debug: verificar se o número existe
+      if (tableNumber === undefined || tableNumber === null) {
+        console.warn(`⚠️ CTO ${cto.nome || ctoKey} não tem número na tabela`, { 
+          ctoKey, 
+          isVisible, 
+          tableNumber,
+          ctoNumbersSize: ctoNumbers.size,
+          useVisualOrder 
+        });
+        markersSkipped++;
+        continue;
+      }
+      
+      // Converter para número se necessário (caso seja string)
+      const numberForMap = typeof tableNumber === 'number' ? tableNumber : parseInt(tableNumber);
+      if (isNaN(numberForMap) || numberForMap <= 0) {
+        console.warn(`⚠️ CTO ${cto.nome || ctoKey} tem número inválido:`, tableNumber, '->', numberForMap);
         markersSkipped++;
         continue;
       }
@@ -1887,8 +1907,9 @@
       
       const group = ctosByPosition.get(positionKey);
       group.ctos.push(cto);
-      group.numbers.push(tableNumber);
-      ctoToNumber.set(cto, tableNumber);
+      // Usar o número convertido para o mapa
+      group.numbers.push(numberForMap);
+      ctoToNumber.set(cto, numberForMap);
     }
     
     console.log(`📊 Agrupamento: ${ctosByPosition.size} posições únicas, ${ctos.length - markersSkipped} CTOs totais`);
