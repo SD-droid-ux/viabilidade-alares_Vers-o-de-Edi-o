@@ -2697,7 +2697,7 @@
                         </div>
                       {/if}
                     </th>
-                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.nome === true} style="width: {columnWidths.nome || '150px'};">
+                    <th class="sortable-header resizable-header" class:minimized={columnVisibility.nome === true} style="width: {columnWidths.nome || '200px'};">
                       <div class="resize-handle" on:mousedown={(e) => startResizeColumn(e, 'nome')}></div>
                       <div class="header-content">
                         <span>CTO</span>
@@ -3136,7 +3136,7 @@
                         />
                       </td>
                       <td class="numeric" class:minimized={columnVisibility.numero === true} style="width: {columnWidths.numero || '60px'};">{ctoNumbers.get(cto) || '-'}</td>
-                      <td class="cto-name-cell" class:minimized={columnVisibility.nome === true} style="width: {columnWidths.nome || '150px'};"><strong>{cto.nome || ''}</strong></td>
+                      <td class="cto-name-cell" class:minimized={columnVisibility.nome === true} style="width: {columnWidths.nome || '200px'};"><strong>{cto.nome || ''}</strong></td>
                       <td class:minimized={columnVisibility.cidade === true} style="width: {columnWidths.cidade || '120px'};">{cto.cidade || 'N/A'}</td>
                       <td class:minimized={columnVisibility.pop === true} style="width: {columnWidths.pop || '100px'};">{cto.pop || 'N/A'}</td>
                       <td class:minimized={columnVisibility.chasse === true} style="width: {columnWidths.chasse || '100px'};">{cto.olt || 'N/A'}</td>
@@ -4014,11 +4014,13 @@
     position: absolute;
     top: 0;
     right: 0;
-    width: 4px;
+    width: 6px;
     height: 100%;
     cursor: col-resize;
     background-color: transparent;
-    z-index: 1;
+    z-index: 10;
+    user-select: none;
+    -webkit-user-select: none;
   }
   
   .resize-handle:hover {
@@ -4027,6 +4029,10 @@
   
   .resize-handle:active {
     background-color: rgba(123, 104, 238, 0.5);
+  }
+  
+  .resizable-header {
+    position: relative;
   }
   
   .results-table th.hidden,
@@ -4219,8 +4225,8 @@
   .results-table td {
     padding: 0.75rem;
     border-bottom: 1px solid #e5e7eb;
-    border-left: 2px solid transparent;
-    border-right: 2px solid transparent;
+    border-left: 1px solid #d1d5db;
+    border-right: 1px solid #d1d5db;
     color: #4b5563;
     text-align: center;
     user-select: text;
@@ -4329,22 +4335,31 @@
   }
   
   .results-table th {
-    border-left-width: 2px;
+    border-left: 1px solid #d1d5db;
+    border-right: 1px solid #d1d5db;
+    border-bottom: 2px solid #9ca3af;
   }
   
   .results-table th:first-child {
     border-left: none;
   }
   
+  .results-table th:last-child {
+    border-right: none;
+  }
+  
   .results-table .cto-name-cell {
-    white-space: nowrap;
-    min-width: 150px;
+    white-space: normal;
+    word-wrap: break-word;
+    min-width: 200px;
+    max-width: none;
     text-align: center;
     user-select: text;
     -webkit-user-select: text;
     -moz-user-select: text;
     -ms-user-select: text;
     cursor: text;
+    overflow: visible;
   }
   
   .results-table tbody tr:hover {
