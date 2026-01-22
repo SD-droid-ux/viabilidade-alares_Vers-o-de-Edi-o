@@ -2233,42 +2233,43 @@
       }
     }
     
-    // Para grupos médios (50-200), DESABILITAR filtragem de boundaryPoints
-    // Usar TODOS os pontos para evitar "puxadas para dentro" causadas pela filtragem agressiva
-    // O convex hull naturalmente criará a forma correta sem perder pontos importantes
-    let pointsToUse;
-    
-    if (ctos.length >= 50 && ctos.length < 200) {
-      // Para grupos médios, usar TODOS os pontos sem filtragem
-      // Isso garante que não perdemos pontos críticos que causam "puxadas"
-      pointsToUse = allPoints;
-    } else {
-      // Para grupos menores, usar filtragem normal
-      const boundaryPoints = pointsToFilter.filter(point => {
-        let isInsideAll = true;
-        
-        // Para grupos < 100, verificar todos os círculos (precisão máxima)
-        const circlesToCheck = circles; // Verificar todos para grupos < 100
-        
-        for (const circle of circlesToCheck) {
-          const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
-          const distDeg = dist / 111000;
-          const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
-          
-          if (distDeg > circleRadius * margin) {
-            isInsideAll = false;
-            break;
-          }
-        }
-        return !isInsideAll;
-      });
+    // Filtrar pontos da borda externa usando abordagem mais precisa
+    // Para grupos médios, usar filtragem mais conservadora mas ainda eficaz
+    const boundaryPoints = pointsToFilter.filter(point => {
+      let maxDistance = 0;
       
-      // Se não temos pontos suficientes na borda, usar todos os pontos
-      if (boundaryPoints.length < 3) {
-        pointsToUse = allPoints;
-      } else {
-        pointsToUse = boundaryPoints;
+      // Para cada círculo, calcular a distância do ponto
+      // Um ponto está na borda se está próximo do raio de pelo menos um círculo
+      for (const circle of circles) {
+        const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
+        const distDeg = dist / 111000;
+        const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
+        const distanceFromEdge = Math.abs(distDeg - circleRadius);
+        
+        // Se o ponto está muito próximo da borda de qualquer círculo, considerá-lo
+        if (distanceFromEdge < circleRadius * 0.15) { // 15% de tolerância
+          return true; // Ponto está na borda
+        }
+        
+        maxDistance = Math.max(maxDistance, distDeg);
       }
+      
+      // Se o ponto está muito longe de todos os círculos, não está na borda
+      const avgRadius = RADIUS_DEG;
+      return maxDistance > avgRadius * margin;
+    });
+    
+    // Para grupos médios, garantir que temos pontos suficientes
+    let pointsToUse = boundaryPoints;
+    if (boundaryPoints.length < 3) {
+      pointsToUse = allPoints;
+    } else if (ctos.length >= 50 && ctos.length < 200) {
+      // Para grupos médios, se filtramos mais de 50% dos pontos, usar todos
+      // Mas se temos pelo menos 30% dos pontos, usar os filtrados (melhor qualidade)
+      if (boundaryPoints.length < allPoints.length * 0.3) {
+        pointsToUse = allPoints;
+      }
+      // Caso contrário, usar boundaryPoints (já tem pontos suficientes)
     }
     
     // Para grupos médios (20-200), adicionar pontos estratégicos para melhor cobertura
@@ -2303,35 +2304,46 @@
       }
     }
     
-    // Limitar pontos para o convex hull (evitar problemas com muitos pontos)
-    // Para grupos médios (50-200), usar mais pontos para melhor qualidade
-    // IMPORTANTE: Amostragem mais inteligente para evitar perder pontos críticos da borda
+    // Limitar pontos para o convex hull de forma mais inteligente
+    // Para grupos médios, usar mais pontos mas com amostragem estratificada
     let pointsForHull = pointsToUse;
-    const maxHullPoints = ctos.length > 100 ? 5000 : 10000; // Aumentado para grupos médios
+    const maxHullPoints = ctos.length > 100 ? 8000 : 12000; // Aumentado para grupos médios
     if (pointsToUse.length > maxHullPoints) {
-      // Amostragem estratificada: garantir que pontos de diferentes áreas sejam incluídos
-      // Isso evita perder pontos importantes que podem causar "rupturas"
-      const hullStep = Math.max(1, Math.floor(pointsToUse.length / maxHullPoints));
+      // Amostragem estratificada: dividir em quadrantes e amostrar de cada um
+      // Isso garante cobertura uniforme de todas as áreas
+      const minLat = Math.min(...pointsToUse.map(p => p.lat));
+      const maxLat = Math.max(...pointsToUse.map(p => p.lat));
+      const minLng = Math.min(...pointsToUse.map(p => p.lng));
+      const maxLng = Math.max(...pointsToUse.map(p => p.lng));
+      
+      const midLat = (minLat + maxLat) / 2;
+      const midLng = (minLng + maxLng) / 2;
+      
+      // Dividir em 4 quadrantes
+      const quadrants = [[], [], [], []];
+      for (const point of pointsToUse) {
+        if (point.lat >= midLat && point.lng >= midLng) quadrants[0].push(point); // NE
+        else if (point.lat >= midLat && point.lng < midLng) quadrants[1].push(point); // NO
+        else if (point.lat < midLat && point.lng >= midLng) quadrants[2].push(point); // SE
+        else quadrants[3].push(point); // SO
+      }
+      
       pointsForHull = [];
+      const pointsPerQuadrant = Math.floor(maxHullPoints / 4);
       
-      // Adicionar pontos de forma mais uniforme, garantindo cobertura de todas as áreas
-      for (let i = 0; i < pointsToUse.length; i += hullStep) {
-        pointsForHull.push(pointsToUse[i]);
-      }
-      
-      // Garantir que os primeiros e últimos pontos sejam sempre incluídos
-      // Isso ajuda a manter a forma correta nas bordas
-      if (pointsToUse.length > 0 && !pointsForHull.includes(pointsToUse[0])) {
-        pointsForHull.unshift(pointsToUse[0]);
-      }
-      if (pointsToUse.length > 1 && !pointsForHull.includes(pointsToUse[pointsToUse.length - 1])) {
-        pointsForHull.push(pointsToUse[pointsToUse.length - 1]);
-      }
-      
-      // Adicionar pontos intermediários estratégicos para manter forma
-      const midPoint = Math.floor(pointsToUse.length / 2);
-      if (midPoint > 0 && midPoint < pointsToUse.length && !pointsForHull.includes(pointsToUse[midPoint])) {
-        pointsForHull.push(pointsToUse[midPoint]);
+      for (const quadrant of quadrants) {
+        if (quadrant.length === 0) continue;
+        const step = Math.max(1, Math.floor(quadrant.length / pointsPerQuadrant));
+        for (let i = 0; i < quadrant.length; i += step) {
+          pointsForHull.push(quadrant[i]);
+        }
+        // Garantir que extremos de cada quadrante sejam incluídos
+        if (quadrant.length > 0) {
+          if (!pointsForHull.includes(quadrant[0])) pointsForHull.push(quadrant[0]);
+          if (quadrant.length > 1 && !pointsForHull.includes(quadrant[quadrant.length - 1])) {
+            pointsForHull.push(quadrant[quadrant.length - 1]);
+          }
+        }
       }
     }
     
@@ -2410,6 +2422,76 @@
         { lat: maxLat, lng: maxLng },
         { lat: minLat, lng: maxLng }
       ];
+    }
+    
+    // Validar que todos os círculos estão dentro do polígono
+    // Se algum círculo estiver fora, expandir o polígono
+    function isPointInPolygon(point, polygon) {
+      let inside = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].lng, yi = polygon[i].lat;
+        const xj = polygon[j].lng, yj = polygon[j].lat;
+        const intersect = ((yi > point.lat) !== (yj > point.lat)) &&
+          (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+    
+    // Verificar se todos os círculos estão dentro do hull
+    let needsExpansion = false;
+    for (const center of circleCenters) {
+      const circleRadius = RADIUS_DEG / Math.cos(center.lat * Math.PI / 180);
+      // Verificar se o centro do círculo está dentro do polígono
+      if (!isPointInPolygon(center, hull)) {
+        needsExpansion = true;
+        break;
+      }
+      // Verificar pontos na borda do círculo
+      const testPoints = [
+        { lat: center.lat + circleRadius, lng: center.lng },
+        { lat: center.lat - circleRadius, lng: center.lng },
+        { lat: center.lat, lng: center.lng + circleRadius },
+        { lat: center.lat, lng: center.lng - circleRadius }
+      ];
+      for (const testPoint of testPoints) {
+        if (!isPointInPolygon(testPoint, hull)) {
+          needsExpansion = true;
+          break;
+        }
+      }
+      if (needsExpansion) break;
+    }
+    
+    // Se precisa expandir, adicionar pontos estratégicos e recalcular
+    if (needsExpansion && ctos.length >= 50 && ctos.length < 200) {
+      // Adicionar pontos nos extremos de cada círculo
+      const expandedPoints = [...pointsForHull];
+      for (const center of circleCenters) {
+        const latRadius = RADIUS_DEG * 1.05; // 5% de margem
+        const lngRadius = (RADIUS_DEG * 1.05) / Math.cos(center.lat * Math.PI / 180);
+        expandedPoints.push(
+          { lat: center.lat + latRadius, lng: center.lng },
+          { lat: center.lat - latRadius, lng: center.lng },
+          { lat: center.lat, lng: center.lng + lngRadius },
+          { lat: center.lat, lng: center.lng - lngRadius }
+        );
+      }
+      // Recalcular hull com pontos expandidos
+      try {
+        const uniqueExpanded = [];
+        const seen = new Set();
+        for (const point of expandedPoints) {
+          const key = `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            uniqueExpanded.push(point);
+          }
+        }
+        hull = computeConvexHull(uniqueExpanded);
+      } catch (err) {
+        console.warn('⚠️ Erro ao recalcular hull expandido:', err);
+      }
     }
     
     // Para grupos médios (50-200), DESABILITAR suavização completamente
