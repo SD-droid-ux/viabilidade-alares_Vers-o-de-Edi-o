@@ -1829,11 +1829,11 @@
     isDisplayingMarkers = true;
 
     const bounds = new google.maps.LatLngBounds();
-    let markerNumber = 1; // Contador para numeração dos marcadores
     let markersCreated = 0;
     let markersSkipped = 0;
 
     // ETAPA 1: Agrupar CTOs por coordenadas (lat/lng idênticas) e filtrar apenas as visíveis
+    // Usar a mesma numeração da tabela (ctoNumbers) para garantir sincronização
     const ctosByPosition = new Map(); // Chave: "lat,lng", Valor: Array de CTOs + números
     const ctoToNumber = new Map(); // Mapear CTO para seu número no array
     
@@ -1857,6 +1857,14 @@
         continue;
       }
       
+      // Usar o número da tabela (sincronizado com a lógica de numeração da tabela)
+      const tableNumber = ctoNumbers.get(cto);
+      if (!tableNumber) {
+        // Se não tem número na tabela, pular (não deve aparecer no mapa)
+        markersSkipped++;
+        continue;
+      }
+      
       const lat = parseFloat(cto.latitude).toFixed(6);
       const lng = parseFloat(cto.longitude).toFixed(6);
       const positionKey = `${lat},${lng}`;
@@ -1868,9 +1876,8 @@
       
       const group = ctosByPosition.get(positionKey);
       group.ctos.push(cto);
-      group.numbers.push(markerNumber);
-      ctoToNumber.set(cto, markerNumber);
-      markerNumber++;
+      group.numbers.push(tableNumber);
+      ctoToNumber.set(cto, tableNumber);
     }
     
     console.log(`📊 Agrupamento: ${ctosByPosition.size} posições únicas, ${ctos.length - markersSkipped} CTOs totais`);
