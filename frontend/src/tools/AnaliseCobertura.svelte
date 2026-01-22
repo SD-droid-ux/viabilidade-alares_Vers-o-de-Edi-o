@@ -1882,7 +1882,7 @@
       }
     });
   }
-  
+
   // Função para exibir resultados no mapa (estilo ViabilidadeAlares)
   async function displayResultsOnMap() {
     if (!map || !google.maps) {
@@ -2533,37 +2533,47 @@
           <div class="map-header">
             <h3>Mapa</h3>
             <div style="display: flex; gap: 0.5rem;">
+            <button 
+              class="minimize-button" 
+              disabled={isResizingSidebar || isResizingMapTable}
+              on:click={async () => {
+                isMapMinimized = !isMapMinimized;
+                if (!isMapMinimized && map && google?.maps) {
+                  // Quando expandir, aguardar renderização e fazer resize do mapa
+                  await tick();
+                  setTimeout(() => {
+                    if (map && google.maps) {
+                      google.maps.event.trigger(map, 'resize');
+                    }
+                  }, 100);
+                }
+              }}
+              aria-label={isMapMinimized ? 'Expandir mapa' : 'Minimizar mapa'}
+              title={isMapMinimized ? 'Expandir' : 'Minimizar'}
+            >
+              {isMapMinimized ? '⬆️' : '⬇️'}
+            </button>
               <button 
-                class="minimize-button" 
-                disabled={isResizingSidebar || isResizingMapTable}
-                on:click={async () => {
-                  isMapMinimized = !isMapMinimized;
-                  if (!isMapMinimized && map && google?.maps) {
-                    // Quando expandir, aguardar renderização e fazer resize do mapa
-                    await tick();
-                    setTimeout(() => {
-                      if (map && google.maps) {
-                        google.maps.event.trigger(map, 'resize');
-                      }
-                    }, 100);
-                  }
-                }}
-                aria-label={isMapMinimized ? 'Expandir mapa' : 'Minimizar mapa'}
-                title={isMapMinimized ? 'Expandir' : 'Minimizar'}
-              >
-                {isMapMinimized ? '⬆️' : '⬇️'}
-              </button>
-              <button 
-                class="minimize-button" 
+                class="minimize-button toggle-circles-button" 
                 disabled={isResizingSidebar || isResizingMapTable}
                 on:click={() => {
                   toggleRadiusCircles();
                 }}
                 aria-label={showRadiusCircles ? 'Ocultar círculos de 250m' : 'Mostrar círculos de 250m'}
                 title={showRadiusCircles ? 'Ocultar círculos' : 'Mostrar círculos'}
-                style="background-color: {showRadiusCircles ? '#28A745' : '#DC3545'}; color: white;"
               >
-                {showRadiusCircles ? '⭕' : '🔴'}
+                {#if showRadiusCircles}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                {:else}
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                {/if}
               </button>
             </div>
           </div>
@@ -2859,6 +2869,25 @@
     margin: 0;
     color: #666;
     font-size: 0.875rem;
+  }
+
+  .toggle-circles-button {
+    color: #7B68EE;
+    transition: all 0.25s ease;
+  }
+
+  .toggle-circles-button:hover {
+    background-color: rgba(123, 104, 238, 0.1);
+    color: #7B68EE;
+  }
+
+  .toggle-circles-button:active {
+    background-color: rgba(123, 104, 238, 0.2);
+  }
+
+  .toggle-circles-button svg {
+    width: 18px;
+    height: 18px;
   }
 
   .minimize-button {
