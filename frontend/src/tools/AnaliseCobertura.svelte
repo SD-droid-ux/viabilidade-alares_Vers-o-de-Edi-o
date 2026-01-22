@@ -79,6 +79,9 @@
   let selectionStart = null; // {row, col} para range selection com Shift
   let isSelecting = false; // Flag para indicar se está em processo de seleção (drag)
   
+  // Variável reativa para forçar atualização quando seleção mudar
+  $: selectionKey = `${selectedCells.length}-${selectedRows.length}-${selectedColumns.length}-${selectedColumns.join(',')}-${selectedRows.join(',')}`;
+  
   // Função para gerar chave de célula (row-col)
   function getCellKey(rowIndex, colIndex) {
     return `${rowIndex}-${colIndex}`;
@@ -86,6 +89,9 @@
   
   // Função para verificar se uma célula está selecionada
   function isCellSelected(rowIndex, colIndex) {
+    // Usar selectionKey para forçar reatividade
+    const _ = selectionKey;
+    
     const cellKey = getCellKey(rowIndex, colIndex);
     
     // Verificar seleção direta da célula
@@ -2204,9 +2210,7 @@
                     {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5}
                     {@const pctOcup = parseFloat(cto.pct_ocup || 0)}
                     {@const occupationClass = pctOcup < 50 ? 'low' : pctOcup >= 50 && pctOcup < 80 ? 'medium' : 'high'}
-                    {@const _ = selectedColumns} <!-- Forçar reatividade quando selectedColumns mudar -->
-                    {@const _2 = selectedCells} <!-- Forçar reatividade quando selectedCells mudar -->
-                    {@const _3 = selectedRows} <!-- Forçar reatividade quando selectedRows mudar -->
+                    {@const _ = selectionKey} <!-- Forçar reatividade quando seleção mudar -->
                     <tr class:row-selected={selectedRows.includes(rowIndex)}>
                       <td class="checkbox-cell" class:cell-selected={isCellSelected(rowIndex, 0)} on:click={(e) => handleCellClick(e, rowIndex, 0)}>
                         <input 
