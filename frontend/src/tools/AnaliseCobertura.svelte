@@ -2006,19 +2006,35 @@
     if (points.length < 3) return points;
     
     const smoothed = [];
-    const smoothingSteps = 2;
+    const smoothingSteps = 10; // Aumentado para bordas extremamente suaves
     
     for (let i = 0; i < points.length; i++) {
       const current = points[i];
       const next = points[(i + 1) % points.length];
+      const prev = points[(i - 1 + points.length) % points.length];
+      
+      // Adicionar ponto atual
       smoothed.push(current);
       
+      // Adicionar pontos intermediários suavizados com interpolação cúbica
       for (let step = 1; step <= smoothingSteps; step++) {
         const t = step / (smoothingSteps + 1);
+        // Usar smoothstep para interpolação mais suave
         const smoothT = t * t * (3 - 2 * t);
+        
+        // Interpolação linear entre pontos adjacentes
         const midLat = current.lat + (next.lat - current.lat) * smoothT;
         const midLng = current.lng + (next.lng - current.lng) * smoothT;
-        smoothed.push({ lat: midLat, lng: midLng });
+        
+        // Aplicar leve suavização baseada no ponto anterior para evitar cantos muito agudos
+        if (i > 0) {
+          const influence = 0.1; // Influência do ponto anterior (10%)
+          const smoothedLat = midLat + (prev.lat - current.lat) * influence * (1 - smoothT);
+          const smoothedLng = midLng + (prev.lng - current.lng) * influence * (1 - smoothT);
+          smoothed.push({ lat: smoothedLat, lng: smoothedLng });
+        } else {
+          smoothed.push({ lat: midLat, lng: midLng });
+        }
       }
     }
     
@@ -2098,7 +2114,7 @@
         const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
         
         // Se o ponto está fora deste círculo, não está dentro de todos
-        if (distDeg > circleRadius * 1.05) { // 5% de margem
+        if (distDeg > circleRadius * 1.02) { // 2% de margem (mais rigoroso)
           isInsideAll = false;
           break;
         }
@@ -2109,6 +2125,20 @@
     
     // Se não temos pontos suficientes na borda, usar todos os pontos
     const pointsToUse = boundaryPoints.length >= 3 ? boundaryPoints : allPoints;
+    
+    // Adicionar pontos dos centros dos círculos para garantir cobertura completa
+    // Isso ajuda a garantir que todas as CTOs fiquem dentro do polígono
+    for (const center of circleCenters) {
+      // Adicionar pontos nos 4 quadrantes de cada círculo (N, S, L, O)
+      const latRadius = RADIUS_DEG;
+      const lngRadius = RADIUS_DEG / Math.cos(center.lat * Math.PI / 180);
+      pointsToUse.push(
+        { lat: center.lat + latRadius, lng: center.lng }, // Norte
+        { lat: center.lat - latRadius, lng: center.lng }, // Sul
+        { lat: center.lat, lng: center.lng + lngRadius }, // Leste
+        { lat: center.lat, lng: center.lng - lngRadius }  // Oeste
+      );
+    }
     
     // Calcular o convex hull (envoltória convexa) dos pontos da borda
     // Isso cria um polígono que envolve todos os círculos de forma natural e precisa
@@ -2147,16 +2177,31 @@
       });
     }
     
+    // Expandir ligeiramente o polígono para garantir que todas as CTOs fiquem dentro
+    // Isso adiciona uma pequena margem de segurança
+    const expandedHull = hull.map(point => {
+      // Calcular o centro do polígono
+      const centerLat = hull.reduce((sum, p) => sum + p.lat, 0) / hull.length;
+      const centerLng = hull.reduce((sum, p) => sum + p.lng, 0) / hull.length;
+      
+      // Expandir cada ponto em 3% na direção do centro para fora
+      const expansionFactor = 1.03;
+      const expandedLat = centerLat + (point.lat - centerLat) * expansionFactor;
+      const expandedLng = centerLng + (point.lng - centerLng) * expansionFactor;
+      
+      return { lat: expandedLat, lng: expandedLng };
+    });
+    
     // Suavizar o polígono adicionando pontos intermediários para bordas mais suaves
     let smoothedHull;
     try {
-      smoothedHull = smoothPolygonEdges(hull);
+      smoothedHull = smoothPolygonEdges(expandedHull);
       if (!smoothedHull || smoothedHull.length < 3) {
-        smoothedHull = hull; // Fallback para hull original se suavização falhar
+        smoothedHull = expandedHull; // Fallback para hull expandido se suavização falhar
       }
     } catch (smoothErr) {
-      console.warn('⚠️ Erro ao suavizar polígono, usando hull original:', smoothErr);
-      smoothedHull = hull; // Fallback para hull original
+      console.warn('⚠️ Erro ao suavizar polígono, usando hull expandido:', smoothErr);
+      smoothedHull = expandedHull; // Fallback para hull expandido
     }
     
     // Criar polígono com forma suave e natural
