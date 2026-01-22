@@ -1087,6 +1087,8 @@
   
   // Array para armazenar círculos de raio de 250m das CTOs pesquisadas
   let radiusCircles = [];
+  // Array para armazenar polígonos fundidos quando há sobreposição
+  let radiusPolygons = [];
   let showRadiusCircles = true; // Controla a visibilidade dos círculos de 250m
 
   // Limpar marcadores do mapa
@@ -1114,6 +1116,14 @@
       }
     });
     radiusCircles = [];
+    
+    // Limpar polígonos fundidos
+    radiusPolygons.forEach(polygon => {
+      if (polygon && polygon.setMap) {
+        polygon.setMap(null);
+      }
+    });
+    radiusPolygons = [];
     
     // Limpar marcador único anterior (compatibilidade)
     if (searchMarker) {
@@ -1290,23 +1300,33 @@
             zIndex: 999
           });
           searchMarkers.push(marker);
-          
-          // Criar círculo de raio de 250m para cada CTO pesquisada (cor do projeto)
-          const circle = new google.maps.Circle({
-            strokeColor: '#7B68EE', // Cor da borda (roxo do projeto)
-            strokeOpacity: 0.6, // Opacidade reduzida para evitar acúmulo visual
-            strokeWeight: 2,
-            fillColor: '#6495ED', // Cor de preenchimento (azul do projeto)
-            fillOpacity: 0.08, // Opacidade reduzida para evitar acúmulo visual quando há múltiplos círculos
-            map: showRadiusCircles ? map : null, // Mostrar apenas se showRadiusCircles for true
-            center: { lat, lng },
-            radius: 250, // Raio de 250 metros
-            zIndex: 1 // Abaixo dos marcadores
-          });
-          radiusCircles.push(circle);
         }
         
-        console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para CTOs pesquisadas`);
+        // Tentar criar polígono fundido para CTOs pesquisadas
+        const unionPolygon = createUnionPolygon(searchedCTOsList.map(({ cto }) => cto));
+        
+        if (unionPolygon) {
+          // Se há polígono fundido (sobreposição), usar ele
+          radiusPolygons.push(unionPolygon);
+          console.log(`✅ Polígono fundido criado para ${searchedCTOsList.length} CTO(s) pesquisada(s) com sobreposição`);
+        } else {
+          // Se não há sobreposição ou apenas 1 CTO, criar círculos individuais
+          for (const { cto, lat, lng } of searchedCTOsList) {
+            const circle = new google.maps.Circle({
+              strokeColor: '#7B68EE',
+              strokeOpacity: 0.6,
+              strokeWeight: 2,
+              fillColor: '#6495ED',
+              fillOpacity: 0.08,
+              map: showRadiusCircles ? map : null,
+              center: { lat, lng },
+              radius: 250,
+              zIndex: 1
+            });
+            radiusCircles.push(circle);
+          }
+          console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para CTOs pesquisadas`);
+        }
       }
 
       // ETAPA 2: Para CADA CTO pesquisada, buscar todas as próximas dentro de 250m
@@ -1730,22 +1750,39 @@
           });
           searchMarkers.push(marker);
           
-          // Criar círculo de raio de 250m para cada ponto pesquisado (cor do projeto)
-          const circle = new google.maps.Circle({
-            strokeColor: '#7B68EE', // Cor da borda (roxo do projeto)
-            strokeOpacity: 0.6, // Opacidade reduzida para evitar acúmulo visual
-            strokeWeight: 2,
-            fillColor: '#6495ED', // Cor de preenchimento (azul do projeto)
-            fillOpacity: 0.08, // Opacidade reduzida para evitar acúmulo visual quando há múltiplos círculos
-            map: showRadiusCircles ? map : null, // Mostrar apenas se showRadiusCircles for true
-            center: { lat, lng },
-            radius: 250, // Raio de 250 metros
-            zIndex: 1 // Abaixo dos marcadores
-          });
-          radiusCircles.push(circle);
         }
         
-        console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para pontos pesquisados`);
+        // Criar CTOs temporárias para os pontos pesquisados (para usar createUnionPolygon)
+        const tempCTOs = validPoints.map(({ lat, lng }) => ({
+          latitude: lat.toString(),
+          longitude: lng.toString()
+        }));
+        
+        // Tentar criar polígono fundido para pontos pesquisados
+        const unionPolygon = createUnionPolygon(tempCTOs);
+        
+        if (unionPolygon) {
+          // Se há polígono fundido (sobreposição), usar ele
+          radiusPolygons.push(unionPolygon);
+          console.log(`✅ Polígono fundido criado para ${validPoints.length} ponto(s) pesquisado(s) com sobreposição`);
+        } else {
+          // Se não há sobreposição ou apenas 1 ponto, criar círculos individuais
+          for (const { lat, lng } of validPoints) {
+            const circle = new google.maps.Circle({
+              strokeColor: '#7B68EE',
+              strokeOpacity: 0.6,
+              strokeWeight: 2,
+              fillColor: '#6495ED',
+              fillOpacity: 0.08,
+              map: showRadiusCircles ? map : null,
+              center: { lat, lng },
+              radius: 250,
+              zIndex: 1
+            });
+            radiusCircles.push(circle);
+          }
+          console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para pontos pesquisados`);
+        }
       }
 
       // Buscar CTOs próximas de cada ponto (em paralelo)
@@ -1880,6 +1917,236 @@
           circle.setMap(null);
         }
       }
+    });
+    
+    // Mostrar/ocultar polígonos fundidos também
+    radiusPolygons.forEach(polygon => {
+      if (polygon && polygon.setMap) {
+        if (showRadiusCircles) {
+          polygon.setMap(map);
+        } else {
+          polygon.setMap(null);
+        }
+      }
+    });
+  }
+  
+  // Função auxiliar para calcular pontos de interseção entre dois círculos
+  function getCircleIntersections(lat1, lng1, r1, lat2, lng2, r2) {
+    const intersections = [];
+    const d = Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lng2 - lng1, 2));
+    
+    if (d > r1 + r2 || d < Math.abs(r1 - r2)) {
+      return intersections;
+    }
+    
+    const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+    const h = Math.sqrt(r1 * r1 - a * a);
+    const lat3 = lat1 + a * (lat2 - lat1) / d;
+    const lng3 = lng1 + a * (lng2 - lng1) / d;
+    
+    const lat4a = lat3 + h * (lng2 - lng1) / d;
+    const lng4a = lng3 - h * (lat2 - lat1) / d;
+    const lat4b = lat3 - h * (lng2 - lng1) / d;
+    const lng4b = lng3 + h * (lat2 - lat1) / d;
+    
+    intersections.push({ lat: lat4a, lng: lng4a });
+    intersections.push({ lat: lat4b, lng: lng4b });
+    
+    return intersections;
+  }
+  
+  // Função auxiliar para calcular o produto vetorial (cross product)
+  function crossProduct(o, a, b) {
+    return (a.lng - o.lng) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lng - o.lng);
+  }
+  
+  // Função para calcular convex hull (envoltória convexa)
+  function computeConvexHull(points) {
+    if (points.length < 3) return points;
+    
+    let bottomPoint = points[0];
+    let bottomIndex = 0;
+    for (let i = 1; i < points.length; i++) {
+      if (points[i].lat < bottomPoint.lat || 
+          (points[i].lat === bottomPoint.lat && points[i].lng < bottomPoint.lng)) {
+        bottomPoint = points[i];
+        bottomIndex = i;
+      }
+    }
+    
+    [points[0], points[bottomIndex]] = [points[bottomIndex], points[0]];
+    
+    const sortedPoints = [points[0], ...points.slice(1).sort((a, b) => {
+      const angleA = Math.atan2(a.lat - points[0].lat, a.lng - points[0].lng);
+      const angleB = Math.atan2(b.lat - points[0].lat, b.lng - points[0].lng);
+      if (Math.abs(angleA - angleB) < 0.0001) {
+        const distA = Math.pow(a.lat - points[0].lat, 2) + Math.pow(a.lng - points[0].lng, 2);
+        const distB = Math.pow(b.lat - points[0].lat, 2) + Math.pow(b.lng - points[0].lng, 2);
+        return distA - distB;
+      }
+      return angleA - angleB;
+    })];
+    
+    const hull = [sortedPoints[0], sortedPoints[1]];
+    
+    for (let i = 2; i < sortedPoints.length; i++) {
+      while (hull.length > 1 && 
+             crossProduct(hull[hull.length - 2], hull[hull.length - 1], sortedPoints[i]) <= 0) {
+        hull.pop();
+      }
+      hull.push(sortedPoints[i]);
+    }
+    
+    return hull;
+  }
+  
+  // Função para suavizar bordas do polígono
+  function smoothPolygonEdges(points) {
+    if (points.length < 3) return points;
+    
+    const smoothed = [];
+    const smoothingSteps = 2;
+    
+    for (let i = 0; i < points.length; i++) {
+      const current = points[i];
+      const next = points[(i + 1) % points.length];
+      smoothed.push(current);
+      
+      for (let step = 1; step <= smoothingSteps; step++) {
+        const t = step / (smoothingSteps + 1);
+        const smoothT = t * t * (3 - 2 * t);
+        const midLat = current.lat + (next.lat - current.lat) * smoothT;
+        const midLng = current.lng + (next.lng - current.lng) * smoothT;
+        smoothed.push({ lat: midLat, lng: midLng });
+      }
+    }
+    
+    return smoothed;
+  }
+  
+  // Função para criar polígono fundido de círculos sobrepostos
+  function createUnionPolygon(ctos) {
+    if (ctos.length === 0) return null;
+    if (ctos.length === 1) return null; // Retornar null para criar círculo individual
+    
+    const RADIUS_M = 250;
+    const RADIUS_DEG = RADIUS_M / 111000;
+    
+    const allPoints = [];
+    const circles = [];
+    
+    for (const cto of ctos) {
+      const lat = parseFloat(cto.latitude);
+      const lng = parseFloat(cto.longitude);
+      circles.push({ lat, lng, radius: RADIUS_DEG });
+      
+      const pointsPerCircle = ctos.length > 50 ? 64 : ctos.length > 20 ? 48 : 32;
+      const latRadius = RADIUS_DEG;
+      const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
+      
+      for (let i = 0; i < pointsPerCircle; i++) {
+        const angle = (i * 2 * Math.PI) / pointsPerCircle;
+        const pointLat = lat + (latRadius * Math.cos(angle));
+        const pointLng = lng + (lngRadius * Math.sin(angle));
+        allPoints.push({ lat: pointLat, lng: pointLng });
+      }
+    }
+    
+    // Verificar se há sobreposição
+    let hasOverlap = false;
+    for (let i = 0; i < circles.length; i++) {
+      for (let j = i + 1; j < circles.length; j++) {
+        const dist = calculateDistance(circles[i].lat, circles[i].lng, circles[j].lat, circles[j].lng);
+        const distDeg = dist / 111000;
+        
+        if (distDeg < (RADIUS_DEG * 2)) {
+          hasOverlap = true;
+          const intersections = getCircleIntersections(
+            circles[i].lat, circles[i].lng, RADIUS_DEG,
+            circles[j].lat, circles[j].lng, RADIUS_DEG
+          );
+          allPoints.push(...intersections);
+        }
+      }
+    }
+    
+    // Se não há sobreposição, retornar null (criar círculos individuais)
+    if (!hasOverlap) {
+      return null;
+    }
+    
+    // Filtrar pontos da borda externa
+    const boundaryPoints = allPoints.filter(point => {
+      let isInsideAll = true;
+      for (const circle of circles) {
+        const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
+        const distDeg = dist / 111000;
+        const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
+        
+        if (distDeg > circleRadius * 1.05) {
+          isInsideAll = false;
+          break;
+        }
+      }
+      return !isInsideAll;
+    });
+    
+    const pointsToUse = boundaryPoints.length >= 3 ? boundaryPoints : allPoints;
+    const hull = computeConvexHull(pointsToUse);
+    
+    if (!hull || hull.length < 3) {
+      let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+      for (const cto of ctos) {
+        const lat = parseFloat(cto.latitude);
+        const lng = parseFloat(cto.longitude);
+        const latRadius = RADIUS_DEG;
+        const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
+        minLat = Math.min(minLat, lat - latRadius);
+        maxLat = Math.max(maxLat, lat + latRadius);
+        minLng = Math.min(minLng, lng - lngRadius);
+        maxLng = Math.max(maxLng, lng + lngRadius);
+      }
+      const polygonPath = [
+        { lat: minLat, lng: minLng },
+        { lat: maxLat, lng: minLng },
+        { lat: maxLat, lng: maxLng },
+        { lat: minLat, lng: maxLng }
+      ];
+      
+      return new google.maps.Polygon({
+        paths: polygonPath,
+        strokeColor: '#7B68EE',
+        strokeOpacity: 0.6,
+        strokeWeight: 2,
+        fillColor: '#6495ED',
+        fillOpacity: 0.08,
+        map: showRadiusCircles ? map : null,
+        zIndex: 1,
+        geodesic: true
+      });
+    }
+    
+    let smoothedHull;
+    try {
+      smoothedHull = smoothPolygonEdges(hull);
+      if (!smoothedHull || smoothedHull.length < 3) {
+        smoothedHull = hull;
+      }
+    } catch (smoothErr) {
+      smoothedHull = hull;
+    }
+    
+    return new google.maps.Polygon({
+      paths: smoothedHull,
+      strokeColor: '#7B68EE',
+      strokeOpacity: 0.6,
+      strokeWeight: 2,
+      fillColor: '#6495ED',
+      fillOpacity: 0.08,
+      map: showRadiusCircles ? map : null,
+      zIndex: 1,
+      geodesic: true
     });
   }
 
