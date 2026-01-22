@@ -2054,9 +2054,9 @@
       circleCenters.push({ lat, lng });
       circles.push({ lat, lng, radius: RADIUS_DEG });
       
-      // Criar pontos ao redor do círculo (otimizado: mais pontos para grupos maiores = melhor qualidade)
-      // Ajustar dinamicamente baseado no tamanho do grupo para melhor precisão
-      const pointsPerCircle = ctos.length > 50 ? 64 : ctos.length > 20 ? 56 : 40; // Mais pontos para grupos maiores
+      // Criar pontos ao redor do círculo (otimizado: balancear qualidade e performance)
+      // Para grupos muito grandes (100+), reduzir pontos para manter performance
+      const pointsPerCircle = ctos.length > 100 ? 48 : ctos.length > 50 ? 64 : ctos.length > 20 ? 56 : 40;
       const latRadius = RADIUS_DEG;
       const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
       
@@ -2069,24 +2069,72 @@
     }
     
     // Verificar se há sobreposição entre círculos e adicionar pontos de interseção
-    // Para grupos grandes (20+), sempre adicionar interseções para melhor precisão
+    // Para grupos muito grandes (100+), otimizar verificando apenas círculos próximos
     let hasOverlap = false;
     const shouldAddAllIntersections = ctos.length > 20;
+    const isVeryLargeGroup = ctos.length > 100;
     
-    for (let i = 0; i < circles.length; i++) {
-      for (let j = i + 1; j < circles.length; j++) {
-        const dist = calculateDistance(circles[i].lat, circles[i].lng, circles[j].lat, circles[j].lng);
-        const distDeg = dist / 111000; // Converter para graus
+    // Para grupos muito grandes, usar otimização espacial (verificar apenas círculos próximos)
+    if (isVeryLargeGroup) {
+      // Criar grid espacial para otimizar busca de círculos próximos
+      const gridSize = RADIUS_DEG * 5; // Tamanho da célula do grid
+      const grid = new Map();
+      
+      // Adicionar círculos ao grid
+      circles.forEach((circle, idx) => {
+        const gridX = Math.floor(circle.lat / gridSize);
+        const gridY = Math.floor(circle.lng / gridSize);
+        const key = `${gridX},${gridY}`;
+        if (!grid.has(key)) grid.set(key, []);
+        grid.get(key).push({ circle, idx });
+      });
+      
+      // Verificar apenas círculos na mesma célula ou células adjacentes
+      for (const [key, cellCircles] of grid.entries()) {
+        const [gridX, gridY] = key.split(',').map(Number);
         
-        // Se os círculos se sobrepõem ou estão próximos (para grupos grandes)
-        const overlapThreshold = shouldAddAllIntersections ? (RADIUS_DEG * 2.5) : (RADIUS_DEG * 2);
-        if (distDeg < overlapThreshold) {
-          hasOverlap = true;
-          const intersections = getCircleIntersections(
-            circles[i].lat, circles[i].lng, RADIUS_DEG,
-            circles[j].lat, circles[j].lng, RADIUS_DEG
-          );
-          allPoints.push(...intersections);
+        // Verificar círculos na mesma célula e células adjacentes
+        for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const neighborKey = `${gridX + dx},${gridY + dy}`;
+            const neighborCircles = grid.get(neighborKey) || [];
+            
+            for (const { circle: c1, idx: i } of cellCircles) {
+              for (const { circle: c2, idx: j } of neighborCircles) {
+                if (i >= j) continue; // Evitar duplicatas
+                
+                const dist = calculateDistance(c1.lat, c1.lng, c2.lat, c2.lng);
+                const distDeg = dist / 111000;
+                
+                if (distDeg < (RADIUS_DEG * 2)) {
+                  hasOverlap = true;
+                  const intersections = getCircleIntersections(
+                    c1.lat, c1.lng, RADIUS_DEG,
+                    c2.lat, c2.lng, RADIUS_DEG
+                  );
+                  allPoints.push(...intersections);
+                }
+              }
+            }
+          }
+        }
+      }
+    } else {
+      // Para grupos menores, verificar todos os pares
+      for (let i = 0; i < circles.length; i++) {
+        for (let j = i + 1; j < circles.length; j++) {
+          const dist = calculateDistance(circles[i].lat, circles[i].lng, circles[j].lat, circles[j].lng);
+          const distDeg = dist / 111000;
+          
+          const overlapThreshold = shouldAddAllIntersections ? (RADIUS_DEG * 2.5) : (RADIUS_DEG * 2);
+          if (distDeg < overlapThreshold) {
+            hasOverlap = true;
+            const intersections = getCircleIntersections(
+              circles[i].lat, circles[i].lng, RADIUS_DEG,
+              circles[j].lat, circles[j].lng, RADIUS_DEG
+            );
+            allPoints.push(...intersections);
+          }
         }
       }
     }
@@ -2097,9 +2145,22 @@
     }
     
     // Filtrar pontos que estão dentro de outros círculos (não são parte da borda externa)
-    // Para grupos grandes, usar filtragem mais precisa
-    const margin = ctos.length > 20 ? 1.05 : 1.02; // Margem maior para grupos grandes
-    const boundaryPoints = allPoints.filter(point => {
+    // Para grupos muito grandes, usar amostragem para melhorar performance
+    const margin = ctos.length > 20 ? 1.05 : 1.02;
+    let pointsToFilter = allPoints;
+    
+    // Para grupos muito grandes, fazer amostragem antes da filtragem
+    if (ctos.length > 100) {
+      // Amostrar pontos mantendo distribuição uniforme
+      const sampleSize = Math.min(5000, allPoints.length); // Limitar a 5000 pontos
+      const step = Math.max(1, Math.floor(allPoints.length / sampleSize));
+      pointsToFilter = [];
+      for (let i = 0; i < allPoints.length; i += step) {
+        pointsToFilter.push(allPoints[i]);
+      }
+    }
+    
+    const boundaryPoints = pointsToFilter.filter(point => {
       // Verificar se este ponto está na borda externa (não dentro de todos os círculos)
       let isInsideAll = true;
       for (const circle of circles) {
@@ -2107,13 +2168,11 @@
         const distDeg = dist / 111000;
         const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
         
-        // Se o ponto está fora deste círculo, não está dentro de todos
         if (distDeg > circleRadius * margin) {
           isInsideAll = false;
           break;
         }
       }
-      // Manter pontos que NÃO estão dentro de todos os círculos (são parte da borda)
       return !isInsideAll;
     });
     
