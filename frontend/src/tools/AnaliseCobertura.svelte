@@ -829,10 +829,18 @@
     
     // Atualizar o mapa sempre que a numeração mudar
     // Usar setTimeout para garantir que a atualização aconteça após o ciclo de reatividade
-    if (map && google?.maps) {
+    // E garantir que ctoNumbers esteja populado antes de atualizar o mapa
+    if (map && google?.maps && ctoNumbers.size > 0) {
       setTimeout(() => {
         displayResultsOnMap();
-      }, 0);
+      }, 50);
+    } else if (map && google?.maps && ctoNumbers.size === 0 && ctos.length > 0) {
+      // Se ctoNumbers está vazio mas há CTOs, aguardar um pouco mais e tentar novamente
+      setTimeout(() => {
+        if (ctoNumbers.size > 0) {
+          displayResultsOnMap();
+        }
+      }, 100);
     }
   } else {
     ctoNumbers = new Map();
@@ -1834,9 +1842,24 @@
     });
     markers = [];
 
-    // Evitar múltiplas tentativas simultâneas
+    // Evitar múltiplas tentativas simultâneas apenas se já estiver processando
+    // Mas permitir atualizações se ctoNumbers mudou
     if (isDisplayingMarkers) {
+      // Se ctoNumbers está vazio, aguardar um pouco e tentar novamente
+      if (ctoNumbers.size === 0) {
+        console.warn('Aguardando ctoNumbers ser populado...');
+        setTimeout(() => displayResultsOnMap(), 100);
+        return;
+      }
+      // Se já está processando e ctoNumbers está populado, ignorar chamada duplicada
       console.warn('Já está exibindo marcadores, ignorando chamada duplicada');
+      return;
+    }
+    
+    // Verificar se ctoNumbers está vazio antes de começar
+    if (ctoNumbers.size === 0 && ctos.length > 0) {
+      console.warn('ctoNumbers está vazio, aguardando recálculo...');
+      setTimeout(() => displayResultsOnMap(), 100);
       return;
     }
     
