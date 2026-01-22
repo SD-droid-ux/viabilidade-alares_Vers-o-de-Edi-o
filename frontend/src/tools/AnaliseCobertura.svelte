@@ -237,29 +237,82 @@
     e.stopPropagation();
     resizingColumn = columnName;
     columnResizeStartX = e.clientX;
+    
     const header = e.target.closest('th');
     if (header) {
       columnResizeStartWidth = header.offsetWidth;
+      header.classList.add('resizing');
     }
     
-    document.addEventListener('mousemove', handleResizeColumn);
-    document.addEventListener('mouseup', stopResizeColumn);
+    document.addEventListener('mousemove', handleResizeColumn, { passive: false });
+    document.addEventListener('mouseup', stopResizeColumn, { once: true });
   }
   
   function handleResizeColumn(e) {
     if (!resizingColumn) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
     
     const diff = e.clientX - columnResizeStartX;
     const newWidth = Math.max(50, columnResizeStartWidth + diff); // Mínimo de 50px
     
     columnWidths[resizingColumn] = `${newWidth}px`;
     columnWidths = columnWidths; // Forçar reatividade
+    
+    // Atualizar todas as células da coluna em tempo real
+    const columnIndex = getColumnIndex(resizingColumn);
+    if (columnIndex > 0) {
+      const headers = document.querySelectorAll(`.results-table th:nth-child(${columnIndex})`);
+      const cells = document.querySelectorAll(`.results-table td:nth-child(${columnIndex})`);
+      
+      headers.forEach(el => {
+        el.style.width = `${newWidth}px`;
+        el.style.minWidth = `${newWidth}px`;
+        el.style.maxWidth = `${newWidth}px`;
+      });
+      
+      cells.forEach(el => {
+        el.style.width = `${newWidth}px`;
+        el.style.minWidth = `${newWidth}px`;
+        el.style.maxWidth = `${newWidth}px`;
+      });
+    }
+  }
+  
+  // Função auxiliar para obter o índice da coluna
+  function getColumnIndex(columnName) {
+    const columnMap = {
+      'checkbox': 1,
+      'numero': 2,
+      'nome': 3,
+      'cidade': 4,
+      'pop': 5,
+      'chasse': 6,
+      'placa': 7,
+      'olt': 8,
+      'id_cto': 9,
+      'portas_total': 10,
+      'ocupadas': 11,
+      'disponiveis': 12,
+      'ocupacao': 13,
+      'status': 14,
+      'total_portas_caminho': 15,
+      'total_ctos_caminho': 16
+    };
+    return columnMap[columnName] || 1;
   }
   
   function stopResizeColumn() {
+    if (resizingColumn) {
+      const header = document.querySelector(`.results-table th[style*="${resizingColumn}"]`);
+      if (header) {
+        header.classList.remove('resizing');
+      }
+    }
+    
     resizingColumn = null;
     document.removeEventListener('mousemove', handleResizeColumn);
-    document.removeEventListener('mouseup', stopResizeColumn);
   }
   
   // Função para gerar uma chave única para uma CTO (declarada aqui para uso nos reactive statements)
@@ -3929,12 +3982,12 @@
   .results-table {
     width: 100%;
     border-collapse: separate;
-    border-spacing: 0;
+    border-spacing: 2px;
     font-size: 0.875rem;
     table-layout: fixed;
-    border: 1px solid #e0e0e0;
-    background-color: white;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: none;
+    background-color: transparent;
+    box-shadow: none;
   }
   
   .results-table thead {
@@ -3949,46 +4002,30 @@
     text-align: center;
     font-weight: 600;
     color: #333333;
-    border-bottom: 2px solid #9ca3af;
-    border-left: 1px solid #d1d5db;
-    border-right: 1px solid #d1d5db;
-    border-top: none;
+    border: 1px solid #d1d5db !important;
+    border-bottom: 2px solid #9ca3af !important;
     white-space: nowrap !important;
     position: relative;
     vertical-align: middle !important;
     min-height: auto !important;
     background-color: #ffffff;
     font-size: 0.8125rem;
-  }
-  
-  .results-table th:first-child {
-    border-left: none;
-  }
-  
-  .results-table th:last-child {
-    border-right: none;
+    box-sizing: border-box;
   }
   
   .results-table td {
     padding: 0.75rem 0.5rem;
     text-align: center;
-    border-bottom: 1px solid #e5e7eb;
-    border-left: 1px solid #d1d5db;
-    border-right: 1px solid #d1d5db;
+    border: 1px solid #d1d5db !important;
+    border-bottom: 1px solid #e5e7eb !important;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     background-color: white;
     font-size: 0.8125rem;
     color: #333333;
-  }
-  
-  .results-table td:first-child {
-    border-left: none;
-  }
-  
-  .results-table td:last-child {
-    border-right: none;
+    box-sizing: border-box;
+    isolation: isolate;
   }
   
   .results-table tbody tr {
@@ -4015,23 +4052,29 @@
   .resize-handle {
     position: absolute;
     top: 0;
-    right: 0;
-    width: 6px;
+    right: -2px;
+    width: 8px;
     height: 100%;
-    cursor: col-resize;
+    cursor: col-resize !important;
     background-color: transparent;
-    z-index: 15;
+    z-index: 25 !important;
     user-select: none;
     -webkit-user-select: none;
-    pointer-events: auto;
+    pointer-events: auto !important;
+    touch-action: none;
   }
   
   .resize-handle:hover {
-    background-color: rgba(123, 104, 238, 0.3);
+    background-color: rgba(123, 104, 238, 0.4);
   }
   
   .resize-handle:active {
-    background-color: rgba(123, 104, 238, 0.5);
+    background-color: rgba(123, 104, 238, 0.6);
+    cursor: col-resize !important;
+  }
+  
+  .resizable-header.resizing {
+    user-select: none;
   }
   
   .resizable-header {
@@ -4327,50 +4370,20 @@
     box-sizing: border-box;
   }
   
-  /* Separar visualmente as colunas com espaçamento interno */
-  .results-table td:not(:first-child) {
-    padding-left: 1.25rem;
+  /* Removido padding extra - cada célula é individual */
+  
+  /* Cada célula é completamente individual - bordas completas em todas */
+  .results-table th,
+  .results-table td {
+    border: 1px solid #d1d5db !important;
   }
   
-  .results-table td:not(:last-child) {
-    padding-right: 1.25rem;
-  }
-  
-  .results-table th:not(:first-child) {
-    padding-left: 1.25rem;
-  }
-  
-  .results-table th:not(:last-child) {
-    padding-right: 1.25rem;
-  }
-  
-  /* Garantir que as bordas das colunas sejam sempre visíveis - FORÇAR */
   .results-table th {
-    border-left: 1px solid #d1d5db !important;
-    border-right: 1px solid #d1d5db !important;
     border-bottom: 2px solid #9ca3af !important;
   }
   
-  .results-table th:first-child {
-    border-left: none !important;
-  }
-  
-  .results-table th:last-child {
-    border-right: none !important;
-  }
-  
   .results-table td {
-    border-left: 1px solid #d1d5db !important;
-    border-right: 1px solid #d1d5db !important;
     border-bottom: 1px solid #e5e7eb !important;
-  }
-  
-  .results-table td:first-child {
-    border-left: none !important;
-  }
-  
-  .results-table td:last-child {
-    border-right: none !important;
   }
   
   .results-table .cto-name-cell {
