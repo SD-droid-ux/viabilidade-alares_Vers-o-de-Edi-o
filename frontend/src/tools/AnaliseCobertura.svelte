@@ -732,22 +732,64 @@
   
   // Função para calcular o número de uma CTO na sequência (mesma lógica do mapa)
   // Retorna um Map com CTO como chave e número como valor
+  // Map para rastrear a ordem de marcação individual (usado quando nem todas as CTOs estão marcadas)
+  let ctoMarkOrder = new Map(); // Map<ctoKey, number> - armazena a ordem em que cada CTO foi marcada
+  let markOrderCounter = 0; // Contador para a ordem de marcação
+  
   function calculateCTONumbers() {
     const ctoToNumber = new Map();
-    let markerNumber = 1;
     
-    // Iterar pelas CTOs na mesma ordem que o displayResultsOnMap()
-    for (const cto of ctos) {
+    // Verificar se todas as CTOs estão marcadas
+    const allMarked = ctos.length > 0 && ctos.every(cto => {
       const ctoKey = getCTOKey(cto);
-      const isVisible = ctoVisibility.get(ctoKey) !== false; // Padrão: true (visível)
-      
-      // Apenas numerar CTOs visíveis (mesma lógica do mapa)
-      if (isVisible) {
-        // Validar coordenadas
-        if (cto.latitude && cto.longitude && !isNaN(cto.latitude) && !isNaN(cto.longitude)) {
-          ctoToNumber.set(cto, markerNumber);
-          markerNumber++;
+      return ctoVisibility.get(ctoKey) !== false;
+    });
+    
+    if (allMarked) {
+      // Lógica 1: Todas marcadas - usar ordem visual (ordem do array ctos)
+      let markerNumber = 1;
+      for (const cto of ctos) {
+        const ctoKey = getCTOKey(cto);
+        const isVisible = ctoVisibility.get(ctoKey) !== false;
+        
+        if (isVisible) {
+          // Validar coordenadas
+          if (cto.latitude && cto.longitude && !isNaN(cto.latitude) && !isNaN(cto.longitude)) {
+            ctoToNumber.set(cto, markerNumber);
+            markerNumber++;
+          }
         }
+      }
+    } else {
+      // Lógica 2: Nem todas marcadas - usar ordem de marcação
+      // Criar array de CTOs marcadas com suas ordens de marcação
+      const markedCTOs = [];
+      for (const cto of ctos) {
+        const ctoKey = getCTOKey(cto);
+        const isVisible = ctoVisibility.get(ctoKey) !== false;
+        
+        if (isVisible) {
+          // Validar coordenadas
+          if (cto.latitude && cto.longitude && !isNaN(cto.latitude) && !isNaN(cto.longitude)) {
+            // Se a CTO está em ctoMarkOrder, usar a ordem de marcação
+            // Caso contrário, usar um número muito alto para que fique por último
+            const markOrder = ctoMarkOrder.has(ctoKey) ? ctoMarkOrder.get(ctoKey) : Number.MAX_SAFE_INTEGER;
+            markedCTOs.push({
+              cto,
+              markOrder
+            });
+          }
+        }
+      }
+      
+      // Ordenar pela ordem de marcação
+      markedCTOs.sort((a, b) => a.markOrder - b.markOrder);
+      
+      // Atribuir números sequenciais baseados na ordem de marcação
+      let markerNumber = 1;
+      for (const { cto } of markedCTOs) {
+        ctoToNumber.set(cto, markerNumber);
+        markerNumber++;
       }
     }
     
@@ -759,13 +801,15 @@
   let ctoNumbersVersion = 0; // Versão para forçar atualização
   
   // Recalcular números quando CTOs ou visibilidade mudarem
-  // A numeração sempre segue a ordem visual das linhas na tabela (ordem do array ctos),
-  // não a ordem de marcação. Isso garante que linhas acima sempre tenham números menores.
+  // Duas lógicas de numeração:
+  // 1. Se todas as CTOs estão marcadas: usa ordem visual (ordem do array ctos)
+  // 2. Se nem todas estão marcadas: usa ordem de marcação (ctoMarkOrder)
   $: if (ctos && ctos.length > 0) {
     // Forçar recálculo - ctoNumbersVersion será incrementado quando visibilidade mudar
     const _ = ctoNumbersVersion;
-    // Também forçar recálculo quando ctoVisibility mudar (usando uma cópia do Map para detectar mudanças)
+    // Também forçar recálculo quando ctoVisibility ou ctoMarkOrder mudarem
     const _visibility = Array.from(ctoVisibility.entries());
+    const _markOrder = Array.from(ctoMarkOrder.entries());
     ctoNumbers = calculateCTONumbers();
   } else {
     ctoNumbers = new Map();
@@ -2412,6 +2456,12 @@
                             newVisibility.set(ctoKey, isChecked);
                           }
                           ctoVisibility = newVisibility;
+                          
+                          // Se marcou todas ou desmarcou todas usando o header, limpar a ordem de marcação individual e resetar contador
+                          // Isso faz com que volte a usar a lógica de ordem visual quando todas estão marcadas
+                          ctoMarkOrder = new Map();
+                          markOrderCounter = 0;
+                          
                           ctoNumbersVersion++; // Forçar atualização da numeração
                           displayResultsOnMap();
                         }}
@@ -2470,8 +2520,22 @@
                           }}
                           on:change={(e) => {
                             // Alterar apenas a visibilidade desta CTO específica
-                            ctoVisibility.set(ctoKey, e.target.checked);
+                            const isChecked = e.target.checked;
+                            ctoVisibility.set(ctoKey, isChecked);
                             ctoVisibility = ctoVisibility;
+                            
+                            // Rastrear ordem de marcação individual
+                            if (isChecked) {
+                              // Marcar: adicionar à ordem de marcação
+                              markOrderCounter++;
+                              ctoMarkOrder.set(ctoKey, markOrderCounter);
+                              ctoMarkOrder = ctoMarkOrder; // Forçar reatividade
+                            } else {
+                              // Desmarcar: remover da ordem de marcação
+                              ctoMarkOrder.delete(ctoKey);
+                              ctoMarkOrder = ctoMarkOrder; // Forçar reatividade
+                            }
+                            
                             ctoNumbersVersion++; // Forçar atualização da numeração
                             displayResultsOnMap();
                           }}
