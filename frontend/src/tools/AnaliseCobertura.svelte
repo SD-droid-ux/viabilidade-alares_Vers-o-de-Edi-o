@@ -759,9 +759,13 @@
   let ctoNumbersVersion = 0; // Versão para forçar atualização
   
   // Recalcular números quando CTOs ou visibilidade mudarem
+  // A numeração sempre segue a ordem visual das linhas na tabela (ordem do array ctos),
+  // não a ordem de marcação. Isso garante que linhas acima sempre tenham números menores.
   $: if (ctos && ctos.length > 0) {
     // Forçar recálculo - ctoNumbersVersion será incrementado quando visibilidade mudar
     const _ = ctoNumbersVersion;
+    // Também forçar recálculo quando ctoVisibility mudar (usando uma cópia do Map para detectar mudanças)
+    const _visibility = Array.from(ctoVisibility.entries());
     ctoNumbers = calculateCTONumbers();
   } else {
     ctoNumbers = new Map();
