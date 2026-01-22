@@ -1312,20 +1312,20 @@
         } else {
           // Se não há sobreposição ou apenas 1 CTO, criar círculos individuais
           for (const { cto, lat, lng } of searchedCTOsList) {
-            const circle = new google.maps.Circle({
+          const circle = new google.maps.Circle({
               strokeColor: '#7B68EE',
               strokeOpacity: 0.6,
-              strokeWeight: 2,
+            strokeWeight: 2,
               fillColor: '#6495ED',
               fillOpacity: 0.08,
               map: showRadiusCircles ? map : null,
-              center: { lat, lng },
+            center: { lat, lng },
               radius: 250,
               zIndex: 1
-            });
-            radiusCircles.push(circle);
-          }
-          console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para CTOs pesquisadas`);
+          });
+          radiusCircles.push(circle);
+        }
+        console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para CTOs pesquisadas`);
         }
       }
 
@@ -1768,20 +1768,20 @@
         } else {
           // Se não há sobreposição ou apenas 1 ponto, criar círculos individuais
           for (const { lat, lng } of validPoints) {
-            const circle = new google.maps.Circle({
+          const circle = new google.maps.Circle({
               strokeColor: '#7B68EE',
               strokeOpacity: 0.6,
-              strokeWeight: 2,
+            strokeWeight: 2,
               fillColor: '#6495ED',
               fillOpacity: 0.08,
               map: showRadiusCircles ? map : null,
-              center: { lat, lng },
+            center: { lat, lng },
               radius: 250,
               zIndex: 1
-            });
-            radiusCircles.push(circle);
-          }
-          console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para pontos pesquisados`);
+          });
+          radiusCircles.push(circle);
+        }
+        console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para pontos pesquisados`);
         }
       }
 
@@ -2054,9 +2054,9 @@
       circleCenters.push({ lat, lng });
       circles.push({ lat, lng, radius: RADIUS_DEG });
       
-      // Criar pontos ao redor do círculo (otimizado: menos pontos para grupos menores)
-      // Ajustar dinamicamente baseado no tamanho do grupo para performance
-      const pointsPerCircle = ctos.length > 50 ? 64 : ctos.length > 20 ? 48 : 32; // Menos pontos = mais rápido
+      // Criar pontos ao redor do círculo (otimizado: mais pontos para grupos maiores = melhor qualidade)
+      // Ajustar dinamicamente baseado no tamanho do grupo para melhor precisão
+      const pointsPerCircle = ctos.length > 50 ? 64 : ctos.length > 20 ? 56 : 40; // Mais pontos para grupos maiores
       const latRadius = RADIUS_DEG;
       const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
       
@@ -2068,15 +2068,19 @@
       }
     }
     
-    // Verificar se há sobreposição entre círculos
+    // Verificar se há sobreposição entre círculos e adicionar pontos de interseção
+    // Para grupos grandes (20+), sempre adicionar interseções para melhor precisão
     let hasOverlap = false;
+    const shouldAddAllIntersections = ctos.length > 20;
+    
     for (let i = 0; i < circles.length; i++) {
       for (let j = i + 1; j < circles.length; j++) {
         const dist = calculateDistance(circles[i].lat, circles[i].lng, circles[j].lat, circles[j].lng);
         const distDeg = dist / 111000; // Converter para graus
         
-        // Se os círculos se sobrepõem, adicionar pontos de interseção
-        if (distDeg < (RADIUS_DEG * 2)) {
+        // Se os círculos se sobrepõem ou estão próximos (para grupos grandes)
+        const overlapThreshold = shouldAddAllIntersections ? (RADIUS_DEG * 2.5) : (RADIUS_DEG * 2);
+        if (distDeg < overlapThreshold) {
           hasOverlap = true;
           const intersections = getCircleIntersections(
             circles[i].lat, circles[i].lng, RADIUS_DEG,
@@ -2093,7 +2097,8 @@
     }
     
     // Filtrar pontos que estão dentro de outros círculos (não são parte da borda externa)
-    // Isso cria formas não-convexas mais naturais
+    // Para grupos grandes, usar filtragem mais precisa
+    const margin = ctos.length > 20 ? 1.05 : 1.02; // Margem maior para grupos grandes
     const boundaryPoints = allPoints.filter(point => {
       // Verificar se este ponto está na borda externa (não dentro de todos os círculos)
       let isInsideAll = true;
@@ -2103,7 +2108,7 @@
         const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
         
         // Se o ponto está fora deste círculo, não está dentro de todos
-        if (distDeg > circleRadius * 1.02) { // 2% de margem (mais rigoroso)
+        if (distDeg > circleRadius * margin) {
           isInsideAll = false;
           break;
         }
@@ -2115,18 +2120,36 @@
     // Se não temos pontos suficientes na borda, usar todos os pontos
     const pointsToUse = boundaryPoints.length >= 3 ? boundaryPoints : allPoints;
     
-    // Adicionar pontos dos centros dos círculos para garantir cobertura completa
-    // Isso ajuda a garantir que todas as CTOs fiquem dentro do polígono
-    for (const center of circleCenters) {
-      // Adicionar pontos nos 4 quadrantes de cada círculo (N, S, L, O)
-      const latRadius = RADIUS_DEG;
-      const lngRadius = RADIUS_DEG / Math.cos(center.lat * Math.PI / 180);
-      pointsToUse.push(
-        { lat: center.lat + latRadius, lng: center.lng }, // Norte
-        { lat: center.lat - latRadius, lng: center.lng }, // Sul
-        { lat: center.lat, lng: center.lng + lngRadius }, // Leste
-        { lat: center.lat, lng: center.lng - lngRadius }  // Oeste
-      );
+    // Para grupos grandes, adicionar pontos estratégicos para melhor cobertura
+    if (ctos.length > 20) {
+      // Adicionar pontos nos 8 direções principais de cada círculo (mais precisão)
+      for (const center of circleCenters) {
+        const latRadius = RADIUS_DEG;
+        const lngRadius = RADIUS_DEG / Math.cos(center.lat * Math.PI / 180);
+        const sqrt2 = Math.sqrt(2) / 2;
+        pointsToUse.push(
+          { lat: center.lat + latRadius, lng: center.lng }, // Norte
+          { lat: center.lat - latRadius, lng: center.lng }, // Sul
+          { lat: center.lat, lng: center.lng + lngRadius }, // Leste
+          { lat: center.lat, lng: center.lng - lngRadius }, // Oeste
+          { lat: center.lat + latRadius * sqrt2, lng: center.lng + lngRadius * sqrt2 }, // NE
+          { lat: center.lat + latRadius * sqrt2, lng: center.lng - lngRadius * sqrt2 }, // NO
+          { lat: center.lat - latRadius * sqrt2, lng: center.lng + lngRadius * sqrt2 }, // SE
+          { lat: center.lat - latRadius * sqrt2, lng: center.lng - lngRadius * sqrt2 }  // SO
+        );
+      }
+    } else {
+      // Para grupos menores, adicionar apenas 4 quadrantes
+      for (const center of circleCenters) {
+        const latRadius = RADIUS_DEG;
+        const lngRadius = RADIUS_DEG / Math.cos(center.lat * Math.PI / 180);
+        pointsToUse.push(
+          { lat: center.lat + latRadius, lng: center.lng }, // Norte
+          { lat: center.lat - latRadius, lng: center.lng }, // Sul
+          { lat: center.lat, lng: center.lng + lngRadius }, // Leste
+          { lat: center.lat, lng: center.lng - lngRadius }  // Oeste
+        );
+      }
     }
     
     // Calcular o convex hull (envoltória convexa) dos pontos da borda
@@ -2892,7 +2915,7 @@
                     <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                 {/if}
-              </button>
+            </button>
             </div>
           </div>
           <div id="map" class="map" class:hidden={isMapMinimized} bind:this={mapElement}></div>
