@@ -2002,12 +2002,14 @@
   }
   
   // Função para suavizar bordas do polígono
-  // Seguindo exatamente o padrão do MapaConsulta.svelte
+  // Ajustada para melhor qualidade com grupos grandes
   function smoothPolygonEdges(points) {
     if (points.length < 3) return points;
     
     const smoothed = [];
-    const smoothingSteps = 2; // Mesmo valor do MapaConsulta.svelte para estabilidade
+    // Para polígonos com muitos pontos, usar mais passos de suavização
+    // Isso melhora a qualidade das bordas em grupos grandes
+    const smoothingSteps = points.length > 100 ? 3 : 2;
     
     for (let i = 0; i < points.length; i++) {
       const current = points[i];
@@ -2149,14 +2151,27 @@
     const margin = ctos.length > 20 ? 1.05 : 1.02;
     let pointsToFilter = allPoints;
     
-    // Para grupos muito grandes, fazer amostragem antes da filtragem
+    // Para grupos muito grandes, fazer amostragem inteligente antes da filtragem
+    // Mantém mais pontos para preservar qualidade das bordas
     if (ctos.length > 100) {
-      // Amostrar pontos mantendo distribuição uniforme
-      const sampleSize = Math.min(5000, allPoints.length); // Limitar a 5000 pontos
+      // Amostrar pontos mantendo distribuição uniforme, mas com mais pontos para qualidade
+      const sampleSize = Math.min(8000, allPoints.length); // Aumentado para 8000 pontos
       const step = Math.max(1, Math.floor(allPoints.length / sampleSize));
       pointsToFilter = [];
+      
+      // Amostragem estratificada: garantir que pontos de diferentes áreas sejam incluídos
       for (let i = 0; i < allPoints.length; i += step) {
         pointsToFilter.push(allPoints[i]);
+      }
+      
+      // Adicionar pontos adicionais nas bordas (últimos pontos de cada círculo)
+      // Isso ajuda a preservar detalhes importantes das bordas
+      const additionalPoints = Math.min(1000, allPoints.length - pointsToFilter.length);
+      const additionalStep = Math.max(1, Math.floor(allPoints.length / additionalPoints));
+      for (let i = 0; i < allPoints.length && pointsToFilter.length < sampleSize + additionalPoints; i += additionalStep) {
+        if (!pointsToFilter.includes(allPoints[i])) {
+          pointsToFilter.push(allPoints[i]);
+        }
       }
     }
     
