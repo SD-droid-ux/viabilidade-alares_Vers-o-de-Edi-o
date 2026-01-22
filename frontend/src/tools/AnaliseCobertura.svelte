@@ -338,8 +338,17 @@
   // Função para copiar seleção para clipboard
   async function copySelectionToClipboard() {
     if (selectedCells.length === 0 && selectedColumns.length === 0 && selectedRows.length === 0) {
+      console.log('⚠️ Nada selecionado para copiar');
       return; // Nada selecionado
     }
+    
+    console.log('📋 Copiando seleção:', {
+      cells: selectedCells.length,
+      columns: selectedColumns.length,
+      rows: selectedRows.length,
+      selectedColumns: selectedColumns,
+      selectedCells: selectedCells.slice(0, 5) // Primeiros 5 para debug
+    });
     
     let textToCopy = '';
     
@@ -406,46 +415,76 @@
     }
     
     // Copiar para clipboard
-    if (textToCopy) {
+    if (textToCopy && textToCopy.trim()) {
+      const textToCopyTrimmed = textToCopy.trim();
+      console.log('📋 Texto a copiar (primeiros 200 chars):', textToCopyTrimmed.substring(0, 200));
+      
       try {
-        await navigator.clipboard.writeText(textToCopy.trim());
-        console.log('✅ Dados copiados para clipboard:', textToCopy.substring(0, 100) + '...');
+        // Método moderno (requer HTTPS ou localhost)
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(textToCopyTrimmed);
+          console.log('✅ Dados copiados para clipboard (método moderno)');
+        } else {
+          throw new Error('Clipboard API não disponível');
+        }
       } catch (err) {
-        console.error('❌ Erro ao copiar para clipboard:', err);
-        // Fallback para método antigo
+        console.warn('⚠️ Método moderno falhou, tentando fallback:', err);
+        // Fallback para método antigo (funciona em HTTP também)
         try {
           const textArea = document.createElement('textarea');
-          textArea.value = textToCopy.trim();
+          textArea.value = textToCopyTrimmed;
           textArea.style.position = 'fixed';
+          textArea.style.top = '0';
+          textArea.style.left = '0';
+          textArea.style.width = '2em';
+          textArea.style.height = '2em';
+          textArea.style.padding = '0';
+          textArea.style.border = 'none';
+          textArea.style.outline = 'none';
+          textArea.style.boxShadow = 'none';
+          textArea.style.background = 'transparent';
           textArea.style.opacity = '0';
+          textArea.style.zIndex = '-9999';
           document.body.appendChild(textArea);
+          textArea.focus();
           textArea.select();
-          document.execCommand('copy');
+          
+          const successful = document.execCommand('copy');
           document.body.removeChild(textArea);
-          console.log('✅ Dados copiados (método fallback)');
+          
+          if (successful) {
+            console.log('✅ Dados copiados para clipboard (método fallback)');
+          } else {
+            console.error('❌ Falha ao executar execCommand("copy")');
+          }
         } catch (fallbackErr) {
           console.error('❌ Erro no método fallback:', fallbackErr);
+          alert('Erro ao copiar. Tente selecionar o texto manualmente.');
         }
       }
+    } else {
+      console.warn('⚠️ Nenhum texto para copiar');
     }
   }
   
   // Handler para Ctrl+C
   function handleCopyKeydown(e) {
     // Verificar se é Ctrl+C (ou Cmd+C no Mac)
-    if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
       // Verificar se há seleção na tabela
       if (selectedCells.length > 0 || selectedColumns.length > 0 || selectedRows.length > 0) {
-        // Verificar se o foco está na tabela ou não está em um input
+        // Verificar se não está em um input ou textarea (onde queremos copiar texto normal)
         const activeElement = document.activeElement;
-        const isInTable = activeElement?.closest('.results-table');
-        const isInput = activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA';
+        const isInput = activeElement?.tagName === 'INPUT' || 
+                       activeElement?.tagName === 'TEXTAREA' ||
+                       activeElement?.contentEditable === 'true';
         
-        // Se está na tabela e não é um input, copiar nossa seleção
-        if (isInTable && !isInput) {
+        // Se não é um input editável, copiar nossa seleção da tabela
+        if (!isInput) {
           e.preventDefault();
           e.stopPropagation();
           copySelectionToClipboard();
+          return false;
         }
       }
     }
