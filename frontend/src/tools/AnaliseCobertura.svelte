@@ -742,7 +742,7 @@
     
     if (useVisualOrder) {
       // Lógica 1: Todas marcadas - usar ordem visual (ordem do array ctos)
-      let markerNumber = 1;
+    let markerNumber = 1;
       for (const cto of ctos) {
         const ctoKey = getCTOKey(cto);
         const isVisible = ctoVisibility.get(ctoKey) !== false;
@@ -763,13 +763,13 @@
       if (ctoMarkOrder.size > 0) {
         // Usar ordem de marcação (foi ativada quando todas estavam desmarcadas)
         const markedCTOs = [];
-        for (const cto of ctos) {
-          const ctoKey = getCTOKey(cto);
+    for (const cto of ctos) {
+      const ctoKey = getCTOKey(cto);
           const isVisible = ctoVisibility.get(ctoKey) !== false;
-          
-          if (isVisible) {
-            // Validar coordenadas
-            if (cto.latitude && cto.longitude && !isNaN(cto.latitude) && !isNaN(cto.longitude)) {
+      
+      if (isVisible) {
+        // Validar coordenadas
+        if (cto.latitude && cto.longitude && !isNaN(cto.latitude) && !isNaN(cto.longitude)) {
               // Se a CTO está em ctoMarkOrder, usar a ordem de marcação
               // Caso contrário, usar um número muito alto para que fique por último
               const markOrder = ctoMarkOrder.has(ctoKey) ? ctoMarkOrder.get(ctoKey) : Number.MAX_SAFE_INTEGER;
@@ -828,13 +828,9 @@
     const _useVisualOrder = useVisualOrder;
     ctoNumbers = calculateCTONumbers();
     
-    // Atualizar o mapa sempre que a numeração mudar
-    // Só atualizar se ctoNumbers estiver populado (evitar loop infinito)
-    if (map && google?.maps && ctoNumbers.size > 0) {
-      setTimeout(() => {
-        displayResultsOnMap();
-      }, 50);
-    }
+    // Não atualizar o mapa automaticamente aqui para evitar chamadas duplicadas
+    // O mapa será atualizado explicitamente após a busca ou quando o usuário marcar/desmarcar
+    // Isso evita múltiplas chamadas desnecessárias
   } else {
     ctoNumbers = new Map();
     // Se não há CTOs, limpar o mapa
@@ -1419,16 +1415,27 @@
       
       // Aguardar a reatividade do Svelte recalcular ctoNumbers antes de atualizar o mapa
       await tick();
-      await new Promise(resolve => setTimeout(resolve, 150));
+      // Aguardar múltiplos ticks para garantir que a reatividade processou tudo
+      for (let i = 0; i < 3; i++) {
+        await tick();
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
       
       // Verificar se ctoNumbers foi populado antes de atualizar o mapa
       if (ctoNumbers.size > 0) {
         await displayResultsOnMap();
       } else {
         console.warn('ctoNumbers ainda está vazio após busca, tentando novamente...');
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 300));
         if (ctoNumbers.size > 0) {
           await displayResultsOnMap();
+        } else {
+          console.error('Erro: ctoNumbers não foi populado após busca. Forçando recálculo...');
+          // Forçar recálculo manual
+          ctoNumbers = calculateCTONumbers();
+          if (ctoNumbers.size > 0) {
+            await displayResultsOnMap();
+          }
         }
       }
 
@@ -1797,16 +1804,27 @@
       
       // Aguardar a reatividade do Svelte recalcular ctoNumbers antes de atualizar o mapa
       await tick();
-      await new Promise(resolve => setTimeout(resolve, 150));
+      // Aguardar múltiplos ticks para garantir que a reatividade processou tudo
+      for (let i = 0; i < 3; i++) {
+        await tick();
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
       
       // Verificar se ctoNumbers foi populado antes de atualizar o mapa
       if (ctoNumbers.size > 0) {
         await displayResultsOnMap();
       } else {
         console.warn('ctoNumbers ainda está vazio após busca, tentando novamente...');
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 300));
         if (ctoNumbers.size > 0) {
           await displayResultsOnMap();
+        } else {
+          console.error('Erro: ctoNumbers não foi populado após busca. Forçando recálculo...');
+          // Forçar recálculo manual
+          ctoNumbers = calculateCTONumbers();
+          if (ctoNumbers.size > 0) {
+            await displayResultsOnMap();
+          }
         }
       }
 
@@ -1882,9 +1900,19 @@
     }
     
     // Verificar se ctoNumbers está vazio antes de começar
-    // Se estiver vazio, não processar (evitar loop infinito)
+    // Se estiver vazio, aguardar um pouco e tentar novamente (mas apenas uma vez)
     if (ctoNumbers.size === 0 && ctos.length > 0) {
-      console.warn('ctoNumbers está vazio, pulando atualização do mapa. Aguarde o recálculo da numeração.');
+      console.warn('ctoNumbers está vazio, aguardando recálculo...');
+      // Aguardar um pouco e tentar novamente apenas uma vez
+      isDisplayingMarkers = true; // Marcar como processando para evitar múltiplas tentativas
+      setTimeout(async () => {
+        isDisplayingMarkers = false;
+        if (ctoNumbers.size > 0) {
+          await displayResultsOnMap();
+        } else {
+          console.warn('ctoNumbers ainda está vazio após aguardar, pulando atualização do mapa.');
+        }
+      }, 200);
       return;
     }
     
