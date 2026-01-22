@@ -186,10 +186,13 @@
   
   // Handler para click em célula
   function handleCellClick(e, rowIndex, colIndex) {
+    // Encontrar o elemento TD (pode ser que o click foi em um elemento filho)
+    const tdElement = e.currentTarget || e.target.closest('td');
+    
     // Não processar se clicou em checkbox, input ou elementos dentro deles
     if (e.target.tagName === 'INPUT' || 
-        e.target.tagName === 'CHECKBOX' || 
-        e.target.closest('input') ||
+        e.target.type === 'checkbox' ||
+        e.target.closest('input[type="checkbox"]') ||
         e.target.closest('span.occupation-badge')) {
       return;
     }
@@ -204,12 +207,18 @@
       // Adicionar/remover da seleção com Ctrl/Cmd
       const cellKey = getCellKey(rowIndex, colIndex);
       const newSelectedCells = new Set(selectedCells);
+      // Limpar seleções de linha/coluna quando selecionar células individuais
+      const newSelectedRows = new Set();
+      const newSelectedColumns = new Set();
+      
       if (newSelectedCells.has(cellKey)) {
         newSelectedCells.delete(cellKey);
       } else {
         newSelectedCells.add(cellKey);
       }
       selectedCells = newSelectedCells; // Forçar reatividade
+      selectedRows = newSelectedRows;
+      selectedColumns = newSelectedColumns;
       selectionStart = { row: rowIndex, col: colIndex };
     } else {
       // Seleção simples
@@ -238,23 +247,31 @@
   
   // Handler para click em header de coluna
   function handleColumnHeaderClick(e, colIndex) {
-    e.preventDefault();
-    e.stopPropagation();
-    
     // Não processar se clicou no checkbox do header
-    if (e.target.tagName === 'INPUT' || e.target.closest('input')) {
+    if (e.target.tagName === 'INPUT' || 
+        e.target.type === 'checkbox' ||
+        e.target.closest('input[type="checkbox"]')) {
       return;
     }
+    
+    e.preventDefault();
+    e.stopPropagation();
     
     if (e.ctrlKey || e.metaKey) {
       // Toggle coluna com Ctrl
       const newSelectedColumns = new Set(selectedColumns);
+      // Limpar seleções de células e linhas quando selecionar coluna
+      const newSelectedCells = new Set();
+      const newSelectedRows = new Set();
+      
       if (newSelectedColumns.has(colIndex)) {
         newSelectedColumns.delete(colIndex);
       } else {
         newSelectedColumns.add(colIndex);
       }
       selectedColumns = newSelectedColumns; // Forçar reatividade
+      selectedCells = newSelectedCells;
+      selectedRows = newSelectedRows;
     } else {
       selectColumn(colIndex, false);
     }
@@ -3047,11 +3064,13 @@
   /* Cursor pointer para células clicáveis */
   .results-table td:not(.checkbox-cell) {
     cursor: cell;
+    position: relative;
   }
   
   .results-table th:not(:first-child) {
     cursor: pointer;
     transition: background-color 0.2s ease;
+    position: relative;
   }
   
   .results-table th:not(:first-child):hover {
@@ -3066,6 +3085,19 @@
   /* Evitar seleção de texto durante seleção de células */
   .results-table td.cell-selected,
   .results-table th.selected {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+  }
+  
+  /* Garantir que cliques funcionem mesmo em elementos filhos */
+  .results-table td:not(.checkbox-cell) {
+    position: relative;
+  }
+  
+  /* Quando célula está selecionada, desabilitar seleção de texto nos filhos */
+  .results-table td.cell-selected * {
     user-select: none;
     -webkit-user-select: none;
     -moz-user-select: none;
