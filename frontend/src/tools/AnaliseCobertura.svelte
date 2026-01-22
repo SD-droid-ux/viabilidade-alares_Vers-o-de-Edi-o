@@ -756,35 +756,55 @@
         }
       }
     } else {
-      // Lógica 2: Nem todas marcadas - usar ordem de marcação
-      // Criar array de CTOs marcadas com suas ordens de marcação
-      const markedCTOs = [];
-      for (const cto of ctos) {
-        const ctoKey = getCTOKey(cto);
-        const isVisible = ctoVisibility.get(ctoKey) !== false;
-        
-        if (isVisible) {
-          // Validar coordenadas
-          if (cto.latitude && cto.longitude && !isNaN(cto.latitude) && !isNaN(cto.longitude)) {
-            // Se a CTO está em ctoMarkOrder, usar a ordem de marcação
-            // Caso contrário, usar um número muito alto para que fique por último
-            const markOrder = ctoMarkOrder.has(ctoKey) ? ctoMarkOrder.get(ctoKey) : Number.MAX_SAFE_INTEGER;
-            markedCTOs.push({
-              cto,
-              markOrder
-            });
+      // Lógica 2: Não está usando ordem visual - verificar se deve usar ordem de marcação
+      // A ordem de marcação só é usada se foi ativada (quando todas estavam desmarcadas)
+      // Se não foi ativada, usar ordem visual como fallback
+      
+      if (ctoMarkOrder.size > 0) {
+        // Usar ordem de marcação (foi ativada quando todas estavam desmarcadas)
+        const markedCTOs = [];
+        for (const cto of ctos) {
+          const ctoKey = getCTOKey(cto);
+          const isVisible = ctoVisibility.get(ctoKey) !== false;
+          
+          if (isVisible) {
+            // Validar coordenadas
+            if (cto.latitude && cto.longitude && !isNaN(cto.latitude) && !isNaN(cto.longitude)) {
+              // Se a CTO está em ctoMarkOrder, usar a ordem de marcação
+              // Caso contrário, usar um número muito alto para que fique por último
+              const markOrder = ctoMarkOrder.has(ctoKey) ? ctoMarkOrder.get(ctoKey) : Number.MAX_SAFE_INTEGER;
+              markedCTOs.push({
+                cto,
+                markOrder
+              });
+            }
           }
         }
-      }
-      
-      // Ordenar pela ordem de marcação
-      markedCTOs.sort((a, b) => a.markOrder - b.markOrder);
-      
-      // Atribuir números sequenciais baseados na ordem de marcação
-      let markerNumber = 1;
-      for (const { cto } of markedCTOs) {
-        ctoToNumber.set(cto, markerNumber);
-        markerNumber++;
+        
+        // Ordenar pela ordem de marcação
+        markedCTOs.sort((a, b) => a.markOrder - b.markOrder);
+        
+        // Atribuir números sequenciais baseados na ordem de marcação
+        let markerNumber = 1;
+        for (const { cto } of markedCTOs) {
+          ctoToNumber.set(cto, markerNumber);
+          markerNumber++;
+        }
+      } else {
+        // Se não há ordem de marcação ativada, usar ordem visual como fallback
+        let markerNumber = 1;
+        for (const cto of ctos) {
+          const ctoKey = getCTOKey(cto);
+          const isVisible = ctoVisibility.get(ctoKey) !== false;
+          
+          if (isVisible) {
+            // Validar coordenadas
+            if (cto.latitude && cto.longitude && !isNaN(cto.latitude) && !isNaN(cto.longitude)) {
+              ctoToNumber.set(cto, markerNumber);
+              markerNumber++;
+            }
+          }
+        }
       }
     }
     
@@ -2517,22 +2537,49 @@
                           on:change={(e) => {
                             // Alterar apenas a visibilidade desta CTO específica
                             const isChecked = e.target.checked;
+                            
+                            // Verificar se todas as CTOs estão desmarcadas ANTES de fazer a mudança
+                            // (verificando o estado atual, não o estado que será)
+                            const allUnmarkedBefore = ctos.every(cto => {
+                              const key = getCTOKey(cto);
+                              return ctoVisibility.get(key) === false;
+                            });
+                            
                             ctoVisibility.set(ctoKey, isChecked);
                             ctoVisibility = ctoVisibility;
                             
-                            // Quando marca/desmarca individualmente, usar ordem de marcação (não ordem visual)
-                            useVisualOrder = false;
+                            // A ordem de marcação só é ativada se TODAS as CTOs estiverem desmarcadas
+                            // E o usuário está MARCANDO (não desmarcando) individualmente
+                            if (allUnmarkedBefore && isChecked) {
+                              // Ativar ordem de marcação quando começa a marcar a partir de todas desmarcadas
+                              useVisualOrder = false;
+                              // Limpar ordem de marcação anterior
+                              ctoMarkOrder = new Map();
+                              markOrderCounter = 0;
+                            }
                             
-                            // Rastrear ordem de marcação individual
-                            if (isChecked) {
-                              // Marcar: adicionar à ordem de marcação
-                              markOrderCounter++;
-                              ctoMarkOrder.set(ctoKey, markOrderCounter);
-                              ctoMarkOrder = ctoMarkOrder; // Forçar reatividade
-                            } else {
-                              // Desmarcar: remover da ordem de marcação
-                              ctoMarkOrder.delete(ctoKey);
-                              ctoMarkOrder = ctoMarkOrder; // Forçar reatividade
+                            // Se desmarcou todas, limpar a ordem de marcação
+                            const allUnmarkedAfter = ctos.every(cto => {
+                              const key = getCTOKey(cto);
+                              return ctoVisibility.get(key) === false;
+                            });
+                            if (allUnmarkedAfter) {
+                              ctoMarkOrder = new Map();
+                              markOrderCounter = 0;
+                            }
+                            
+                            // Rastrear ordem de marcação individual apenas se não estiver usando ordem visual
+                            if (!useVisualOrder) {
+                              if (isChecked) {
+                                // Marcar: adicionar à ordem de marcação
+                                markOrderCounter++;
+                                ctoMarkOrder.set(ctoKey, markOrderCounter);
+                                ctoMarkOrder = ctoMarkOrder; // Forçar reatividade
+                              } else {
+                                // Desmarcar: remover da ordem de marcação
+                                ctoMarkOrder.delete(ctoKey);
+                                ctoMarkOrder = ctoMarkOrder; // Forçar reatividade
+                              }
                             }
                             
                             ctoNumbersVersion++; // Forçar atualização da numeração
