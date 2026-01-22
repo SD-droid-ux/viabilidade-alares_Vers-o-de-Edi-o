@@ -2233,44 +2233,41 @@
       }
     }
     
-    // Filtrar pontos da borda externa de forma mais conservadora
-    // IMPORTANTE: Usar margem maior para evitar remover pontos importantes da borda
-    // Isso previne "rupturas" e "puxadas para dentro"
-    const boundaryPoints = pointsToFilter.filter(point => {
-      let isInsideAll = true;
-      
-      // Para grupos < 100, verificar todos os círculos (precisão máxima)
-      // Para grupos 100+, usar amostragem de círculos para performance
-      const circlesToCheck = ctos.length >= 100 
-        ? circles.filter((_, idx) => idx % Math.ceil(circles.length / 60) === 0) // Amostrar círculos
-        : circles; // Verificar todos para grupos < 100
-      
-      // Usar margem maior na verificação para ser mais conservador
-      // Isso evita remover pontos que estão na borda mas próximos dos círculos
-      const checkMargin = margin * 1.1; // 10% mais conservador
-      
-      for (const circle of circlesToCheck) {
-        const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
-        const distDeg = dist / 111000;
-        const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
-        
-        if (distDeg > circleRadius * checkMargin) {
-          isInsideAll = false;
-          break;
-        }
-      }
-      return !isInsideAll;
-    });
+    // Para grupos médios (50-200), DESABILITAR filtragem de boundaryPoints
+    // Usar TODOS os pontos para evitar "puxadas para dentro" causadas pela filtragem agressiva
+    // O convex hull naturalmente criará a forma correta sem perder pontos importantes
+    let pointsToUse;
     
-    // Para grupos médios, ser mais conservador: usar mais pontos para evitar rupturas
-    let pointsToUse = boundaryPoints;
-    if (boundaryPoints.length < 3) {
+    if (ctos.length >= 50 && ctos.length < 200) {
+      // Para grupos médios, usar TODOS os pontos sem filtragem
+      // Isso garante que não perdemos pontos críticos que causam "puxadas"
       pointsToUse = allPoints;
-    } else if (ctos.length >= 50 && ctos.length < 200) {
-      // Para grupos médios, se filtramos mais de 30% dos pontos, usar todos
-      // Isso garante que não perdemos pontos importantes da borda
-      if (boundaryPoints.length < allPoints.length * 0.3) {
+    } else {
+      // Para grupos menores, usar filtragem normal
+      const boundaryPoints = pointsToFilter.filter(point => {
+        let isInsideAll = true;
+        
+        // Para grupos < 100, verificar todos os círculos (precisão máxima)
+        const circlesToCheck = circles; // Verificar todos para grupos < 100
+        
+        for (const circle of circlesToCheck) {
+          const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
+          const distDeg = dist / 111000;
+          const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
+          
+          if (distDeg > circleRadius * margin) {
+            isInsideAll = false;
+            break;
+          }
+        }
+        return !isInsideAll;
+      });
+      
+      // Se não temos pontos suficientes na borda, usar todos os pontos
+      if (boundaryPoints.length < 3) {
         pointsToUse = allPoints;
+      } else {
+        pointsToUse = boundaryPoints;
       }
     }
     
@@ -2415,22 +2412,17 @@
       ];
     }
     
-    // Suavizar o polígono de forma conservadora para evitar rupturas
-    // Para grupos médios, usar suavização mínima ou nenhuma para evitar "puxadas"
+    // Para grupos médios (50-200), DESABILITAR suavização completamente
+    // A suavização pode criar "puxadas" para dentro quando aplicada em grupos médios
+    // O convex hull já fornece uma forma suficientemente suave
     let smoothedHull;
     try {
-      // Para grupos médios (50-200), usar suavização muito conservadora ou nenhuma
-      // Isso evita criar curvas estranhas que "puxam" para dentro
       if (ctos.length >= 50 && ctos.length < 200) {
-        // Para grupos médios, usar suavização conservadora ou pular suavização
-        if (hull.length > 100) {
-          // Se já tem muitos pontos, não suavizar para evitar problemas
-          smoothedHull = hull;
-        } else {
-          // Se tem poucos pontos, usar suavização conservadora
-          smoothedHull = smoothPolygonEdgesConservative(hull);
-        }
+        // Para grupos médios, NÃO suavizar - usar hull direto
+        // Isso evita completamente as "puxadas para dentro"
+        smoothedHull = hull;
       } else {
+        // Para grupos menores, usar suavização normal
         smoothedHull = smoothPolygonEdges(hull);
       }
       
