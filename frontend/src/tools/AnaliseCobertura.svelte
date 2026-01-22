@@ -2446,11 +2446,16 @@
                     {@const cellKey14 = getCellKey(rowIndex, 14)}
                     {@const cellKey15 = getCellKey(rowIndex, 15)}
                     <tr class:row-selected={selectedRows.includes(rowIndex)}>
-                      <td class="checkbox-cell" class:cell-selected={selectedCells.includes(cellKey0) || selectedRows.includes(rowIndex) || selectedColumns.includes(0)} on:click={(e) => handleCellClick(e, rowIndex, 0)}>
+                      <td class="checkbox-cell" class:cell-selected={selectedCells.includes(cellKey0) || selectedRows.includes(rowIndex) || selectedColumns.includes(0)}>
                         <input 
                           type="checkbox" 
                           checked={isVisible}
+                          on:click|stopPropagation={(e) => {
+                            // Não permitir que o clique no checkbox dispare handleCellClick
+                            e.stopPropagation();
+                          }}
                           on:change={(e) => {
+                            // Alterar apenas a visibilidade desta CTO específica
                             ctoVisibility.set(ctoKey, e.target.checked);
                             ctoVisibility = ctoVisibility;
                             ctoNumbersVersion++; // Forçar atualização da numeração
