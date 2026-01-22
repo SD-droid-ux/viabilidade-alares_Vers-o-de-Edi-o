@@ -2369,7 +2369,7 @@
         {#if ctos.length > 0}
           <div class="results-table-container" class:minimized={isTableMinimized} style="flex: {isTableMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isTableMinimized ? '60px' : '200px'};">
             <div class="table-header">
-              <h3>Tabela de Equipamentos Encontrados (-) ({ctos.length})</h3>
+              <h3>Tabela de Equipamentos Encontrados - {ctos.length} Equipamentos Encontrados</h3>
               <button 
                 class="minimize-button" 
                 disabled={isResizingSidebar || isResizingMapTable}
@@ -2502,7 +2502,7 @@
         {:else if !isLoading && !error}
           <div class="empty-state" class:minimized={isTableMinimized} style="flex: {isTableMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isTableMinimized ? '60px' : '200px'};">
             <div class="table-header">
-              <h3>Tabela de Equipamentos Encontrados (-)</h3>
+              <h3>Tabela de Equipamentos Encontrados - Nenhum Equipamento Pesquisado</h3>
               <button 
                 class="minimize-button" 
                 disabled={isResizingSidebar || isResizingMapTable}
