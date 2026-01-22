@@ -3949,8 +3949,9 @@
     text-align: center;
     font-weight: 600;
     color: #333333;
-    border-bottom: 1px solid #e0e0e0;
-    border-right: 1px solid #e0e0e0;
+    border-bottom: 2px solid #9ca3af;
+    border-left: 1px solid #d1d5db;
+    border-right: 1px solid #d1d5db;
     border-top: none;
     white-space: nowrap !important;
     position: relative;
@@ -3961,18 +3962,19 @@
   }
   
   .results-table th:first-child {
-    border-left: 1px solid #e0e0e0;
+    border-left: none;
   }
   
   .results-table th:last-child {
-    border-right: 1px solid #e0e0e0;
+    border-right: none;
   }
   
   .results-table td {
     padding: 0.75rem 0.5rem;
     text-align: center;
-    border-bottom: 1px solid #e0e0e0;
-    border-right: 1px solid #e0e0e0;
+    border-bottom: 1px solid #e5e7eb;
+    border-left: 1px solid #d1d5db;
+    border-right: 1px solid #d1d5db;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -3982,11 +3984,11 @@
   }
   
   .results-table td:first-child {
-    border-left: 1px solid #e0e0e0;
+    border-left: none;
   }
   
   .results-table td:last-child {
-    border-right: 1px solid #e0e0e0;
+    border-right: none;
   }
   
   .results-table tbody tr {
@@ -4018,9 +4020,10 @@
     height: 100%;
     cursor: col-resize;
     background-color: transparent;
-    z-index: 10;
+    z-index: 15;
     user-select: none;
     -webkit-user-select: none;
+    pointer-events: auto;
   }
   
   .resize-handle:hover {
@@ -4078,11 +4081,15 @@
   }
   
   .header-content > span {
-    font-weight: 600;
-    font-size: 0.8125rem;
+    font-weight: 600 !important;
+    font-size: 0.8125rem !important;
     flex: 1;
     text-align: center;
-    color: #333333;
+    color: #333333 !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    white-space: nowrap !important;
   }
   
   .header-controls {
@@ -4102,7 +4109,7 @@
     border: 1px solid rgba(0, 0, 0, 0.1) !important;
     border-radius: 3px;
     padding: 0.2rem 0.35rem !important;
-    cursor: pointer;
+    cursor: pointer !important;
     font-size: 0.7rem !important;
     color: #666666 !important;
     transition: all 0.15s ease;
@@ -4115,6 +4122,21 @@
     font-weight: 400;
     line-height: 1;
     box-shadow: none;
+    pointer-events: auto !important;
+    z-index: 20 !important;
+    position: relative;
+  }
+  
+  .sort-button:active,
+  .filter-button:active,
+  .toggle-column-button:active {
+    transform: scale(0.95);
+  }
+  
+  .sort-button:active,
+  .filter-button:active,
+  .toggle-column-button:active {
+    transform: scale(0.95);
   }
   
   .sort-button:hover,
@@ -4283,15 +4305,9 @@
     z-index: 1;
   }
   
-  /* Ativar bordas visíveis apenas no hover ou quando selecionado */
-  .results-table td:hover,
-  .results-table td:focus-within {
-    border-left-color: #d1d5db;
-    border-right-color: #d1d5db;
-  }
-  
+  /* Bordas sempre visíveis - removido hover */
   .results-table td:first-child {
-    border-left: none;
+    border-left: none !important;
   }
   
   .results-table td:first-child::before {
@@ -4299,7 +4315,7 @@
   }
   
   .results-table td:last-child {
-    border-right: none;
+    border-right: none !important;
   }
   
   .results-table td:last-child::after {
@@ -4328,24 +4344,33 @@
     padding-right: 1.25rem;
   }
   
-  /* Garantir que as bordas das colunas sejam visíveis e separadas */
-  .results-table td {
-    border-left-width: 2px;
-    border-right-width: 2px;
-  }
-  
+  /* Garantir que as bordas das colunas sejam sempre visíveis - FORÇAR */
   .results-table th {
-    border-left: 1px solid #d1d5db;
-    border-right: 1px solid #d1d5db;
-    border-bottom: 2px solid #9ca3af;
+    border-left: 1px solid #d1d5db !important;
+    border-right: 1px solid #d1d5db !important;
+    border-bottom: 2px solid #9ca3af !important;
   }
   
   .results-table th:first-child {
-    border-left: none;
+    border-left: none !important;
   }
   
   .results-table th:last-child {
-    border-right: none;
+    border-right: none !important;
+  }
+  
+  .results-table td {
+    border-left: 1px solid #d1d5db !important;
+    border-right: 1px solid #d1d5db !important;
+    border-bottom: 1px solid #e5e7eb !important;
+  }
+  
+  .results-table td:first-child {
+    border-left: none !important;
+  }
+  
+  .results-table td:last-child {
+    border-right: none !important;
   }
   
   .results-table .cto-name-cell {
