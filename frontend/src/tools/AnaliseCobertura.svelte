@@ -2205,8 +2205,23 @@
                     {@const pctOcup = parseFloat(cto.pct_ocup || 0)}
                     {@const occupationClass = pctOcup < 50 ? 'low' : pctOcup >= 50 && pctOcup < 80 ? 'medium' : 'high'}
                     {@const isRowSelected = selectedRows.includes(rowIndex)}
+                    {@const isCell0Selected = isCellSelected(rowIndex, 0)}
+                    {@const isCell1Selected = isCellSelected(rowIndex, 1)}
+                    {@const isCell2Selected = isCellSelected(rowIndex, 2)}
+                    {@const isCell3Selected = isCellSelected(rowIndex, 3)}
+                    {@const isCell4Selected = isCellSelected(rowIndex, 4)}
+                    {@const isCell5Selected = isCellSelected(rowIndex, 5)}
+                    {@const isCell6Selected = isCellSelected(rowIndex, 6)}
+                    {@const isCell7Selected = isCellSelected(rowIndex, 7)}
+                    {@const isCell8Selected = isCellSelected(rowIndex, 8)}
+                    {@const isCell9Selected = isCellSelected(rowIndex, 9)}
+                    {@const isCell10Selected = isCellSelected(rowIndex, 10)}
+                    {@const isCell11Selected = isCellSelected(rowIndex, 11)}
+                    {@const isCell12Selected = isCellSelected(rowIndex, 12)}
+                    {@const isCell13Selected = isCellSelected(rowIndex, 13)}
+                    {@const isCell14Selected = isCellSelected(rowIndex, 14)}
+                    {@const isCell15Selected = isCellSelected(rowIndex, 15)}
                     <tr class:row-selected={isRowSelected}>
-                      {@const isCell0Selected = isCellSelected(rowIndex, 0)}
                       <td class="checkbox-cell" class:cell-selected={isCell0Selected} on:click={(e) => handleCellClick(e, rowIndex, 0)}>
                         <input 
                           type="checkbox" 
@@ -2219,21 +2234,6 @@
                           }}
                         />
                       </td>
-                      {@const isCell1Selected = isCellSelected(rowIndex, 1)}
-                      {@const isCell2Selected = isCellSelected(rowIndex, 2)}
-                      {@const isCell3Selected = isCellSelected(rowIndex, 3)}
-                      {@const isCell4Selected = isCellSelected(rowIndex, 4)}
-                      {@const isCell5Selected = isCellSelected(rowIndex, 5)}
-                      {@const isCell6Selected = isCellSelected(rowIndex, 6)}
-                      {@const isCell7Selected = isCellSelected(rowIndex, 7)}
-                      {@const isCell8Selected = isCellSelected(rowIndex, 8)}
-                      {@const isCell9Selected = isCellSelected(rowIndex, 9)}
-                      {@const isCell10Selected = isCellSelected(rowIndex, 10)}
-                      {@const isCell11Selected = isCellSelected(rowIndex, 11)}
-                      {@const isCell12Selected = isCellSelected(rowIndex, 12)}
-                      {@const isCell13Selected = isCellSelected(rowIndex, 13)}
-                      {@const isCell14Selected = isCellSelected(rowIndex, 14)}
-                      {@const isCell15Selected = isCellSelected(rowIndex, 15)}
                       <td class="numeric" class:cell-selected={isCell1Selected} on:click={(e) => handleCellClick(e, rowIndex, 1)}>{ctoNumbers.get(cto) || '-'}</td>
                       <td class="cto-name-cell" class:cell-selected={isCell2Selected} on:click={(e) => handleCellClick(e, rowIndex, 2)}><strong>{cto.nome || ''}</strong></td>
                       <td class:cell-selected={isCell3Selected} on:click={(e) => handleCellClick(e, rowIndex, 3)}>{cto.cidade || 'N/A'}</td>
