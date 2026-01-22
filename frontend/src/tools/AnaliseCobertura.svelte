@@ -2233,48 +2233,82 @@
       }
     }
     
-    // Filtrar pontos da borda externa usando abordagem mais precisa
-    // Para grupos médios, usar filtragem mais conservadora mas ainda eficaz
-    const boundaryPoints = pointsToFilter.filter(point => {
-      let maxDistance = 0;
+    // Para grupos médios (50-200), usar abordagem especial que evita "puxadas"
+    // Em vez de filtrar agressivamente, criar pontos estratégicos que garantem forma suave
+    let pointsToUse;
+    
+    if (ctos.length >= 50 && ctos.length < 200) {
+      // Para grupos médios, criar pontos estratégicos em vez de filtrar
+      // Isso garante forma mais suave sem "puxadas"
+      pointsToUse = [];
       
-      // Para cada círculo, calcular a distância do ponto
-      // Um ponto está na borda se está próximo do raio de pelo menos um círculo
-      for (const circle of circles) {
-        const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
-        const distDeg = dist / 111000;
-        const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
-        const distanceFromEdge = Math.abs(distDeg - circleRadius);
+      // Adicionar pontos nos extremos de cada círculo (8 direções principais)
+      for (const center of circleCenters) {
+        const latRadius = RADIUS_DEG * 1.05; // 5% de margem para garantir cobertura
+        const lngRadius = (RADIUS_DEG * 1.05) / Math.cos(center.lat * Math.PI / 180);
+        const sqrt2 = Math.sqrt(2) / 2;
         
-        // Se o ponto está muito próximo da borda de qualquer círculo, considerá-lo
-        if (distanceFromEdge < circleRadius * 0.15) { // 15% de tolerância
-          return true; // Ponto está na borda
+        // 8 direções principais
+        pointsToUse.push(
+          { lat: center.lat + latRadius, lng: center.lng }, // Norte
+          { lat: center.lat - latRadius, lng: center.lng }, // Sul
+          { lat: center.lat, lng: center.lng + lngRadius }, // Leste
+          { lat: center.lat, lng: center.lng - lngRadius }, // Oeste
+          { lat: center.lat + latRadius * sqrt2, lng: center.lng + lngRadius * sqrt2 }, // NE
+          { lat: center.lat + latRadius * sqrt2, lng: center.lng - lngRadius * sqrt2 }, // NO
+          { lat: center.lat - latRadius * sqrt2, lng: center.lng + lngRadius * sqrt2 }, // SE
+          { lat: center.lat - latRadius * sqrt2, lng: center.lng - lngRadius * sqrt2 }  // SO
+        );
+      }
+      
+      // Adicionar pontos de interseção entre círculos próximos
+      // Isso ajuda a criar forma mais natural onde círculos se encontram
+      for (let i = 0; i < circles.length && i < 100; i++) { // Limitar para performance
+        for (let j = i + 1; j < circles.length && j < 100; j++) {
+          const dist = calculateDistance(circles[i].lat, circles[i].lng, circles[j].lat, circles[j].lng);
+          const distDeg = dist / 111000;
+          
+          if (distDeg < RADIUS_DEG * 2.5) { // Círculos próximos
+            const intersections = getCircleIntersections(
+              circles[i].lat, circles[i].lng, RADIUS_DEG * 1.05,
+              circles[j].lat, circles[j].lng, RADIUS_DEG * 1.05
+            );
+            pointsToUse.push(...intersections);
+          }
+        }
+      }
+    } else {
+      // Para grupos menores, usar filtragem normal
+      const boundaryPoints = pointsToFilter.filter(point => {
+        let maxDistance = 0;
+        
+        for (const circle of circles) {
+          const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
+          const distDeg = dist / 111000;
+          const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
+          const distanceFromEdge = Math.abs(distDeg - circleRadius);
+          
+          if (distanceFromEdge < circleRadius * 0.15) {
+            return true;
+          }
+          
+          maxDistance = Math.max(maxDistance, distDeg);
         }
         
-        maxDistance = Math.max(maxDistance, distDeg);
-      }
+        const avgRadius = RADIUS_DEG;
+        return maxDistance > avgRadius * margin;
+      });
       
-      // Se o ponto está muito longe de todos os círculos, não está na borda
-      const avgRadius = RADIUS_DEG;
-      return maxDistance > avgRadius * margin;
-    });
-    
-    // Para grupos médios, garantir que temos pontos suficientes
-    let pointsToUse = boundaryPoints;
-    if (boundaryPoints.length < 3) {
-      pointsToUse = allPoints;
-    } else if (ctos.length >= 50 && ctos.length < 200) {
-      // Para grupos médios, se filtramos mais de 50% dos pontos, usar todos
-      // Mas se temos pelo menos 30% dos pontos, usar os filtrados (melhor qualidade)
-      if (boundaryPoints.length < allPoints.length * 0.3) {
+      if (boundaryPoints.length < 3) {
         pointsToUse = allPoints;
+      } else {
+        pointsToUse = boundaryPoints;
       }
-      // Caso contrário, usar boundaryPoints (já tem pontos suficientes)
     }
     
-    // Para grupos médios (20-200), adicionar pontos estratégicos para melhor cobertura
-    if (ctos.length > 20 && ctos.length <= 200) {
-      // Adicionar pontos nos 8 direções principais de cada círculo (mais precisão)
+    // Para grupos menores (<50), adicionar pontos estratégicos
+    if (ctos.length < 50 && ctos.length > 20) {
+      // Adicionar pontos nos 8 direções principais de cada círculo
       for (const center of circleCenters) {
         const latRadius = RADIUS_DEG;
         const lngRadius = RADIUS_DEG / Math.cos(center.lat * Math.PI / 180);
@@ -2291,7 +2325,7 @@
         );
       }
     } else if (ctos.length <= 20) {
-      // Para grupos menores, adicionar apenas 4 quadrantes
+      // Para grupos muito pequenos, adicionar apenas 4 quadrantes
       for (const center of circleCenters) {
         const latRadius = RADIUS_DEG;
         const lngRadius = RADIUS_DEG / Math.cos(center.lat * Math.PI / 180);
@@ -2494,25 +2528,39 @@
       }
     }
     
-    // Para grupos médios (50-200), DESABILITAR suavização completamente
-    // A suavização pode criar "puxadas" para dentro quando aplicada em grupos médios
-    // O convex hull já fornece uma forma suficientemente suave
+    // Para grupos médios (50-200), aplicar expansão uniforme em vez de suavização
+    // Isso evita "puxadas" criando uma forma mais uniforme que envolve todos os círculos
     let smoothedHull;
     try {
       if (ctos.length >= 50 && ctos.length < 200) {
-        // Para grupos médios, NÃO suavizar - usar hull direto
-        // Isso evita completamente as "puxadas para dentro"
-        smoothedHull = hull;
+        // Para grupos médios, expandir o polígono uniformemente em todas as direções
+        // Isso garante que todos os círculos estejam dentro sem criar "puxadas"
+        
+        // Calcular centro do polígono
+        const centerLat = hull.reduce((sum, p) => sum + p.lat, 0) / hull.length;
+        const centerLng = hull.reduce((sum, p) => sum + p.lng, 0) / hull.length;
+        
+        // Expandir cada ponto do hull em 3% na direção do centro para fora
+        // Isso cria uma forma mais uniforme sem "puxadas"
+        smoothedHull = hull.map(point => {
+          const dx = point.lat - centerLat;
+          const dy = point.lng - centerLng;
+          const expansion = 1.03; // 3% de expansão
+          return {
+            lat: centerLat + dx * expansion,
+            lng: centerLng + dy * expansion
+          };
+        });
       } else {
         // Para grupos menores, usar suavização normal
         smoothedHull = smoothPolygonEdges(hull);
       }
       
       if (!smoothedHull || smoothedHull.length < 3) {
-        smoothedHull = hull; // Fallback para hull original se suavização falhar
+        smoothedHull = hull; // Fallback para hull original se processamento falhar
       }
     } catch (smoothErr) {
-      console.warn('⚠️ Erro ao suavizar polígono, usando hull original:', smoothErr);
+      console.warn('⚠️ Erro ao processar polígono, usando hull original:', smoothErr);
       smoothedHull = hull; // Fallback para hull original
     }
     
