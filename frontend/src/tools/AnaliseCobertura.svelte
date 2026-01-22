@@ -3,6 +3,14 @@
   import { Loader } from '@googlemaps/js-api-loader';
   import Loading from '../Loading.svelte';
   import { getApiUrl } from '../config.js';
+  import {
+    createColumnHelper,
+    createTable,
+    getCoreRowModel,
+    getSortedRowModel,
+    getFilteredRowModel,
+    getPaginationRowModel
+  } from '@tanstack/table-core';
 
   // Props do componente
   export let currentUser = '';
@@ -56,6 +64,150 @@
   
   // CTOs filtradas e ordenadas
   let filteredAndSortedCTOs = [];
+  
+  // TanStack Table - Configuração (usando core e adaptando para Svelte)
+  let table;
+  let tableSorting = [];
+  let tableColumnFilters = [];
+  let tablePagination = { pageIndex: 0, pageSize: 50 };
+  
+  // Definir colunas da tabela usando TanStack Table
+  // Usando tipo genérico any para flexibilidade
+  const columnHelper = createColumnHelper();
+  const tableColumns = [
+    columnHelper.accessor('nome', {
+      header: 'CTO',
+      size: 150,
+    }),
+    columnHelper.accessor('cidade', {
+      header: 'Cidade',
+      size: 120,
+    }),
+    columnHelper.accessor('pop', {
+      header: 'POP',
+      size: 100,
+    }),
+    columnHelper.accessor((row) => row.olt || 'N/A', {
+      id: 'chasse',
+      header: 'CHASSE',
+      size: 100,
+    }),
+    columnHelper.accessor((row) => row.slot || 'N/A', {
+      id: 'placa',
+      header: 'PLACA',
+      size: 100,
+    }),
+    columnHelper.accessor((row) => row.pon || 'N/A', {
+      id: 'olt',
+      header: 'OLT',
+      size: 100,
+    }),
+    columnHelper.accessor((row) => row.id_cto || row.id || 'N/A', {
+      id: 'id_cto',
+      header: 'ID CTO',
+      size: 100,
+    }),
+    columnHelper.accessor((row) => row.vagas_total || 0, {
+      id: 'portas_total',
+      header: 'Portas Total',
+      size: 110,
+    }),
+    columnHelper.accessor((row) => row.clientes_conectados || 0, {
+      id: 'ocupadas',
+      header: 'Ocupadas',
+      size: 100,
+    }),
+    columnHelper.accessor((row) => (row.vagas_total || 0) - (row.clientes_conectados || 0), {
+      id: 'disponiveis',
+      header: 'Disponíveis',
+      size: 110,
+    }),
+    columnHelper.accessor((row) => parseFloat(row.pct_ocup || 0), {
+      id: 'ocupacao',
+      header: 'Ocupação',
+      size: 110,
+    }),
+    columnHelper.accessor((row) => row.status_cto || 'N/A', {
+      id: 'status',
+      header: 'Status',
+      size: 100,
+    }),
+    columnHelper.accessor((row) => {
+      const caminhoKey = getCaminhoRedeKey(row);
+      return caminhoRedeTotalsVersion >= 0 && caminhoRedeTotals ? (caminhoRedeTotals.get(caminhoKey) || 0) : 0;
+    }, {
+      id: 'total_portas_caminho',
+      header: 'Total de Portas no Caminho de Rede',
+      size: 200,
+    }),
+    columnHelper.accessor((row) => getCaminhoRedeCTOsTotal(row), {
+      id: 'total_ctos_caminho',
+      header: 'Total de CTOs no Caminho de Rede',
+      size: 200,
+    })
+  ];
+  
+  // Sincronizar sorting do TanStack Table com o sistema atual
+  $: if (table && tableSorting.length > 0) {
+    const sortState = tableSorting[0];
+    if (sortState) {
+      sortColumn = sortState.id;
+      sortDirection = sortState.desc ? 'desc' : 'asc';
+    }
+  }
+  
+  // Inicializar tabela quando ctos mudar
+  $: if (ctos && ctos.length > 0) {
+    try {
+      table = createTable({
+        data: ctos,
+        columns: tableColumns,
+        state: {
+          sorting: tableSorting,
+          columnFilters: tableColumnFilters,
+          pagination: tablePagination
+        },
+        onSortingChange: (updater) => {
+          tableSorting = typeof updater === 'function' ? updater(tableSorting) : updater;
+        },
+        onColumnFiltersChange: (updater) => {
+          tableColumnFilters = typeof updater === 'function' ? updater(tableColumnFilters) : updater;
+        },
+        onPaginationChange: (updater) => {
+          tablePagination = typeof updater === 'function' ? updater(tablePagination) : updater;
+        },
+        getCoreRowModel: getCoreRowModel(),
+        getSortedRowModel: getSortedRowModel(),
+        getFilteredRowModel: getFilteredRowModel(),
+        getPaginationRowModel: getPaginationRowModel(),
+      });
+      
+      // Atualizar filteredAndSortedCTOs usando TanStack Table
+      if (table) {
+        filteredAndSortedCTOs = table.getRowModel().rows.map(row => row.original);
+      }
+    } catch (err) {
+      console.error('Erro ao criar tabela TanStack:', err);
+      // Fallback para implementação manual se TanStack falhar
+      let result = [...ctos];
+      result = applyFilters(result);
+      result = sortCTOs(result);
+      filteredAndSortedCTOs = result;
+    }
+  } else {
+    filteredAndSortedCTOs = [];
+  }
+  
+  // Atualizar filteredAndSortedCTOs quando table, filtros ou ordenação mudarem
+  $: if (table && ctos && ctos.length > 0) {
+    filteredAndSortedCTOs = table.getRowModel().rows.map(row => row.original);
+  } else if (ctos && ctos.length > 0 && !table) {
+    // Fallback manual se TanStack não estiver disponível
+    let result = [...ctos];
+    result = applyFilters(result);
+    result = sortCTOs(result);
+    filteredAndSortedCTOs = result;
+  }
   
   // Função para iniciar redimensionamento de coluna
   function startResizeColumn(e, columnName) {
@@ -535,27 +687,30 @@
     return sorted;
   }
   
-  // Aplicar filtros e ordenação quando necessário
-  $: {
-    if (ctos && ctos.length > 0) {
-      let result = [...ctos];
-      result = applyFilters(result);
-      result = sortCTOs(result);
-      filteredAndSortedCTOs = result;
-    } else {
-      filteredAndSortedCTOs = [];
-    }
-  }
-  
-  // Função para ordenar por coluna
+  // Função para ordenar por coluna - integrado com TanStack Table
   function handleSort(columnName) {
-    if (sortColumn === columnName) {
-      // Alternar direção se já está ordenando por essa coluna
-      sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    if (table) {
+      // Usar TanStack Table para ordenação
+      const currentSort = tableSorting.find(s => s.id === columnName);
+      if (currentSort) {
+        // Alternar direção
+        tableSorting = tableSorting.map(s => 
+          s.id === columnName 
+            ? { ...s, desc: !s.desc }
+            : s
+        );
+      } else {
+        // Nova coluna, começar com ascendente
+        tableSorting = [{ id: columnName, desc: false }];
+      }
     } else {
-      // Nova coluna, começar com ascendente
-      sortColumn = columnName;
-      sortDirection = 'asc';
+      // Fallback para implementação manual
+      if (sortColumn === columnName) {
+        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortColumn = columnName;
+        sortDirection = 'asc';
+      }
     }
   }
   
@@ -2989,6 +3144,93 @@
                 </tbody>
               </table>
             </div>
+            
+            <!-- Controles de Paginação -->
+            {#if table && !isTableMinimized && filteredAndSortedCTOs.length > 0}
+              {@const totalRows = table.getRowCount()}
+              {@const currentPage = tablePagination.pageIndex}
+              {@const pageSize = tablePagination.pageSize}
+              {@const totalPages = Math.max(1, Math.ceil(totalRows / pageSize))}
+              {@const startRow = currentPage * pageSize + 1}
+              {@const endRow = Math.min((currentPage + 1) * pageSize, totalRows)}
+              {@const canPrevious = currentPage > 0}
+              {@const canNext = currentPage < totalPages - 1}
+              
+              {#if totalPages > 1 || pageSize < totalRows}
+                <div class="pagination-controls">
+                  <div class="pagination-info">
+                    <span>
+                      Mostrando {startRow} a {endRow} de {totalRows} resultados
+                    </span>
+                    <span class="pagination-size">
+                      Itens por página:
+                      <select 
+                        value={pageSize}
+                        on:change={(e) => {
+                          const newSize = Number(e.target.value);
+                          tablePagination = { pageIndex: 0, pageSize: newSize };
+                        }}
+                      >
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        {#if totalRows > 200}
+                          <option value={totalRows}>Todos ({totalRows})</option>
+                        {/if}
+                      </select>
+                    </span>
+                  </div>
+                  {#if totalPages > 1}
+                    <div class="pagination-buttons">
+                      <button 
+                        class="pagination-btn"
+                        disabled={!canPrevious}
+                        on:click={() => {
+                          tablePagination = { ...tablePagination, pageIndex: 0 };
+                        }}
+                        title="Primeira página"
+                      >
+                        ⏮️
+                      </button>
+                      <button 
+                        class="pagination-btn"
+                        disabled={!canPrevious}
+                        on:click={() => {
+                          tablePagination = { ...tablePagination, pageIndex: currentPage - 1 };
+                        }}
+                        title="Página anterior"
+                      >
+                        ⬅️
+                      </button>
+                      <span class="pagination-page-info">
+                        Página {currentPage + 1} de {totalPages}
+                      </span>
+                      <button 
+                        class="pagination-btn"
+                        disabled={!canNext}
+                        on:click={() => {
+                          tablePagination = { ...tablePagination, pageIndex: currentPage + 1 };
+                        }}
+                        title="Próxima página"
+                      >
+                        ➡️
+                      </button>
+                      <button 
+                        class="pagination-btn"
+                        disabled={!canNext}
+                        on:click={() => {
+                          tablePagination = { ...tablePagination, pageIndex: totalPages - 1 };
+                        }}
+                        title="Última página"
+                      >
+                        ⏭️
+                      </button>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
+            {/if}
             {/if}
           </div>
         {:else if !isLoading && !error}
@@ -4137,6 +4379,117 @@
     .results-table th,
     .results-table td {
       padding: 0.5rem;
+    }
+  }
+
+  /* Controles de Paginação */
+  .pagination-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: white;
+    border-top: 1px solid #e0e0e0;
+    border-radius: 0 0 8px 8px;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .pagination-info {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    font-size: 0.875rem;
+    color: #666;
+  }
+
+  .pagination-size {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .pagination-size select {
+    padding: 0.375rem 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: white;
+    font-size: 0.875rem;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .pagination-size select:hover {
+    border-color: #7B68EE;
+  }
+
+  .pagination-size select:focus {
+    outline: none;
+    border-color: #7B68EE;
+    box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.1);
+  }
+
+  .pagination-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .pagination-btn {
+    background: white;
+    border: 1px solid #d1d5db;
+    color: #333;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 36px;
+  }
+
+  .pagination-btn:hover:not(:disabled) {
+    background: #f9fafb;
+    border-color: #7B68EE;
+    color: #4c1d95;
+  }
+
+  .pagination-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: #f5f5f5;
+  }
+
+  .pagination-btn:active:not(:disabled) {
+    background: #f0f0f0;
+    transform: scale(0.95);
+  }
+
+  .pagination-page-info {
+    padding: 0 0.75rem;
+    font-size: 0.875rem;
+    color: #666;
+    font-weight: 500;
+  }
+
+  @media (max-width: 768px) {
+    .pagination-controls {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .pagination-info {
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .pagination-buttons {
+      justify-content: center;
+      width: 100%;
     }
   }
 </style>
