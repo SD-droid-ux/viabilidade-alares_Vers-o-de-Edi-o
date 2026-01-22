@@ -69,7 +69,7 @@
   let table;
   let tableSorting = [];
   let tableColumnFilters = [];
-  let tablePagination = { pageIndex: 0, pageSize: 50 };
+  let tablePagination = { pageIndex: 0, pageSize: 0 }; // 0 = mostrar todos os resultados
   
   // Definir colunas da tabela usando TanStack Table
   // Usando tipo genérico any para flexibilidade
@@ -212,13 +212,20 @@
     result = applyFilters(result);
     result = sortCTOs(result);
     
-    // Aplicar paginação manual se necessário
-    if (tablePagination && tablePagination.pageSize < result.length) {
-      const start = tablePagination.pageIndex * tablePagination.pageSize;
-      const end = start + tablePagination.pageSize;
+    // Aplicar paginação manual APENAS se pageSize for maior que 0 e menor que total
+    // Por padrão (pageSize = 0), mostrar todos os resultados
+    if (tablePagination && tablePagination.pageSize > 0 && tablePagination.pageSize < result.length) {
+      const start = Math.max(0, tablePagination.pageIndex * tablePagination.pageSize);
+      const end = Math.min(start + tablePagination.pageSize, result.length);
       filteredAndSortedCTOs = result.slice(start, end);
     } else {
+      // Mostrar todos os resultados se não houver paginação (pageSize = 0) ou se pageSize >= total
       filteredAndSortedCTOs = result;
+    }
+    
+    // Debug: verificar se os dados estão sendo populados
+    if (filteredAndSortedCTOs.length === 0 && result.length > 0) {
+      console.warn('⚠️ filteredAndSortedCTOs está vazio mas result tem dados:', result.length);
     }
   } else {
     filteredAndSortedCTOs = [];
@@ -2629,7 +2636,10 @@
                 <button 
                   class="minimize-button" 
                   disabled={isResizingSidebar || isResizingMapTable}
-                  on:click={() => isTableMinimized = !isTableMinimized}
+                  on:click|stopPropagation={() => {
+                    isTableMinimized = !isTableMinimized;
+                    console.log('Tabela minimizada:', isTableMinimized);
+                  }}
                   aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
                   title={isTableMinimized ? 'Expandir' : 'Minimizar'}
                 >
@@ -2702,7 +2712,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'nome' ? null : 'nome'} title="Filtrar">
                             {filters.nome ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('nome')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('nome')} title={columnVisibility.nome === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2729,7 +2739,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'cidade' ? null : 'cidade'} title="Filtrar">
                             {filters.cidade ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('cidade')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('cidade')} title={columnVisibility.cidade === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2756,7 +2766,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'pop' ? null : 'pop'} title="Filtrar">
                             {filters.pop ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('pop')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('pop')} title={columnVisibility.pop === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2783,7 +2793,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'chasse' ? null : 'chasse'} title="Filtrar">
                             {filters.chasse ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('chasse')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('chasse')} title={columnVisibility.chasse === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2810,7 +2820,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'placa' ? null : 'placa'} title="Filtrar">
                             {filters.placa ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('placa')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('placa')} title={columnVisibility.placa === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2837,7 +2847,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'olt' ? null : 'olt'} title="Filtrar">
                             {filters.olt ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('olt')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('olt')} title={columnVisibility.olt === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2864,7 +2874,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'id_cto' ? null : 'id_cto'} title="Filtrar">
                             {filters.id_cto ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('id_cto')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('id_cto')} title={columnVisibility.id_cto === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2891,7 +2901,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'portas_total' ? null : 'portas_total'} title="Filtrar">
                             {filters.portas_total ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('portas_total')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('portas_total')} title={columnVisibility.portas_total === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2924,7 +2934,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'ocupadas' ? null : 'ocupadas'} title="Filtrar">
                             {filters.ocupadas ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupadas')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupadas')} title={columnVisibility.ocupadas === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2957,7 +2967,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'disponiveis' ? null : 'disponiveis'} title="Filtrar">
                             {filters.disponiveis ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('disponiveis')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('disponiveis')} title={columnVisibility.disponiveis === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -2990,7 +3000,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'ocupacao' ? null : 'ocupacao'} title="Filtrar">
                             {filters.ocupacao ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupacao')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('ocupacao')} title={columnVisibility.ocupacao === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -3023,7 +3033,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'status' ? null : 'status'} title="Filtrar">
                             {filters.status ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('status')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('status')} title={columnVisibility.status === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -3050,7 +3060,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'total_portas_caminho' ? null : 'total_portas_caminho'} title="Filtrar">
                             {filters.total_portas_caminho ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_portas_caminho')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_portas_caminho')} title={columnVisibility.total_portas_caminho === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
@@ -3083,7 +3093,7 @@
                           <button class="filter-button" on:click={() => showFilterMenu = showFilterMenu === 'total_ctos_caminho' ? null : 'total_ctos_caminho'} title="Filtrar">
                             {filters.total_ctos_caminho ? '●' : '○'}
                           </button>
-                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_ctos_caminho')} title={columnVisibility[columnName] === true ? 'Expandir coluna' : 'Minimizar coluna'}>
+                          <button class="toggle-column-button" on:click={() => toggleColumnVisibility('total_ctos_caminho')} title={columnVisibility.total_ctos_caminho === true ? 'Expandir coluna' : 'Minimizar coluna'}>
                             👁️
                           </button>
                         </div>
