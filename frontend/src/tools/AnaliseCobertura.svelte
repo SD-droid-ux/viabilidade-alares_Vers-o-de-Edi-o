@@ -2238,40 +2238,37 @@
     let pointsToUse;
     
     if (ctos.length >= 50 && ctos.length < 200) {
-      // Para grupos médios, criar pontos estratégicos em vez de filtrar
-      // Isso garante forma mais suave sem "puxadas"
+      // Para grupos médios, criar MUITO MAIS pontos ao redor de cada círculo
+      // Isso garante que o convex hull tenha pontos suficientes para criar forma suave
       pointsToUse = [];
       
-      // Adicionar pontos nos extremos de cada círculo (8 direções principais)
+      // Gerar 24 pontos ao redor de cada círculo (muito mais denso)
+      // Isso evita "puxadas" porque o convex hull terá mais pontos para trabalhar
       for (const center of circleCenters) {
-        const latRadius = RADIUS_DEG * 1.05; // 5% de margem para garantir cobertura
-        const lngRadius = (RADIUS_DEG * 1.05) / Math.cos(center.lat * Math.PI / 180);
-        const sqrt2 = Math.sqrt(2) / 2;
+        const latRadius = RADIUS_DEG * 1.08; // 8% de margem para garantir cobertura
+        const lngRadius = (RADIUS_DEG * 1.08) / Math.cos(center.lat * Math.PI / 180);
         
-        // 8 direções principais
-        pointsToUse.push(
-          { lat: center.lat + latRadius, lng: center.lng }, // Norte
-          { lat: center.lat - latRadius, lng: center.lng }, // Sul
-          { lat: center.lat, lng: center.lng + lngRadius }, // Leste
-          { lat: center.lat, lng: center.lng - lngRadius }, // Oeste
-          { lat: center.lat + latRadius * sqrt2, lng: center.lng + lngRadius * sqrt2 }, // NE
-          { lat: center.lat + latRadius * sqrt2, lng: center.lng - lngRadius * sqrt2 }, // NO
-          { lat: center.lat - latRadius * sqrt2, lng: center.lng + lngRadius * sqrt2 }, // SE
-          { lat: center.lat - latRadius * sqrt2, lng: center.lng - lngRadius * sqrt2 }  // SO
-        );
+        // 24 pontos uniformemente distribuídos ao redor do círculo
+        for (let i = 0; i < 24; i++) {
+          const angle = (i * 2 * Math.PI) / 24;
+          pointsToUse.push({
+            lat: center.lat + (latRadius * Math.cos(angle)),
+            lng: center.lng + (lngRadius * Math.sin(angle))
+          });
+        }
       }
       
       // Adicionar pontos de interseção entre círculos próximos
       // Isso ajuda a criar forma mais natural onde círculos se encontram
-      for (let i = 0; i < circles.length && i < 100; i++) { // Limitar para performance
-        for (let j = i + 1; j < circles.length && j < 100; j++) {
+      for (let i = 0; i < circles.length && i < 150; i++) { // Aumentado limite
+        for (let j = i + 1; j < circles.length && j < 150; j++) {
           const dist = calculateDistance(circles[i].lat, circles[i].lng, circles[j].lat, circles[j].lng);
           const distDeg = dist / 111000;
           
-          if (distDeg < RADIUS_DEG * 2.5) { // Círculos próximos
+          if (distDeg < RADIUS_DEG * 3) { // Aumentado threshold para mais interseções
             const intersections = getCircleIntersections(
-              circles[i].lat, circles[i].lng, RADIUS_DEG * 1.05,
-              circles[j].lat, circles[j].lng, RADIUS_DEG * 1.05
+              circles[i].lat, circles[i].lng, RADIUS_DEG * 1.08,
+              circles[j].lat, circles[j].lng, RADIUS_DEG * 1.08
             );
             pointsToUse.push(...intersections);
           }
@@ -2528,29 +2525,20 @@
       }
     }
     
-    // Para grupos médios (50-200), aplicar expansão uniforme em vez de suavização
-    // Isso evita "puxadas" criando uma forma mais uniforme que envolve todos os círculos
+    // Para grupos médios (50-200), usar suavização conservadora
+    // Com mais pontos (24 por círculo), o convex hull já deve estar mais suave
+    // Aplicar suavização leve apenas para polir bordas
     let smoothedHull;
     try {
       if (ctos.length >= 50 && ctos.length < 200) {
-        // Para grupos médios, expandir o polígono uniformemente em todas as direções
-        // Isso garante que todos os círculos estejam dentro sem criar "puxadas"
+        // Para grupos médios, usar suavização conservadora (1 passo)
+        // Com 24 pontos por círculo, o hull já deve estar bem formado
+        smoothedHull = smoothPolygonEdgesConservative(hull);
         
-        // Calcular centro do polígono
-        const centerLat = hull.reduce((sum, p) => sum + p.lat, 0) / hull.length;
-        const centerLng = hull.reduce((sum, p) => sum + p.lng, 0) / hull.length;
-        
-        // Expandir cada ponto do hull em 3% na direção do centro para fora
-        // Isso cria uma forma mais uniforme sem "puxadas"
-        smoothedHull = hull.map(point => {
-          const dx = point.lat - centerLat;
-          const dy = point.lng - centerLng;
-          const expansion = 1.03; // 3% de expansão
-          return {
-            lat: centerLat + dx * expansion,
-            lng: centerLng + dy * expansion
-          };
-        });
+        // Se a suavização resultar em poucos pontos, usar hull original
+        if (!smoothedHull || smoothedHull.length < 3) {
+          smoothedHull = hull;
+        }
       } else {
         // Para grupos menores, usar suavização normal
         smoothedHull = smoothPolygonEdges(hull);
