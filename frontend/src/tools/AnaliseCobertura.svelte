@@ -281,6 +281,33 @@
     }
   }
   
+  // Prevenir seleção de texto nativa dentro da tabela
+  function preventTextSelection(e) {
+    // Só prevenir se não for um input, textarea ou elemento editável
+    if (e.target.tagName !== 'INPUT' && 
+        e.target.tagName !== 'TEXTAREA' &&
+        !e.target.closest('input') &&
+        !e.target.closest('textarea') &&
+        e.target.closest('.results-table')) {
+      e.preventDefault();
+    }
+  }
+  
+  // Prevenir seleção via mouse drag dentro da tabela
+  function preventTextSelectionDrag(e) {
+    if (e.target.closest('.results-table') &&
+        e.target.tagName !== 'INPUT' &&
+        e.target.tagName !== 'TEXTAREA' &&
+        !e.target.closest('input') &&
+        !e.target.closest('textarea')) {
+      // Se o usuário está arrastando para selecionar texto, prevenir
+      if (e.type === 'selectstart' || (e.type === 'mousedown' && e.shiftKey)) {
+        e.preventDefault();
+        return false;
+      }
+    }
+  }
+  
   // ========== FIM DO SISTEMA DE SELEÇÃO ==========
   
   // Função para buscar total de portas do caminho de rede da base de dados
@@ -1970,6 +1997,10 @@
       
       // Adicionar listener para limpar seleção ao clicar fora da tabela
       document.addEventListener('click', handleClickOutside);
+      
+      // Prevenir seleção de texto nativa dentro da tabela
+      document.addEventListener('selectstart', preventTextSelectionDrag, { passive: false });
+      document.addEventListener('dragstart', preventTextSelection, { passive: false });
     } catch (err) {
       console.error('Erro ao inicializar ferramenta:', err);
       error = 'Erro ao inicializar ferramenta: ' + err.message;
@@ -1985,8 +2016,10 @@
       mapObserver = null;
     }
     
-    // Remover listener de seleção
+    // Remover listeners de seleção
     document.removeEventListener('click', handleClickOutside);
+    document.removeEventListener('selectstart', preventTextSelectionDrag);
+    document.removeEventListener('dragstart', preventTextSelection);
   });
 </script>
 
@@ -2932,6 +2965,10 @@
     color: #374151;
     border-bottom: 2px solid #e5e7eb;
     white-space: nowrap;
+    user-select: none; /* Desabilitar seleção de texto nativa nos headers */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
   }
   
   .results-table th:first-child {
@@ -2949,22 +2986,22 @@
     border-bottom: 1px solid #e5e7eb;
     color: #4b5563;
     text-align: center;
-    user-select: text;
-    -webkit-user-select: text;
-    -moz-user-select: text;
-    -ms-user-select: text;
-    cursor: text;
+    user-select: none; /* Desabilitar seleção de texto nativa */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    cursor: cell; /* Cursor de célula em vez de texto */
   }
   
   .results-table .cto-name-cell {
     white-space: nowrap;
     min-width: 150px;
     text-align: center;
-    user-select: text;
-    -webkit-user-select: text;
-    -moz-user-select: text;
-    -ms-user-select: text;
-    cursor: text;
+    user-select: none; /* Desabilitar seleção de texto nativa */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    cursor: cell; /* Cursor de célula em vez de texto */
   }
   
   .results-table tbody tr:hover {
