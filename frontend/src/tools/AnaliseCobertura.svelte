@@ -2067,42 +2067,78 @@
     const RADIUS_M = 250; // Raio em metros
     const RADIUS_DEG = RADIUS_M / 111000; // Raio em graus (aproximação)
     
-    // Para grupos muito grandes (200+), usar abordagem otimizada mas precisa
-    // Isso evita processamento desnecessário e garante performance mesmo com 1000+ CTOs
-    // Mas mantém uma forma visualmente agradável que segue a distribuição dos círculos
+    // Para grupos muito grandes (200+), usar abordagem otimizada e robusta
+    // Suporta até 2000+ CTOs sem bugs ou travamentos
     if (ctos.length > 200) {
-      // Estratégia: amostrar pontos estratégicos dos círculos e calcular convex hull simplificado
-      // Isso cria uma forma que segue melhor a distribuição real, não apenas um retângulo
-      const allPoints = [];
-      const circleCenters = [];
+      // Para grupos extremamente grandes (1000+), usar bounding box expandido diretamente
+      // Mais simples, robusto e garante que funciona sem bugs
+      if (ctos.length > 1000) {
+        let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+        for (const cto of ctos) {
+          const lat = parseFloat(cto.latitude);
+          const lng = parseFloat(cto.longitude);
+          const latRadius = RADIUS_DEG * 1.1; // 10% de margem
+          const lngRadius = (RADIUS_DEG * 1.1) / Math.cos(lat * Math.PI / 180);
+          minLat = Math.min(minLat, lat - latRadius);
+          maxLat = Math.max(maxLat, lat + latRadius);
+          minLng = Math.min(minLng, lng - lngRadius);
+          maxLng = Math.max(maxLng, lng + lngRadius);
+        }
+        
+        const polygonPath = [
+          { lat: minLat, lng: minLng },
+          { lat: maxLat, lng: minLng },
+          { lat: maxLat, lng: maxLng },
+          { lat: minLat, lng: maxLng }
+        ];
+        
+        return new google.maps.Polygon({
+          paths: polygonPath,
+          strokeColor: '#7B68EE',
+          strokeOpacity: 0.6,
+          strokeWeight: 2,
+          fillColor: '#6495ED',
+          fillOpacity: 0.08,
+          map: showRadiusCircles ? map : null,
+          zIndex: 1,
+          geodesic: true
+        });
+      }
       
-      // Amostrar CTOs para grupos muito grandes (manter performance)
-      const sampleSize = Math.min(200, ctos.length); // Limitar a 200 CTOs para cálculo
+      // Para grupos grandes (200-1000), usar estratégia otimizada com amostragem inteligente
+      const allPoints = [];
+      
+      // Amostrar CTOs de forma mais inteligente para grupos grandes
+      // Aumentar amostragem proporcionalmente ao tamanho do grupo
+      const baseSampleSize = 300; // Base aumentada
+      const sampleSize = Math.min(baseSampleSize, Math.floor(ctos.length * 0.15)); // 15% do total ou 300, o que for menor
       const step = Math.max(1, Math.floor(ctos.length / sampleSize));
       const sampledCTOs = [];
+      
+      // Amostragem uniforme
       for (let i = 0; i < ctos.length; i += step) {
         sampledCTOs.push(ctos[i]);
       }
       
-      // Adicionar sempre a primeira e última CTO para garantir bordas corretas
-      if (sampledCTOs.length > 0 && !sampledCTOs.includes(ctos[0])) {
-        sampledCTOs[0] = ctos[0];
-      }
-      if (sampledCTOs.length > 0 && !sampledCTOs.includes(ctos[ctos.length - 1])) {
-        sampledCTOs[sampledCTOs.length - 1] = ctos[ctos.length - 1];
+      // Garantir que extremos sejam incluídos
+      if (sampledCTOs.length > 0) {
+        if (sampledCTOs[0] !== ctos[0]) {
+          sampledCTOs[0] = ctos[0];
+        }
+        if (sampledCTOs[sampledCTOs.length - 1] !== ctos[ctos.length - 1]) {
+          sampledCTOs[sampledCTOs.length - 1] = ctos[ctos.length - 1];
+        }
       }
       
-      // Criar pontos estratégicos dos círculos amostrados
-      const pointsPerCircle = 24; // Reduzido para performance, mas suficiente para forma
+      // Adicionar pontos estratégicos dos círculos amostrados
+      const pointsPerCircle = 32; // Aumentado para melhor qualidade
       for (const cto of sampledCTOs) {
         const lat = parseFloat(cto.latitude);
         const lng = parseFloat(cto.longitude);
-        circleCenters.push({ lat, lng });
         
         const latRadius = RADIUS_DEG;
         const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
         
-        // Adicionar pontos nos 8 direções principais + alguns intermediários
         for (let i = 0; i < pointsPerCircle; i++) {
           const angle = (i * 2 * Math.PI) / pointsPerCircle;
           allPoints.push({
@@ -2112,31 +2148,55 @@
         }
       }
       
-      // Adicionar pontos dos extremos de TODAS as CTOs (não apenas amostradas)
-      // Isso garante que o polígono cubra todas as áreas
-      for (const cto of ctos) {
+      // Adicionar pontos dos extremos de TODAS as CTOs para garantir cobertura completa
+      // Para grupos muito grandes, amostrar também os extremos
+      const extremeSampleStep = ctos.length > 500 ? Math.ceil(ctos.length / 100) : 1;
+      for (let i = 0; i < ctos.length; i += extremeSampleStep) {
+        const cto = ctos[i];
         const lat = parseFloat(cto.latitude);
         const lng = parseFloat(cto.longitude);
-        const latRadius = RADIUS_DEG * 1.05; // 5% de margem
+        const latRadius = RADIUS_DEG * 1.05;
         const lngRadius = (RADIUS_DEG * 1.05) / Math.cos(lat * Math.PI / 180);
         
-        // Adicionar apenas os 4 pontos cardinais (N, S, L, O) para garantir cobertura
+        // Adicionar 8 direções principais para garantir cobertura
+        const sqrt2 = Math.sqrt(2) / 2;
         allPoints.push(
           { lat: lat + latRadius, lng: lng }, // Norte
           { lat: lat - latRadius, lng: lng }, // Sul
           { lat: lat, lng: lng + lngRadius }, // Leste
-          { lat: lat, lng: lng - lngRadius }  // Oeste
+          { lat: lat, lng: lng - lngRadius }, // Oeste
+          { lat: lat + latRadius * sqrt2, lng: lng + lngRadius * sqrt2 }, // NE
+          { lat: lat + latRadius * sqrt2, lng: lng - lngRadius * sqrt2 }, // NO
+          { lat: lat - latRadius * sqrt2, lng: lng + lngRadius * sqrt2 }, // SE
+          { lat: lat - latRadius * sqrt2, lng: lng - lngRadius * sqrt2 }  // SO
         );
       }
       
-      // Calcular convex hull dos pontos (rápido mesmo com muitos pontos)
+      // Calcular convex hull dos pontos
       let hull;
       try {
-        // Limitar pontos para o convex hull se houver muitos
-        const pointsForHull = allPoints.length > 5000 
-          ? allPoints.filter((_, idx) => idx % Math.ceil(allPoints.length / 5000) === 0)
-          : allPoints;
-        hull = computeConvexHull([...pointsForHull]);
+        // Limitar pontos para o convex hull (máximo 8000 para performance)
+        let pointsForHull = allPoints;
+        if (allPoints.length > 8000) {
+          const hullStep = Math.ceil(allPoints.length / 8000);
+          pointsForHull = [];
+          for (let i = 0; i < allPoints.length; i += hullStep) {
+            pointsForHull.push(allPoints[i]);
+          }
+        }
+        
+        // Remover pontos duplicados
+        const uniquePoints = [];
+        const seen = new Set();
+        for (const point of pointsForHull) {
+          const key = `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            uniquePoints.push(point);
+          }
+        }
+        
+        hull = computeConvexHull(uniquePoints);
       } catch (hullErr) {
         console.warn('⚠️ Erro ao calcular convex hull para grupo grande:', hullErr);
         hull = null;
@@ -2163,10 +2223,16 @@
         ];
       }
       
-      // Suavizar o polígono (poucos passos para manter performance)
+      // Suavizar o polígono (conservador para grupos grandes)
       let smoothedHull;
       try {
-        smoothedHull = smoothPolygonEdges(hull);
+        // Para grupos muito grandes, usar suavização conservadora
+        if (ctos.length > 500) {
+          smoothedHull = smoothPolygonEdgesConservative(hull);
+        } else {
+          smoothedHull = smoothPolygonEdges(hull);
+        }
+        
         if (!smoothedHull || smoothedHull.length < 3) {
           smoothedHull = hull;
         }
