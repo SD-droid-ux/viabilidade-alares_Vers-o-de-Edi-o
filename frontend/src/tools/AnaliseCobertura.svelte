@@ -70,7 +70,204 @@
   let calculandoTotais = false; // Flag para evitar múltiplas execuções simultâneas
   let ultimosCaminhosCalculados = new Set(); // Rastrear quais caminhos já foram calculados
   
-  // Código de seleção manual pode ser implementado se necessário
+  // ========== SISTEMA DE SELEÇÃO DE TABELA ==========
+  // Estados de seleção
+  let selectedCells = new Set(); // Set de strings "row-col" (ex: "0-2" = linha 0, coluna 2)
+  let selectedRows = new Set(); // Set de índices de linha
+  let selectedColumns = new Set(); // Set de índices de coluna
+  let selectionMode = 'cell'; // 'cell', 'row', 'column'
+  let selectionStart = null; // {row, col} para range selection com Shift
+  let isSelecting = false; // Flag para indicar se está em processo de seleção (drag)
+  
+  // Função para gerar chave de célula (row-col)
+  function getCellKey(rowIndex, colIndex) {
+    return `${rowIndex}-${colIndex}`;
+  }
+  
+  // Função para verificar se uma célula está selecionada
+  function isCellSelected(rowIndex, colIndex) {
+    // Verificar seleção direta da célula
+    if (selectedCells.has(getCellKey(rowIndex, colIndex))) {
+      return true;
+    }
+    // Verificar se a linha inteira está selecionada
+    if (selectedRows.has(rowIndex)) {
+      return true;
+    }
+    // Verificar se a coluna inteira está selecionada
+    if (selectedColumns.has(colIndex)) {
+      return true;
+    }
+    return false;
+  }
+  
+  // Função para selecionar célula única
+  function selectCell(rowIndex, colIndex, addToSelection = false) {
+    if (!addToSelection) {
+      // Limpar seleções anteriores
+      selectedCells = new Set();
+      selectedRows = new Set();
+      selectedColumns = new Set();
+    } else {
+      // Criar novos Sets para forçar reatividade
+      selectedCells = new Set(selectedCells);
+      selectedRows = new Set(selectedRows);
+      selectedColumns = new Set(selectedColumns);
+    }
+    selectedCells.add(getCellKey(rowIndex, colIndex));
+    selectedCells = selectedCells; // Forçar reatividade
+    selectionMode = 'cell';
+    selectionStart = { row: rowIndex, col: colIndex };
+  }
+  
+  // Função para selecionar linha inteira
+  function selectRow(rowIndex, addToSelection = false) {
+    if (!addToSelection) {
+      selectedCells = new Set();
+      selectedRows = new Set();
+      selectedColumns = new Set();
+    } else {
+      selectedCells = new Set(selectedCells);
+      selectedRows = new Set(selectedRows);
+      selectedColumns = new Set(selectedColumns);
+    }
+    selectedRows.add(rowIndex);
+    selectedRows = selectedRows; // Forçar reatividade
+    selectionMode = 'row';
+  }
+  
+  // Função para selecionar coluna inteira
+  function selectColumn(colIndex, addToSelection = false) {
+    if (!addToSelection) {
+      selectedCells = new Set();
+      selectedRows = new Set();
+      selectedColumns = new Set();
+    } else {
+      selectedCells = new Set(selectedCells);
+      selectedRows = new Set(selectedRows);
+      selectedColumns = new Set(selectedColumns);
+    }
+    selectedColumns.add(colIndex);
+    selectedColumns = selectedColumns; // Forçar reatividade
+    selectionMode = 'column';
+  }
+  
+  // Função para limpar todas as seleções
+  function clearSelection() {
+    selectedCells = new Set();
+    selectedRows = new Set();
+    selectedColumns = new Set();
+    selectionStart = null;
+  }
+  
+  // Função para selecionar range de células (Shift + Click)
+  function selectRange(startRow, startCol, endRow, endCol) {
+    const minRow = Math.min(startRow, endRow);
+    const maxRow = Math.max(startRow, endRow);
+    const minCol = Math.min(startCol, endCol);
+    const maxCol = Math.max(startCol, endCol);
+    
+    // Limpar seleções de linha/coluna quando selecionar range
+    selectedRows = new Set();
+    selectedColumns = new Set();
+    
+    // Criar novo Set para forçar reatividade
+    const newSelectedCells = new Set();
+    
+    // Adicionar todas as células do range
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        newSelectedCells.add(getCellKey(row, col));
+      }
+    }
+    
+    selectedCells = newSelectedCells; // Atribuir novo Set para forçar reatividade
+  }
+  
+  // Handler para click em célula
+  function handleCellClick(e, rowIndex, colIndex) {
+    // Não processar se clicou em checkbox, input ou elementos dentro deles
+    if (e.target.tagName === 'INPUT' || 
+        e.target.tagName === 'CHECKBOX' || 
+        e.target.closest('input') ||
+        e.target.closest('span.occupation-badge')) {
+      return;
+    }
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (e.shiftKey && selectionStart) {
+      // Seleção de range com Shift
+      selectRange(selectionStart.row, selectionStart.col, rowIndex, colIndex);
+    } else if (e.ctrlKey || e.metaKey) {
+      // Adicionar/remover da seleção com Ctrl/Cmd
+      const cellKey = getCellKey(rowIndex, colIndex);
+      const newSelectedCells = new Set(selectedCells);
+      if (newSelectedCells.has(cellKey)) {
+        newSelectedCells.delete(cellKey);
+      } else {
+        newSelectedCells.add(cellKey);
+      }
+      selectedCells = newSelectedCells; // Forçar reatividade
+      selectionStart = { row: rowIndex, col: colIndex };
+    } else {
+      // Seleção simples
+      selectCell(rowIndex, colIndex, false);
+    }
+  }
+  
+  // Handler para click em header de linha (se implementarmos)
+  function handleRowHeaderClick(e, rowIndex) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (e.ctrlKey || e.metaKey) {
+      // Toggle linha com Ctrl
+      const newSelectedRows = new Set(selectedRows);
+      if (newSelectedRows.has(rowIndex)) {
+        newSelectedRows.delete(rowIndex);
+      } else {
+        newSelectedRows.add(rowIndex);
+      }
+      selectedRows = newSelectedRows; // Forçar reatividade
+    } else {
+      selectRow(rowIndex, false);
+    }
+  }
+  
+  // Handler para click em header de coluna
+  function handleColumnHeaderClick(e, colIndex) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Não processar se clicou no checkbox do header
+    if (e.target.tagName === 'INPUT' || e.target.closest('input')) {
+      return;
+    }
+    
+    if (e.ctrlKey || e.metaKey) {
+      // Toggle coluna com Ctrl
+      const newSelectedColumns = new Set(selectedColumns);
+      if (newSelectedColumns.has(colIndex)) {
+        newSelectedColumns.delete(colIndex);
+      } else {
+        newSelectedColumns.add(colIndex);
+      }
+      selectedColumns = newSelectedColumns; // Forçar reatividade
+    } else {
+      selectColumn(colIndex, false);
+    }
+  }
+  
+  // Limpar seleção ao clicar fora da tabela
+  function handleClickOutside(e) {
+    if (!e.target.closest('.results-table')) {
+      clearSelection();
+    }
+  }
+  
+  // ========== FIM DO SISTEMA DE SELEÇÃO ==========
   
   // Função para buscar total de portas do caminho de rede da base de dados
   async function fetchCaminhoRedeTotal(olt, slot, pon) {
@@ -1756,6 +1953,9 @@
       
       // Inicializar a ferramenta (carrega Google Maps, verifica base, inicializa mapa)
       await initializeTool();
+      
+      // Adicionar listener para limpar seleção ao clicar fora da tabela
+      document.addEventListener('click', handleClickOutside);
     } catch (err) {
       console.error('Erro ao inicializar ferramenta:', err);
       error = 'Erro ao inicializar ferramenta: ' + err.message;
@@ -1770,6 +1970,9 @@
       mapObserver.disconnect();
       mapObserver = null;
     }
+    
+    // Remover listener de seleção
+    document.removeEventListener('click', handleClickOutside);
   });
 </script>
 
@@ -1949,7 +2152,7 @@
               <table class="results-table">
                 <thead>
                   <tr>
-                    <th>
+                    <th class:selected={selectedColumns.has(0)} on:click={(e) => handleColumnHeaderClick(e, 0)}>
                       <input 
                         type="checkbox" 
                         checked={allCTOsVisible}
@@ -1967,25 +2170,25 @@
                         }}
                       />
                     </th>
-                    <th>#</th>
-                    <th>CTO</th>
-                    <th>Cidade</th>
-                    <th>POP</th>
-                    <th>CHASSE</th>
-                    <th>PLACA</th>
-                    <th>OLT</th>
-                    <th>ID CTO</th>
-                    <th>Portas Total</th>
-                    <th>Ocupadas</th>
-                    <th>Disponíveis</th>
-                    <th>Ocupação</th>
-                    <th>Status</th>
-                    <th>Total de Portas no Caminho de Rede</th>
-                    <th>Total de CTOs no Caminho de Rede</th>
+                    <th class:selected={selectedColumns.has(1)} on:click={(e) => handleColumnHeaderClick(e, 1)}>#</th>
+                    <th class:selected={selectedColumns.has(2)} on:click={(e) => handleColumnHeaderClick(e, 2)}>CTO</th>
+                    <th class:selected={selectedColumns.has(3)} on:click={(e) => handleColumnHeaderClick(e, 3)}>Cidade</th>
+                    <th class:selected={selectedColumns.has(4)} on:click={(e) => handleColumnHeaderClick(e, 4)}>POP</th>
+                    <th class:selected={selectedColumns.has(5)} on:click={(e) => handleColumnHeaderClick(e, 5)}>CHASSE</th>
+                    <th class:selected={selectedColumns.has(6)} on:click={(e) => handleColumnHeaderClick(e, 6)}>PLACA</th>
+                    <th class:selected={selectedColumns.has(7)} on:click={(e) => handleColumnHeaderClick(e, 7)}>OLT</th>
+                    <th class:selected={selectedColumns.has(8)} on:click={(e) => handleColumnHeaderClick(e, 8)}>ID CTO</th>
+                    <th class:selected={selectedColumns.has(9)} on:click={(e) => handleColumnHeaderClick(e, 9)}>Portas Total</th>
+                    <th class:selected={selectedColumns.has(10)} on:click={(e) => handleColumnHeaderClick(e, 10)}>Ocupadas</th>
+                    <th class:selected={selectedColumns.has(11)} on:click={(e) => handleColumnHeaderClick(e, 11)}>Disponíveis</th>
+                    <th class:selected={selectedColumns.has(12)} on:click={(e) => handleColumnHeaderClick(e, 12)}>Ocupação</th>
+                    <th class:selected={selectedColumns.has(13)} on:click={(e) => handleColumnHeaderClick(e, 13)}>Status</th>
+                    <th class:selected={selectedColumns.has(14)} on:click={(e) => handleColumnHeaderClick(e, 14)}>Total de Portas no Caminho de Rede</th>
+                    <th class:selected={selectedColumns.has(15)} on:click={(e) => handleColumnHeaderClick(e, 15)}>Total de CTOs no Caminho de Rede</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {#each ctos as cto (getCTOKey(cto))}
+                  {#each ctos as cto, rowIndex (getCTOKey(cto))}
                     {@const ctoKey = getCTOKey(cto)}
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
                     {@const caminhoKey = getCaminhoRedeKey(cto)}
@@ -1993,8 +2196,8 @@
                     {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5}
                     {@const pctOcup = parseFloat(cto.pct_ocup || 0)}
                     {@const occupationClass = pctOcup < 50 ? 'low' : pctOcup >= 50 && pctOcup < 80 ? 'medium' : 'high'}
-                    <tr>
-                      <td class="checkbox-cell">
+                    <tr class:row-selected={selectedRows.has(rowIndex)}>
+                      <td class="checkbox-cell" class:cell-selected={isCellSelected(rowIndex, 0)} on:click={(e) => handleCellClick(e, rowIndex, 0)}>
                         <input 
                           type="checkbox" 
                           checked={isVisible}
@@ -2006,29 +2209,29 @@
                           }}
                         />
                       </td>
-                      <td class="numeric">{ctoNumbers.get(cto) || '-'}</td>
-                      <td class="cto-name-cell"><strong>{cto.nome || ''}</strong></td>
-                      <td>{cto.cidade || 'N/A'}</td>
-                      <td>{cto.pop || 'N/A'}</td>
-                      <td>{cto.olt || 'N/A'}</td>
-                      <td>{cto.slot || 'N/A'}</td>
-                      <td>{cto.pon || 'N/A'}</td>
-                      <td>{cto.id_cto || cto.id || 'N/A'}</td>
-                      <td class="numeric">{cto.vagas_total || 0}</td>
-                      <td class="numeric">{cto.clientes_conectados || 0}</td>
-                      <td class="numeric">{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
-                      <td>
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 1)} on:click={(e) => handleCellClick(e, rowIndex, 1)}>{ctoNumbers.get(cto) || '-'}</td>
+                      <td class="cto-name-cell" class:cell-selected={isCellSelected(rowIndex, 2)} on:click={(e) => handleCellClick(e, rowIndex, 2)}><strong>{cto.nome || ''}</strong></td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 3)} on:click={(e) => handleCellClick(e, rowIndex, 3)}>{cto.cidade || 'N/A'}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 4)} on:click={(e) => handleCellClick(e, rowIndex, 4)}>{cto.pop || 'N/A'}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 5)} on:click={(e) => handleCellClick(e, rowIndex, 5)}>{cto.olt || 'N/A'}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 6)} on:click={(e) => handleCellClick(e, rowIndex, 6)}>{cto.slot || 'N/A'}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 7)} on:click={(e) => handleCellClick(e, rowIndex, 7)}>{cto.pon || 'N/A'}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 8)} on:click={(e) => handleCellClick(e, rowIndex, 8)}>{cto.id_cto || cto.id || 'N/A'}</td>
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 9)} on:click={(e) => handleCellClick(e, rowIndex, 9)}>{cto.vagas_total || 0}</td>
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 10)} on:click={(e) => handleCellClick(e, rowIndex, 10)}>{cto.clientes_conectados || 0}</td>
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 11)} on:click={(e) => handleCellClick(e, rowIndex, 11)}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 12)} on:click={(e) => handleCellClick(e, rowIndex, 12)}>
                         <span class="occupation-badge {occupationClass}">{pctOcup.toFixed(1)}%</span>
                       </td>
-                      <td>{cto.status_cto || 'N/A'}</td>
-                      <td class="numeric">
+                      <td class:cell-selected={isCellSelected(rowIndex, 13)} on:click={(e) => handleCellClick(e, rowIndex, 13)}>{cto.status_cto || 'N/A'}</td>
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 14)} on:click={(e) => handleCellClick(e, rowIndex, 14)}>
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
                           <strong>{total}</strong>
                         {/if}
                       </td>
-                      <td class="numeric">
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 15)} on:click={(e) => handleCellClick(e, rowIndex, 15)}>
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
@@ -2773,6 +2976,100 @@
     color: #666;
     font-style: italic;
     font-size: 0.9em;
+  }
+
+  /* ============================================
+     ESTILOS DE SELEÇÃO DE TABELA
+     ============================================ */
+  
+  /* Célula selecionada */
+  .results-table td.cell-selected {
+    background-color: rgba(100, 149, 237, 0.15) !important;
+    border: 2px solid #6495ED !important;
+    position: relative;
+  }
+  
+  .results-table td.cell-selected::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border: 1px solid #7B68EE;
+    pointer-events: none;
+  }
+  
+  /* Header de coluna selecionada */
+  .results-table th.selected {
+    background-color: rgba(100, 149, 237, 0.2) !important;
+    border-bottom: 3px solid #6495ED !important;
+    color: #4c1d95;
+    font-weight: 700;
+    cursor: pointer;
+    position: relative;
+  }
+  
+  .results-table th.selected::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #6495ED 0%, #7B68EE 100%);
+  }
+  
+  /* Linha inteira selecionada */
+  .results-table tbody tr.row-selected {
+    background-color: rgba(100, 149, 237, 0.1) !important;
+  }
+  
+  .results-table tbody tr.row-selected td {
+    border-left: 3px solid #6495ED;
+    border-right: 3px solid #6495ED;
+  }
+  
+  .results-table tbody tr.row-selected:first-child td {
+    border-top: 3px solid #6495ED;
+  }
+  
+  .results-table tbody tr.row-selected:last-child td {
+    border-bottom: 3px solid #6495ED;
+  }
+  
+  /* Coluna inteira selecionada - aplicar estilo em todas as células da coluna */
+  .results-table tbody tr td.cell-selected {
+    border-left: 2px solid #7B68EE;
+    border-right: 2px solid #7B68EE;
+  }
+  
+  /* Cursor pointer para células clicáveis */
+  .results-table td:not(.checkbox-cell) {
+    cursor: cell;
+  }
+  
+  .results-table th:not(:first-child) {
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+  
+  .results-table th:not(:first-child):hover {
+    background-color: rgba(100, 149, 237, 0.1);
+  }
+  
+  /* Melhorar feedback visual ao passar o mouse sobre células */
+  .results-table td:not(.checkbox-cell):hover {
+    background-color: rgba(100, 149, 237, 0.05);
+  }
+  
+  /* Evitar seleção de texto durante seleção de células */
+  .results-table td.cell-selected,
+  .results-table th.selected {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
   }
 
   @media (max-width: 768px) {
