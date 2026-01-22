@@ -2001,6 +2001,32 @@
     return hull;
   }
   
+  // Função para suavizar bordas do polígono de forma conservadora (menos passos)
+  // Usada para grupos médios para evitar curvas estranhas
+  function smoothPolygonEdgesConservative(points) {
+    if (points.length < 3) return points;
+    
+    const smoothed = [];
+    const smoothingSteps = 1; // Apenas 1 passo para evitar curvas estranhas
+    
+    for (let i = 0; i < points.length; i++) {
+      const current = points[i];
+      const next = points[(i + 1) % points.length];
+      
+      smoothed.push(current);
+      
+      for (let step = 1; step <= smoothingSteps; step++) {
+        const t = step / (smoothingSteps + 1);
+        const smoothT = t * t * (3 - 2 * t);
+        const midLat = current.lat + (next.lat - current.lat) * smoothT;
+        const midLng = current.lng + (next.lng - current.lng) * smoothT;
+        smoothed.push({ lat: midLat, lng: midLng });
+      }
+    }
+    
+    return smoothed;
+  }
+  
   // Função para suavizar bordas do polígono
   // Ajustada para melhor qualidade com grupos grandes
   function smoothPolygonEdges(points) {
@@ -2267,13 +2293,16 @@
       return null;
     }
     
-    // Para grupos médios/grandes (50-200), usar filtragem otimizada
-    const margin = ctos.length > 20 ? 1.05 : 1.02;
+    // Filtrar pontos que estão dentro de outros círculos (não são parte da borda externa)
+    // Para grupos médios (50-200), usar filtragem mais conservadora para evitar bugs
+    // Margem maior para grupos médios evita remover pontos importantes da borda
+    const margin = ctos.length > 100 ? 1.05 : ctos.length > 50 ? 1.08 : ctos.length > 20 ? 1.05 : 1.02;
     let pointsToFilter = allPoints;
     
-    // Amostragem para grupos grandes (50-200)
-    if (ctos.length > 50) {
-      const sampleSize = Math.min(10000, allPoints.length);
+    // Amostragem apenas para grupos muito grandes (100+)
+    // Para grupos 50-100, usar todos os pontos para melhor qualidade
+    if (ctos.length > 100) {
+      const sampleSize = Math.min(12000, allPoints.length);
       const step = Math.max(1, Math.floor(allPoints.length / sampleSize));
       pointsToFilter = [];
       for (let i = 0; i < allPoints.length; i += step) {
@@ -2281,13 +2310,17 @@
       }
     }
     
-    // Filtrar pontos da borda externa (otimizado para grupos grandes)
+    // Filtrar pontos da borda externa
+    // IMPORTANTE: Para grupos < 100, verificar TODOS os círculos (não amostrar)
+    // Isso garante precisão e evita curvas estranhas
     const boundaryPoints = pointsToFilter.filter(point => {
       let isInsideAll = true;
-      // Para grupos grandes, verificar apenas uma amostra dos círculos (mais rápido)
-      const circlesToCheck = ctos.length > 100 
-        ? circles.filter((_, idx) => idx % Math.ceil(circles.length / 50) === 0) // Amostrar círculos
-        : circles;
+      
+      // Para grupos < 100, verificar todos os círculos (precisão máxima)
+      // Para grupos 100+, usar amostragem de círculos para performance
+      const circlesToCheck = ctos.length >= 100 
+        ? circles.filter((_, idx) => idx % Math.ceil(circles.length / 60) === 0) // Amostrar círculos
+        : circles; // Verificar todos para grupos < 100
       
       for (const circle of circlesToCheck) {
         const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
@@ -2303,7 +2336,14 @@
     });
     
     // Se não temos pontos suficientes na borda, usar todos os pontos
-    let pointsToUse = boundaryPoints.length >= 3 ? boundaryPoints : allPoints;
+    // Para grupos médios, garantir que temos pelo menos 20% dos pontos originais
+    let pointsToUse = boundaryPoints;
+    if (boundaryPoints.length < 3) {
+      pointsToUse = allPoints;
+    } else if (ctos.length >= 50 && ctos.length < 200 && boundaryPoints.length < allPoints.length * 0.2) {
+      // Para grupos médios, se filtramos muitos pontos, usar mais pontos para melhor qualidade
+      pointsToUse = allPoints;
+    }
     
     // Para grupos médios (20-200), adicionar pontos estratégicos para melhor cobertura
     if (ctos.length > 20 && ctos.length <= 200) {
@@ -2338,11 +2378,12 @@
     }
     
     // Limitar pontos para o convex hull (evitar problemas com muitos pontos)
+    // Para grupos médios (50-200), usar mais pontos para melhor qualidade
     let pointsForHull = pointsToUse;
-    if (pointsToUse.length > 5000) {
-      // Amostrar pontos para o convex hull se houver muitos
-      const hullSampleSize = 5000;
-      const hullStep = Math.max(1, Math.floor(pointsToUse.length / hullSampleSize));
+    const maxHullPoints = ctos.length > 100 ? 5000 : 8000; // Mais pontos para grupos médios
+    if (pointsToUse.length > maxHullPoints) {
+      // Amostrar pontos mantendo distribuição uniforme
+      const hullStep = Math.max(1, Math.floor(pointsToUse.length / maxHullPoints));
       pointsForHull = [];
       for (let i = 0; i < pointsToUse.length; i += hullStep) {
         pointsForHull.push(pointsToUse[i]);
@@ -2353,7 +2394,18 @@
     // Isso cria um polígono que envolve todos os círculos de forma natural e precisa
     let hull;
     try {
-      hull = computeConvexHull([...pointsForHull]); // Criar cópia para não modificar original
+      // Criar cópia para não modificar original e garantir que temos pontos únicos
+      const uniquePoints = [];
+      const seen = new Set();
+      for (const point of pointsForHull) {
+        const key = `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniquePoints.push(point);
+        }
+      }
+      
+      hull = computeConvexHull(uniquePoints);
     } catch (hullErr) {
       console.warn('⚠️ Erro ao calcular convex hull:', hullErr);
       hull = null;
@@ -2393,10 +2445,18 @@
     }
     
     // Suavizar o polígono adicionando pontos intermediários para bordas mais suaves
-    // Seguindo exatamente o padrão do MapaConsulta.svelte (sem expansão prévia)
+    // Para grupos médios (50-200), usar suavização mais conservadora para evitar curvas estranhas
     let smoothedHull;
     try {
-      smoothedHull = smoothPolygonEdges(hull);
+      // Para grupos médios com muitos pontos no hull, usar suavização reduzida
+      // Isso evita criar curvas estranhas que "puxam" para dentro ou fora
+      if (hull.length > 50 && ctos.length >= 50 && ctos.length < 200) {
+        // Usar função de suavização customizada com menos passos para grupos médios
+        smoothedHull = smoothPolygonEdgesConservative(hull);
+      } else {
+        smoothedHull = smoothPolygonEdges(hull);
+      }
+      
       if (!smoothedHull || smoothedHull.length < 3) {
         smoothedHull = hull; // Fallback para hull original se suavização falhar
       }
