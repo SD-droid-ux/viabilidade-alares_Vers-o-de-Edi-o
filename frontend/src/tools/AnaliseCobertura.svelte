@@ -2002,30 +2002,27 @@
   }
   
   // Função para suavizar bordas do polígono
+  // Seguindo exatamente o padrão do MapaConsulta.svelte
   function smoothPolygonEdges(points) {
     if (points.length < 3) return points;
     
     const smoothed = [];
-    const smoothingSteps = 10; // Aumentado para bordas extremamente suaves
+    const smoothingSteps = 2; // Mesmo valor do MapaConsulta.svelte para estabilidade
     
     for (let i = 0; i < points.length; i++) {
       const current = points[i];
       const next = points[(i + 1) % points.length];
-      const prev = points[(i - 1 + points.length) % points.length];
       
       // Adicionar ponto atual
       smoothed.push(current);
       
-      // Adicionar pontos intermediários suavizados com interpolação cúbica
+      // Adicionar pontos intermediários suavizados
       for (let step = 1; step <= smoothingSteps; step++) {
         const t = step / (smoothingSteps + 1);
-        // Usar smoothstep para interpolação mais suave
-        const smoothT = t * t * (3 - 2 * t);
-        
-        // Interpolação linear simples entre pontos adjacentes (mais estável)
+        // Interpolação linear com suavização
+        const smoothT = t * t * (3 - 2 * t); // Função de suavização (smoothstep)
         const midLat = current.lat + (next.lat - current.lat) * smoothT;
         const midLng = current.lng + (next.lng - current.lng) * smoothT;
-        
         smoothed.push({ lat: midLat, lng: midLng });
       }
     }
@@ -2169,37 +2166,17 @@
       });
     }
     
-    // Expandir ligeiramente o polígono para garantir que todas as CTOs fiquem dentro
-    // Calcular o centroide real do polígono (centro de massa)
-    let centerLat = 0, centerLng = 0, area = 0;
-    for (let i = 0; i < hull.length; i++) {
-      const j = (i + 1) % hull.length;
-      const cross = hull[i].lng * hull[j].lat - hull[j].lng * hull[i].lat;
-      area += cross;
-      centerLat += (hull[i].lat + hull[j].lat) * cross;
-      centerLng += (hull[i].lng + hull[j].lng) * cross;
-    }
-    area /= 2;
-    centerLat /= (6 * area);
-    centerLng /= (6 * area);
-    
-    // Expandir cada ponto uniformemente em 3% na direção do centro para fora
-    const expansionFactor = 1.03;
-    const expandedHull = hull.map(point => ({
-      lat: centerLat + (point.lat - centerLat) * expansionFactor,
-      lng: centerLng + (point.lng - centerLng) * expansionFactor
-    }));
-    
     // Suavizar o polígono adicionando pontos intermediários para bordas mais suaves
+    // Seguindo exatamente o padrão do MapaConsulta.svelte (sem expansão prévia)
     let smoothedHull;
     try {
-      smoothedHull = smoothPolygonEdges(expandedHull);
+      smoothedHull = smoothPolygonEdges(hull);
       if (!smoothedHull || smoothedHull.length < 3) {
-        smoothedHull = expandedHull; // Fallback para hull expandido se suavização falhar
+        smoothedHull = hull; // Fallback para hull original se suavização falhar
       }
     } catch (smoothErr) {
-      console.warn('⚠️ Erro ao suavizar polígono, usando hull expandido:', smoothErr);
-      smoothedHull = expandedHull; // Fallback para hull expandido
+      console.warn('⚠️ Erro ao suavizar polígono, usando hull original:', smoothErr);
+      smoothedHull = hull; // Fallback para hull original
     }
     
     // Criar polígono com forma suave e natural
