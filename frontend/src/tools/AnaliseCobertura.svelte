@@ -78,6 +78,7 @@
   let selectionMode = 'cell'; // 'cell', 'row', 'column'
   let selectionStart = null; // {row, col} para range selection com Shift
   let isSelecting = false; // Flag para indicar se está em processo de seleção (drag)
+  let selectionVersion = 0; // Versão para forçar reatividade do Svelte
   
   // Função para gerar chave de célula (row-col)
   function getCellKey(rowIndex, colIndex) {
@@ -86,6 +87,9 @@
   
   // Função para verificar se uma célula está selecionada
   function isCellSelected(rowIndex, colIndex) {
+    // Usar selectionVersion para forçar reatividade
+    const _ = selectionVersion;
+    
     // Verificar seleção direta da célula
     if (selectedCells.has(getCellKey(rowIndex, colIndex))) {
       return true;
@@ -150,6 +154,8 @@
     selectedColumns.add(colIndex);
     selectedColumns = selectedColumns; // Forçar reatividade
     selectionMode = 'column';
+    selectionVersion++; // Forçar atualização
+    console.log('Coluna selecionada:', colIndex, 'Colunas selecionadas:', Array.from(selectedColumns));
   }
   
   // Função para limpar todas as seleções
@@ -257,6 +263,8 @@
     e.preventDefault();
     e.stopPropagation();
     
+    console.log('Header clicado, colIndex:', colIndex);
+    
     if (e.ctrlKey || e.metaKey) {
       // Toggle coluna com Ctrl
       const newSelectedColumns = new Set(selectedColumns);
@@ -272,6 +280,8 @@
       selectedColumns = newSelectedColumns; // Forçar reatividade
       selectedCells = newSelectedCells;
       selectedRows = newSelectedRows;
+      selectionVersion++; // Forçar atualização
+      console.log('Toggle coluna:', colIndex, 'Colunas selecionadas:', Array.from(selectedColumns));
     } else {
       selectColumn(colIndex, false);
     }
@@ -3025,6 +3035,13 @@
     font-weight: 700;
     cursor: pointer;
     position: relative;
+    z-index: 1;
+  }
+  
+  /* Garantir que todos os headers sejam clicáveis */
+  .results-table th {
+    position: relative;
+    z-index: 1;
   }
   
   .results-table th.selected::after {
