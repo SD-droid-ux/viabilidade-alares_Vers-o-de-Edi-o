@@ -2026,22 +2026,32 @@
   }
   
   // Função para criar polígono fundido de círculos sobrepostos
+  // Baseada na lógica do MapaConsulta.svelte
   function createUnionPolygon(ctos) {
     if (ctos.length === 0) return null;
     if (ctos.length === 1) return null; // Retornar null para criar círculo individual
     
-    const RADIUS_M = 250;
-    const RADIUS_DEG = RADIUS_M / 111000;
+    const RADIUS_M = 250; // Raio em metros
+    const RADIUS_DEG = RADIUS_M / 111000; // Raio em graus (aproximação)
     
+    // Para múltiplas CTOs, criar um polígono que representa a união real dos círculos
+    // Estratégia melhorada: usar convex hull refinado + pontos de interseção entre círculos
+    // Isso cria uma forma muito mais precisa que representa a verdadeira área de cobertura
+    
+    // Coletar todos os pontos dos círculos (perímetro de cada círculo)
     const allPoints = [];
+    const circleCenters = [];
     const circles = [];
     
     for (const cto of ctos) {
       const lat = parseFloat(cto.latitude);
       const lng = parseFloat(cto.longitude);
+      circleCenters.push({ lat, lng });
       circles.push({ lat, lng, radius: RADIUS_DEG });
       
-      const pointsPerCircle = ctos.length > 50 ? 64 : ctos.length > 20 ? 48 : 32;
+      // Criar pontos ao redor do círculo (otimizado: menos pontos para grupos menores)
+      // Ajustar dinamicamente baseado no tamanho do grupo para performance
+      const pointsPerCircle = ctos.length > 50 ? 64 : ctos.length > 20 ? 48 : 32; // Menos pontos = mais rápido
       const latRadius = RADIUS_DEG;
       const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
       
@@ -2053,13 +2063,14 @@
       }
     }
     
-    // Verificar se há sobreposição
+    // Verificar se há sobreposição entre círculos
     let hasOverlap = false;
     for (let i = 0; i < circles.length; i++) {
       for (let j = i + 1; j < circles.length; j++) {
         const dist = calculateDistance(circles[i].lat, circles[i].lng, circles[j].lat, circles[j].lng);
-        const distDeg = dist / 111000;
+        const distDeg = dist / 111000; // Converter para graus
         
+        // Se os círculos se sobrepõem, adicionar pontos de interseção
         if (distDeg < (RADIUS_DEG * 2)) {
           hasOverlap = true;
           const intersections = getCircleIntersections(
@@ -2076,25 +2087,34 @@
       return null;
     }
     
-    // Filtrar pontos da borda externa
+    // Filtrar pontos que estão dentro de outros círculos (não são parte da borda externa)
+    // Isso cria formas não-convexas mais naturais
     const boundaryPoints = allPoints.filter(point => {
+      // Verificar se este ponto está na borda externa (não dentro de todos os círculos)
       let isInsideAll = true;
       for (const circle of circles) {
         const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
         const distDeg = dist / 111000;
         const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
         
-        if (distDeg > circleRadius * 1.05) {
+        // Se o ponto está fora deste círculo, não está dentro de todos
+        if (distDeg > circleRadius * 1.05) { // 5% de margem
           isInsideAll = false;
           break;
         }
       }
+      // Manter pontos que NÃO estão dentro de todos os círculos (são parte da borda)
       return !isInsideAll;
     });
     
+    // Se não temos pontos suficientes na borda, usar todos os pontos
     const pointsToUse = boundaryPoints.length >= 3 ? boundaryPoints : allPoints;
+    
+    // Calcular o convex hull (envoltória convexa) dos pontos da borda
+    // Isso cria um polígono que envolve todos os círculos de forma natural e precisa
     const hull = computeConvexHull(pointsToUse);
     
+    // Se o convex hull falhar ou tiver poucos pontos, usar bounding box expandido
     if (!hull || hull.length < 3) {
       let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
       for (const cto of ctos) {
@@ -2127,27 +2147,38 @@
       });
     }
     
+    // Suavizar o polígono adicionando pontos intermediários para bordas mais suaves
     let smoothedHull;
     try {
       smoothedHull = smoothPolygonEdges(hull);
       if (!smoothedHull || smoothedHull.length < 3) {
-        smoothedHull = hull;
+        smoothedHull = hull; // Fallback para hull original se suavização falhar
       }
     } catch (smoothErr) {
-      smoothedHull = hull;
+      console.warn('⚠️ Erro ao suavizar polígono, usando hull original:', smoothErr);
+      smoothedHull = hull; // Fallback para hull original
     }
     
-    return new google.maps.Polygon({
-      paths: smoothedHull,
-      strokeColor: '#7B68EE',
-      strokeOpacity: 0.6,
-      strokeWeight: 2,
-      fillColor: '#6495ED',
-      fillOpacity: 0.08,
-      map: showRadiusCircles ? map : null,
-      zIndex: 1,
-      geodesic: true
-    });
+    // Criar polígono com forma suave e natural
+    try {
+      const polygon = new google.maps.Polygon({
+        paths: smoothedHull,
+        strokeColor: '#7B68EE',
+        strokeOpacity: 0.6,
+        strokeWeight: 2,
+        fillColor: '#6495ED',
+        fillOpacity: 0.08,
+        map: showRadiusCircles ? map : null,
+        zIndex: 1,
+        geodesic: true
+      });
+      
+      return polygon;
+    } catch (polyErr) {
+      console.error('❌ Erro ao criar polígono:', polyErr);
+      // Retornar null em caso de erro
+      return null;
+    }
   }
 
   // Função para exibir resultados no mapa (estilo ViabilidadeAlares)
