@@ -1001,6 +1001,12 @@
       gestureHandling: 'greedy'
     });
     
+    // Adicionar listener para clique com botão direito no mapa
+    map.addListener('rightclick', (e) => {
+      e.stop(); // Prevenir menu de contexto padrão do navegador
+      showContextMenu(e.latLng);
+    });
+    
     mapInitialized = true;
     console.log('✅ Mapa inicializado com sucesso');
   }
@@ -1087,6 +1093,8 @@
   
   // Array para armazenar círculos de raio de 250m das CTOs pesquisadas
   let radiusCircles = [];
+  let showRadiusCircles = true; // Controla a visibilidade dos círculos de 250m
+  let contextMenuInfoWindow = null; // InfoWindow para o menu de contexto
 
   // Limpar marcadores do mapa
   function clearMap() {
@@ -1297,7 +1305,7 @@
             strokeWeight: 2,
             fillColor: '#6495ED', // Cor de preenchimento (azul do projeto)
             fillOpacity: 0.08, // Opacidade reduzida para evitar acúmulo visual quando há múltiplos círculos
-            map: map,
+            map: showRadiusCircles ? map : null, // Mostrar apenas se showRadiusCircles for true
             center: { lat, lng },
             radius: 250, // Raio de 250 metros
             zIndex: 1 // Abaixo dos marcadores
@@ -1736,7 +1744,7 @@
             strokeWeight: 2,
             fillColor: '#6495ED', // Cor de preenchimento (azul do projeto)
             fillOpacity: 0.08, // Opacidade reduzida para evitar acúmulo visual quando há múltiplos círculos
-            map: map,
+            map: showRadiusCircles ? map : null, // Mostrar apenas se showRadiusCircles for true
             center: { lat, lng },
             radius: 250, // Raio de 250 metros
             zIndex: 1 // Abaixo dos marcadores
@@ -1868,6 +1876,78 @@
     }
   }
 
+  // Função para mostrar/ocultar círculos de 250m
+  function toggleRadiusCircles() {
+    showRadiusCircles = !showRadiusCircles;
+    radiusCircles.forEach(circle => {
+      if (circle && circle.setMap) {
+        if (showRadiusCircles) {
+          circle.setMap(map);
+        } else {
+          circle.setMap(null);
+        }
+      }
+    });
+    
+    // Fechar InfoWindow de contexto
+    if (contextMenuInfoWindow) {
+      contextMenuInfoWindow.close();
+      contextMenuInfoWindow = null;
+    }
+  }
+  
+  // Função para mostrar menu de contexto no mapa
+  function showContextMenu(position) {
+    // Fechar InfoWindow anterior se existir
+    if (contextMenuInfoWindow) {
+      contextMenuInfoWindow.close();
+    }
+    
+    // Criar conteúdo do InfoWindow
+    const content = `
+      <div style="padding: 8px; min-width: 200px;">
+        <div style="font-weight: bold; margin-bottom: 8px; color: #7B68EE;">Menu do Mapa</div>
+        <button 
+          id="toggle-circles-btn" 
+          style="
+            width: 100%; 
+            padding: 8px 12px; 
+            background-color: ${showRadiusCircles ? '#DC3545' : '#28A745'}; 
+            color: white; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+          "
+          onmouseover="this.style.opacity='0.9'"
+          onmouseout="this.style.opacity='1'"
+        >
+          ${showRadiusCircles ? 'Ocultar' : 'Mostrar'} Círculos de 250m
+        </button>
+      </div>
+    `;
+    
+    // Criar InfoWindow
+    contextMenuInfoWindow = new google.maps.InfoWindow({
+      content: content,
+      position: position
+    });
+    
+    // Abrir InfoWindow
+    contextMenuInfoWindow.open(map);
+    
+    // Adicionar event listener ao botão após o InfoWindow ser aberto
+    setTimeout(() => {
+      const button = document.getElementById('toggle-circles-btn');
+      if (button) {
+        button.addEventListener('click', () => {
+          toggleRadiusCircles();
+        });
+      }
+    }, 100);
+  }
+  
   // Função para exibir resultados no mapa (estilo ViabilidadeAlares)
   async function displayResultsOnMap() {
     if (!map || !google.maps) {
@@ -2394,6 +2474,12 @@
     document.removeEventListener('selectstart', preventTextSelectionDrag);
     document.removeEventListener('dragstart', preventTextSelection);
     document.removeEventListener('keydown', handleCopyKeydown);
+    
+    // Fechar InfoWindow de contexto se estiver aberto
+    if (contextMenuInfoWindow) {
+      contextMenuInfoWindow.close();
+      contextMenuInfoWindow = null;
+    }
   });
 </script>
 
