@@ -2204,25 +2204,11 @@
                     {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5}
                     {@const pctOcup = parseFloat(cto.pct_ocup || 0)}
                     {@const occupationClass = pctOcup < 50 ? 'low' : pctOcup >= 50 && pctOcup < 80 ? 'medium' : 'high'}
-                    {@const isRowSelected = selectedRows.includes(rowIndex)}
-                    {@const isCell0Selected = isCellSelected(rowIndex, 0)}
-                    {@const isCell1Selected = isCellSelected(rowIndex, 1)}
-                    {@const isCell2Selected = isCellSelected(rowIndex, 2)}
-                    {@const isCell3Selected = isCellSelected(rowIndex, 3)}
-                    {@const isCell4Selected = isCellSelected(rowIndex, 4)}
-                    {@const isCell5Selected = isCellSelected(rowIndex, 5)}
-                    {@const isCell6Selected = isCellSelected(rowIndex, 6)}
-                    {@const isCell7Selected = isCellSelected(rowIndex, 7)}
-                    {@const isCell8Selected = isCellSelected(rowIndex, 8)}
-                    {@const isCell9Selected = isCellSelected(rowIndex, 9)}
-                    {@const isCell10Selected = isCellSelected(rowIndex, 10)}
-                    {@const isCell11Selected = isCellSelected(rowIndex, 11)}
-                    {@const isCell12Selected = isCellSelected(rowIndex, 12)}
-                    {@const isCell13Selected = isCellSelected(rowIndex, 13)}
-                    {@const isCell14Selected = isCellSelected(rowIndex, 14)}
-                    {@const isCell15Selected = isCellSelected(rowIndex, 15)}
-                    <tr class:row-selected={isRowSelected}>
-                      <td class="checkbox-cell" class:cell-selected={isCell0Selected} on:click={(e) => handleCellClick(e, rowIndex, 0)}>
+                    {@const _ = selectedColumns} <!-- Forçar reatividade quando selectedColumns mudar -->
+                    {@const _2 = selectedCells} <!-- Forçar reatividade quando selectedCells mudar -->
+                    {@const _3 = selectedRows} <!-- Forçar reatividade quando selectedRows mudar -->
+                    <tr class:row-selected={selectedRows.includes(rowIndex)}>
+                      <td class="checkbox-cell" class:cell-selected={isCellSelected(rowIndex, 0)} on:click={(e) => handleCellClick(e, rowIndex, 0)}>
                         <input 
                           type="checkbox" 
                           checked={isVisible}
@@ -2234,29 +2220,29 @@
                           }}
                         />
                       </td>
-                      <td class="numeric" class:cell-selected={isCell1Selected} on:click={(e) => handleCellClick(e, rowIndex, 1)}>{ctoNumbers.get(cto) || '-'}</td>
-                      <td class="cto-name-cell" class:cell-selected={isCell2Selected} on:click={(e) => handleCellClick(e, rowIndex, 2)}><strong>{cto.nome || ''}</strong></td>
-                      <td class:cell-selected={isCell3Selected} on:click={(e) => handleCellClick(e, rowIndex, 3)}>{cto.cidade || 'N/A'}</td>
-                      <td class:cell-selected={isCell4Selected} on:click={(e) => handleCellClick(e, rowIndex, 4)}>{cto.pop || 'N/A'}</td>
-                      <td class:cell-selected={isCell5Selected} on:click={(e) => handleCellClick(e, rowIndex, 5)}>{cto.olt || 'N/A'}</td>
-                      <td class:cell-selected={isCell6Selected} on:click={(e) => handleCellClick(e, rowIndex, 6)}>{cto.slot || 'N/A'}</td>
-                      <td class:cell-selected={isCell7Selected} on:click={(e) => handleCellClick(e, rowIndex, 7)}>{cto.pon || 'N/A'}</td>
-                      <td class:cell-selected={isCell8Selected} on:click={(e) => handleCellClick(e, rowIndex, 8)}>{cto.id_cto || cto.id || 'N/A'}</td>
-                      <td class="numeric" class:cell-selected={isCell9Selected} on:click={(e) => handleCellClick(e, rowIndex, 9)}>{cto.vagas_total || 0}</td>
-                      <td class="numeric" class:cell-selected={isCell10Selected} on:click={(e) => handleCellClick(e, rowIndex, 10)}>{cto.clientes_conectados || 0}</td>
-                      <td class="numeric" class:cell-selected={isCell11Selected} on:click={(e) => handleCellClick(e, rowIndex, 11)}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
-                      <td class:cell-selected={isCell12Selected} on:click={(e) => handleCellClick(e, rowIndex, 12)}>
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 1)} on:click={(e) => handleCellClick(e, rowIndex, 1)}>{ctoNumbers.get(cto) || '-'}</td>
+                      <td class="cto-name-cell" class:cell-selected={isCellSelected(rowIndex, 2)} on:click={(e) => handleCellClick(e, rowIndex, 2)}><strong>{cto.nome || ''}</strong></td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 3)} on:click={(e) => handleCellClick(e, rowIndex, 3)}>{cto.cidade || 'N/A'}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 4)} on:click={(e) => handleCellClick(e, rowIndex, 4)}>{cto.pop || 'N/A'}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 5)} on:click={(e) => handleCellClick(e, rowIndex, 5)}>{cto.olt || 'N/A'}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 6)} on:click={(e) => handleCellClick(e, rowIndex, 6)}>{cto.slot || 'N/A'}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 7)} on:click={(e) => handleCellClick(e, rowIndex, 7)}>{cto.pon || 'N/A'}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 8)} on:click={(e) => handleCellClick(e, rowIndex, 8)}>{cto.id_cto || cto.id || 'N/A'}</td>
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 9)} on:click={(e) => handleCellClick(e, rowIndex, 9)}>{cto.vagas_total || 0}</td>
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 10)} on:click={(e) => handleCellClick(e, rowIndex, 10)}>{cto.clientes_conectados || 0}</td>
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 11)} on:click={(e) => handleCellClick(e, rowIndex, 11)}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
+                      <td class:cell-selected={isCellSelected(rowIndex, 12)} on:click={(e) => handleCellClick(e, rowIndex, 12)}>
                         <span class="occupation-badge {occupationClass}">{pctOcup.toFixed(1)}%</span>
                       </td>
-                      <td class:cell-selected={isCell13Selected} on:click={(e) => handleCellClick(e, rowIndex, 13)}>{cto.status_cto || 'N/A'}</td>
-                      <td class="numeric" class:cell-selected={isCell14Selected} on:click={(e) => handleCellClick(e, rowIndex, 14)}>
+                      <td class:cell-selected={isCellSelected(rowIndex, 13)} on:click={(e) => handleCellClick(e, rowIndex, 13)}>{cto.status_cto || 'N/A'}</td>
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 14)} on:click={(e) => handleCellClick(e, rowIndex, 14)}>
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
                           <strong>{total}</strong>
                         {/if}
                       </td>
-                      <td class="numeric" class:cell-selected={isCell15Selected} on:click={(e) => handleCellClick(e, rowIndex, 15)}>
+                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 15)} on:click={(e) => handleCellClick(e, rowIndex, 15)}>
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
