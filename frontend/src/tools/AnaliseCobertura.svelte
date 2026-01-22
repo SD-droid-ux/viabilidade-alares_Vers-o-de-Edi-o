@@ -822,25 +822,18 @@
   $: if (ctos && ctos.length > 0) {
     // Forçar recálculo - ctoNumbersVersion será incrementado quando visibilidade mudar
     const _ = ctoNumbersVersion;
-    // Também forçar recálculo quando ctoVisibility ou ctoMarkOrder mudarem
+    // Também forçar recálculo quando ctoVisibility, ctoMarkOrder ou useVisualOrder mudarem
     const _visibility = Array.from(ctoVisibility.entries());
     const _markOrder = Array.from(ctoMarkOrder.entries());
+    const _useVisualOrder = useVisualOrder;
     ctoNumbers = calculateCTONumbers();
     
     // Atualizar o mapa sempre que a numeração mudar
-    // Usar setTimeout para garantir que a atualização aconteça após o ciclo de reatividade
-    // E garantir que ctoNumbers esteja populado antes de atualizar o mapa
+    // Só atualizar se ctoNumbers estiver populado (evitar loop infinito)
     if (map && google?.maps && ctoNumbers.size > 0) {
       setTimeout(() => {
         displayResultsOnMap();
       }, 50);
-    } else if (map && google?.maps && ctoNumbers.size === 0 && ctos.length > 0) {
-      // Se ctoNumbers está vazio mas há CTOs, aguardar um pouco mais e tentar novamente
-      setTimeout(() => {
-        if (ctoNumbers.size > 0) {
-          displayResultsOnMap();
-        }
-      }, 100);
     }
   } else {
     ctoNumbers = new Map();
@@ -1417,7 +1410,27 @@
           ctoVisibility.set(ctoKey, true); // Todas visíveis por padrão
         }
       }
+      // Quando CTOs são encontradas, usar ordem visual e limpar ordem de marcação
+      useVisualOrder = true;
+      ctoMarkOrder = new Map();
+      markOrderCounter = 0;
+      ctoVisibility = ctoVisibility; // Forçar reatividade
       ctoNumbersVersion++; // Forçar atualização da numeração
+      
+      // Aguardar a reatividade do Svelte recalcular ctoNumbers antes de atualizar o mapa
+      await tick();
+      await new Promise(resolve => setTimeout(resolve, 150));
+      
+      // Verificar se ctoNumbers foi populado antes de atualizar o mapa
+      if (ctoNumbers.size > 0) {
+        await displayResultsOnMap();
+      } else {
+        console.warn('ctoNumbers ainda está vazio após busca, tentando novamente...');
+        await new Promise(resolve => setTimeout(resolve, 200));
+        if (ctoNumbers.size > 0) {
+          await displayResultsOnMap();
+        }
+      }
 
       console.log(`✅ Total final: ${searchedCTOs.length} CTO(s) pesquisada(s) + ${nearbyCTOs.length} CTO(s) próxima(s) = ${ctos.length} CTO(s) no total`);
       console.log(`📋 CTOs pesquisadas na lista: ${searchedCTOsList.length}, CTOs pesquisadas no resultado: ${searchedCTOs.length}, CTOs próximas: ${nearbyCTOs.length}`);
@@ -1775,7 +1788,27 @@
           ctoVisibility.set(ctoKey, true); // Todas visíveis por padrão
         }
       }
+      // Quando CTOs são encontradas, usar ordem visual e limpar ordem de marcação
+      useVisualOrder = true;
+      ctoMarkOrder = new Map();
+      markOrderCounter = 0;
+      ctoVisibility = ctoVisibility; // Forçar reatividade
       ctoNumbersVersion++; // Forçar atualização da numeração
+      
+      // Aguardar a reatividade do Svelte recalcular ctoNumbers antes de atualizar o mapa
+      await tick();
+      await new Promise(resolve => setTimeout(resolve, 150));
+      
+      // Verificar se ctoNumbers foi populado antes de atualizar o mapa
+      if (ctoNumbers.size > 0) {
+        await displayResultsOnMap();
+      } else {
+        console.warn('ctoNumbers ainda está vazio após busca, tentando novamente...');
+        await new Promise(resolve => setTimeout(resolve, 200));
+        if (ctoNumbers.size > 0) {
+          await displayResultsOnMap();
+        }
+      }
 
       if (ctos.length === 0) {
         error = 'Nenhuma CTO encontrada dentro de 250m dos pontos pesquisados.';
@@ -1842,24 +1875,16 @@
     });
     markers = [];
 
-    // Evitar múltiplas tentativas simultâneas apenas se já estiver processando
-    // Mas permitir atualizações se ctoNumbers mudou
+    // Evitar múltiplas tentativas simultâneas
     if (isDisplayingMarkers) {
-      // Se ctoNumbers está vazio, aguardar um pouco e tentar novamente
-      if (ctoNumbers.size === 0) {
-        console.warn('Aguardando ctoNumbers ser populado...');
-        setTimeout(() => displayResultsOnMap(), 100);
-        return;
-      }
-      // Se já está processando e ctoNumbers está populado, ignorar chamada duplicada
       console.warn('Já está exibindo marcadores, ignorando chamada duplicada');
       return;
     }
     
     // Verificar se ctoNumbers está vazio antes de começar
+    // Se estiver vazio, não processar (evitar loop infinito)
     if (ctoNumbers.size === 0 && ctos.length > 0) {
-      console.warn('ctoNumbers está vazio, aguardando recálculo...');
-      setTimeout(() => displayResultsOnMap(), 100);
+      console.warn('ctoNumbers está vazio, pulando atualização do mapa. Aguarde o recálculo da numeração.');
       return;
     }
     
