@@ -833,7 +833,7 @@
   // Estados de minimização dos boxes
   let isSearchPanelMinimized = false;
   let isMapMinimized = false;
-  let isTableMinimized = false;
+  let isTableMinimized = true; // Começar minimizada quando não há resultados
   
   // Reactive statements para calcular estilos automaticamente
   $: sidebarWidthStyle = `${sidebarWidth}px`;
@@ -1109,6 +1109,8 @@
     loadingCTOs = true;
     error = null;
     ctos = [];
+    // Minimizar tabela quando limpar resultados
+    isTableMinimized = true;
     clearMap();
 
     try {
@@ -1319,6 +1321,11 @@
       // IMPORTANTE: Todas as CTOs pesquisadas aparecem, mesmo com coordenadas duplicadas
       ctos = [...searchedCTOs, ...nearbyCTOs];
       
+      // Expandir tabela automaticamente quando houver resultados
+      if (ctos.length > 0) {
+        isTableMinimized = false;
+      }
+      
       // Inicializar visibilidade de todas as CTOs como verdadeira (todas visíveis por padrão)
       ctoVisibility.clear();
       for (const cto of ctos) {
@@ -1448,6 +1455,8 @@
     loadingCTOs = true;
     error = null;
     ctos = [];
+    // Minimizar tabela quando limpar resultados
+    isTableMinimized = true;
     clearMap();
 
     try {
@@ -2156,9 +2165,10 @@
   // Inicializar ferramenta
   onMount(async () => {
     try {
-      // Garantir que mapa e tabela estejam visíveis ao carregar
+      // Garantir que mapa esteja visível ao carregar
+      // Tabela começa minimizada e será expandida quando houver resultados
       isMapMinimized = false;
-      isTableMinimized = false;
+      isTableMinimized = true; // Começar minimizada quando não há resultados
       
       // Carregar preferências de redimensionamento
       loadResizePreferences();
