@@ -2210,9 +2210,24 @@
                     {@const estaCarregando = caminhosCarregando && total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5}
                     {@const pctOcup = parseFloat(cto.pct_ocup || 0)}
                     {@const occupationClass = pctOcup < 50 ? 'low' : pctOcup >= 50 && pctOcup < 80 ? 'medium' : 'high'}
-                    {@const _ = selectionKey} <!-- Forçar reatividade quando seleção mudar -->
+                    {@const cellKey0 = getCellKey(rowIndex, 0)}
+                    {@const cellKey1 = getCellKey(rowIndex, 1)}
+                    {@const cellKey2 = getCellKey(rowIndex, 2)}
+                    {@const cellKey3 = getCellKey(rowIndex, 3)}
+                    {@const cellKey4 = getCellKey(rowIndex, 4)}
+                    {@const cellKey5 = getCellKey(rowIndex, 5)}
+                    {@const cellKey6 = getCellKey(rowIndex, 6)}
+                    {@const cellKey7 = getCellKey(rowIndex, 7)}
+                    {@const cellKey8 = getCellKey(rowIndex, 8)}
+                    {@const cellKey9 = getCellKey(rowIndex, 9)}
+                    {@const cellKey10 = getCellKey(rowIndex, 10)}
+                    {@const cellKey11 = getCellKey(rowIndex, 11)}
+                    {@const cellKey12 = getCellKey(rowIndex, 12)}
+                    {@const cellKey13 = getCellKey(rowIndex, 13)}
+                    {@const cellKey14 = getCellKey(rowIndex, 14)}
+                    {@const cellKey15 = getCellKey(rowIndex, 15)}
                     <tr class:row-selected={selectedRows.includes(rowIndex)}>
-                      <td class="checkbox-cell" class:cell-selected={isCellSelected(rowIndex, 0)} on:click={(e) => handleCellClick(e, rowIndex, 0)}>
+                      <td class="checkbox-cell" class:cell-selected={selectedCells.includes(cellKey0) || selectedRows.includes(rowIndex) || selectedColumns.includes(0)} on:click={(e) => handleCellClick(e, rowIndex, 0)}>
                         <input 
                           type="checkbox" 
                           checked={isVisible}
@@ -2224,29 +2239,29 @@
                           }}
                         />
                       </td>
-                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 1)} on:click={(e) => handleCellClick(e, rowIndex, 1)}>{ctoNumbers.get(cto) || '-'}</td>
-                      <td class="cto-name-cell" class:cell-selected={isCellSelected(rowIndex, 2)} on:click={(e) => handleCellClick(e, rowIndex, 2)}><strong>{cto.nome || ''}</strong></td>
-                      <td class:cell-selected={isCellSelected(rowIndex, 3)} on:click={(e) => handleCellClick(e, rowIndex, 3)}>{cto.cidade || 'N/A'}</td>
-                      <td class:cell-selected={isCellSelected(rowIndex, 4)} on:click={(e) => handleCellClick(e, rowIndex, 4)}>{cto.pop || 'N/A'}</td>
-                      <td class:cell-selected={isCellSelected(rowIndex, 5)} on:click={(e) => handleCellClick(e, rowIndex, 5)}>{cto.olt || 'N/A'}</td>
-                      <td class:cell-selected={isCellSelected(rowIndex, 6)} on:click={(e) => handleCellClick(e, rowIndex, 6)}>{cto.slot || 'N/A'}</td>
-                      <td class:cell-selected={isCellSelected(rowIndex, 7)} on:click={(e) => handleCellClick(e, rowIndex, 7)}>{cto.pon || 'N/A'}</td>
-                      <td class:cell-selected={isCellSelected(rowIndex, 8)} on:click={(e) => handleCellClick(e, rowIndex, 8)}>{cto.id_cto || cto.id || 'N/A'}</td>
-                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 9)} on:click={(e) => handleCellClick(e, rowIndex, 9)}>{cto.vagas_total || 0}</td>
-                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 10)} on:click={(e) => handleCellClick(e, rowIndex, 10)}>{cto.clientes_conectados || 0}</td>
-                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 11)} on:click={(e) => handleCellClick(e, rowIndex, 11)}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
-                      <td class:cell-selected={isCellSelected(rowIndex, 12)} on:click={(e) => handleCellClick(e, rowIndex, 12)}>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey1) || selectedRows.includes(rowIndex) || selectedColumns.includes(1)} on:click={(e) => handleCellClick(e, rowIndex, 1)}>{ctoNumbers.get(cto) || '-'}</td>
+                      <td class="cto-name-cell" class:cell-selected={selectedCells.includes(cellKey2) || selectedRows.includes(rowIndex) || selectedColumns.includes(2)} on:click={(e) => handleCellClick(e, rowIndex, 2)}><strong>{cto.nome || ''}</strong></td>
+                      <td class:cell-selected={selectedCells.includes(cellKey3) || selectedRows.includes(rowIndex) || selectedColumns.includes(3)} on:click={(e) => handleCellClick(e, rowIndex, 3)}>{cto.cidade || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey4) || selectedRows.includes(rowIndex) || selectedColumns.includes(4)} on:click={(e) => handleCellClick(e, rowIndex, 4)}>{cto.pop || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey5) || selectedRows.includes(rowIndex) || selectedColumns.includes(5)} on:click={(e) => handleCellClick(e, rowIndex, 5)}>{cto.olt || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey6) || selectedRows.includes(rowIndex) || selectedColumns.includes(6)} on:click={(e) => handleCellClick(e, rowIndex, 6)}>{cto.slot || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey7) || selectedRows.includes(rowIndex) || selectedColumns.includes(7)} on:click={(e) => handleCellClick(e, rowIndex, 7)}>{cto.pon || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey8) || selectedRows.includes(rowIndex) || selectedColumns.includes(8)} on:click={(e) => handleCellClick(e, rowIndex, 8)}>{cto.id_cto || cto.id || 'N/A'}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey9) || selectedRows.includes(rowIndex) || selectedColumns.includes(9)} on:click={(e) => handleCellClick(e, rowIndex, 9)}>{cto.vagas_total || 0}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey10) || selectedRows.includes(rowIndex) || selectedColumns.includes(10)} on:click={(e) => handleCellClick(e, rowIndex, 10)}>{cto.clientes_conectados || 0}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey11) || selectedRows.includes(rowIndex) || selectedColumns.includes(11)} on:click={(e) => handleCellClick(e, rowIndex, 11)}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey12) || selectedRows.includes(rowIndex) || selectedColumns.includes(12)} on:click={(e) => handleCellClick(e, rowIndex, 12)}>
                         <span class="occupation-badge {occupationClass}">{pctOcup.toFixed(1)}%</span>
                       </td>
-                      <td class:cell-selected={isCellSelected(rowIndex, 13)} on:click={(e) => handleCellClick(e, rowIndex, 13)}>{cto.status_cto || 'N/A'}</td>
-                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 14)} on:click={(e) => handleCellClick(e, rowIndex, 14)}>
+                      <td class:cell-selected={selectedCells.includes(cellKey13) || selectedRows.includes(rowIndex) || selectedColumns.includes(13)} on:click={(e) => handleCellClick(e, rowIndex, 13)}>{cto.status_cto || 'N/A'}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey14) || selectedRows.includes(rowIndex) || selectedColumns.includes(14)} on:click={(e) => handleCellClick(e, rowIndex, 14)}>
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
                           <strong>{total}</strong>
                         {/if}
                       </td>
-                      <td class="numeric" class:cell-selected={isCellSelected(rowIndex, 15)} on:click={(e) => handleCellClick(e, rowIndex, 15)}>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey15) || selectedRows.includes(rowIndex) || selectedColumns.includes(15)} on:click={(e) => handleCellClick(e, rowIndex, 15)}>
                         {#if estaCarregando}
                           <span class="loading-text">Carregando...</span>
                         {:else}
