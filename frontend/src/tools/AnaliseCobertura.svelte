@@ -2403,7 +2403,7 @@
                         }}
                       />
                     </th>
-                    <th class:selected={selectedColumns.includes(1)} on:click={(e) => handleColumnHeaderClick(e, 1)}>#</th>
+                    <th class:selected={selectedColumns.includes(1)} on:click={(e) => handleColumnHeaderClick(e, 1)}>N°</th>
                     <th class:selected={selectedColumns.includes(2)} on:click={(e) => handleColumnHeaderClick(e, 2)}>CTO</th>
                     <th class:selected={selectedColumns.includes(3)} on:click={(e) => handleColumnHeaderClick(e, 3)}>Cidade</th>
                     <th class:selected={selectedColumns.includes(4)} on:click={(e) => handleColumnHeaderClick(e, 4)}>POP</th>
