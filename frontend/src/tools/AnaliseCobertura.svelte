@@ -2022,19 +2022,11 @@
         // Usar smoothstep para interpolação mais suave
         const smoothT = t * t * (3 - 2 * t);
         
-        // Interpolação linear entre pontos adjacentes
+        // Interpolação linear simples entre pontos adjacentes (mais estável)
         const midLat = current.lat + (next.lat - current.lat) * smoothT;
         const midLng = current.lng + (next.lng - current.lng) * smoothT;
         
-        // Aplicar leve suavização baseada no ponto anterior para evitar cantos muito agudos
-        if (i > 0) {
-          const influence = 0.1; // Influência do ponto anterior (10%)
-          const smoothedLat = midLat + (prev.lat - current.lat) * influence * (1 - smoothT);
-          const smoothedLng = midLng + (prev.lng - current.lng) * influence * (1 - smoothT);
-          smoothed.push({ lat: smoothedLat, lng: smoothedLng });
-        } else {
-          smoothed.push({ lat: midLat, lng: midLng });
-        }
+        smoothed.push({ lat: midLat, lng: midLng });
       }
     }
     
@@ -2178,19 +2170,25 @@
     }
     
     // Expandir ligeiramente o polígono para garantir que todas as CTOs fiquem dentro
-    // Isso adiciona uma pequena margem de segurança
-    const expandedHull = hull.map(point => {
-      // Calcular o centro do polígono
-      const centerLat = hull.reduce((sum, p) => sum + p.lat, 0) / hull.length;
-      const centerLng = hull.reduce((sum, p) => sum + p.lng, 0) / hull.length;
-      
-      // Expandir cada ponto em 3% na direção do centro para fora
-      const expansionFactor = 1.03;
-      const expandedLat = centerLat + (point.lat - centerLat) * expansionFactor;
-      const expandedLng = centerLng + (point.lng - centerLng) * expansionFactor;
-      
-      return { lat: expandedLat, lng: expandedLng };
-    });
+    // Calcular o centroide real do polígono (centro de massa)
+    let centerLat = 0, centerLng = 0, area = 0;
+    for (let i = 0; i < hull.length; i++) {
+      const j = (i + 1) % hull.length;
+      const cross = hull[i].lng * hull[j].lat - hull[j].lng * hull[i].lat;
+      area += cross;
+      centerLat += (hull[i].lat + hull[j].lat) * cross;
+      centerLng += (hull[i].lng + hull[j].lng) * cross;
+    }
+    area /= 2;
+    centerLat /= (6 * area);
+    centerLng /= (6 * area);
+    
+    // Expandir cada ponto uniformemente em 3% na direção do centro para fora
+    const expansionFactor = 1.03;
+    const expandedHull = hull.map(point => ({
+      lat: centerLat + (point.lat - centerLat) * expansionFactor,
+      lng: centerLng + (point.lng - centerLng) * expansionFactor
+    }));
     
     // Suavizar o polígono adicionando pontos intermediários para bordas mais suaves
     let smoothedHull;
