@@ -826,8 +826,17 @@
     const _visibility = Array.from(ctoVisibility.entries());
     const _markOrder = Array.from(ctoMarkOrder.entries());
     ctoNumbers = calculateCTONumbers();
+    
+    // Atualizar o mapa sempre que a numeração mudar
+    if (map && google?.maps) {
+      displayResultsOnMap();
+    }
   } else {
     ctoNumbers = new Map();
+    // Se não há CTOs, limpar o mapa
+    if (map && google?.maps) {
+      displayResultsOnMap();
+    }
   }
   
   // Variável reativa para forçar atualização quando os totais mudarem
@@ -1858,9 +1867,11 @@
       }
       
       // Usar o número da tabela (sincronizado com a lógica de numeração da tabela)
+      // A CTO só aparece no mapa se tiver um número na tabela (está numerada)
       const tableNumber = ctoNumbers.get(cto);
-      if (!tableNumber) {
-        // Se não tem número na tabela, pular (não deve aparecer no mapa)
+      // Verificar se o número existe (não é undefined/null) e é um número válido
+      if (tableNumber === undefined || tableNumber === null || (typeof tableNumber !== 'number' && tableNumber !== '-')) {
+        // CTO visível mas sem número válido na tabela - não exibir no mapa
         markersSkipped++;
         continue;
       }
@@ -2470,7 +2481,7 @@
                         type="checkbox" 
                         checked={allCTOsVisible}
                         indeterminate={someCTOsVisible}
-                        on:change={(e) => {
+                        on:change={async (e) => {
                           const isChecked = e.target.checked;
                           const newVisibility = new Map();
                           for (const cto of ctos) {
@@ -2486,7 +2497,9 @@
                           markOrderCounter = 0;
                           
                           ctoNumbersVersion++; // Forçar atualização da numeração
-                          displayResultsOnMap();
+                          // Aguardar um tick para garantir que ctoNumbers foi recalculado
+                          await new Promise(resolve => setTimeout(resolve, 0));
+                          await displayResultsOnMap();
                         }}
                       />
                     </th>
@@ -2541,7 +2554,7 @@
                             // Não permitir que o clique no checkbox dispare handleCellClick
                             e.stopPropagation();
                           }}
-                          on:change={(e) => {
+                          on:change={async (e) => {
                             // Alterar apenas a visibilidade desta CTO específica
                             const isChecked = e.target.checked;
                             
@@ -2590,7 +2603,9 @@
                             }
                             
                             ctoNumbersVersion++; // Forçar atualização da numeração
-                            displayResultsOnMap();
+                            // Aguardar um tick para garantir que ctoNumbers foi recalculado
+                            await new Promise(resolve => setTimeout(resolve, 0));
+                            await displayResultsOnMap();
                           }}
                         />
                       </td>
