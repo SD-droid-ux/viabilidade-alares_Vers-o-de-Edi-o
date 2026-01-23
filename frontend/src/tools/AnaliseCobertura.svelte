@@ -1302,13 +1302,15 @@
           searchMarkers.push(marker);
         }
         
-        // Tentar criar polígono fundido para CTOs pesquisadas
-        const unionPolygon = createUnionPolygon(searchedCTOsList.map(({ cto }) => cto));
+        // Criar mancha usando APENAS as CTOs encontradas na pesquisa
+        // EXATAMENTE como no MapaConsulta.svelte
+        const foundCTOs = searchedCTOsList.map(({ cto }) => cto);
+        const unionPolygon = createUnionPolygon(foundCTOs);
         
         if (unionPolygon) {
           // Se há polígono fundido (sobreposição), usar ele
           radiusPolygons.push(unionPolygon);
-          console.log(`✅ Polígono fundido criado para ${searchedCTOsList.length} CTO(s) pesquisada(s) com sobreposição`);
+          console.log(`✅ Polígono fundido criado para ${foundCTOs.length} CTO(s) encontrada(s) na pesquisa`);
         } else {
           // Se não há sobreposição ou apenas 1 CTO, criar círculos individuais
           for (const { cto, lat, lng } of searchedCTOsList) {
@@ -1749,39 +1751,6 @@
             zIndex: 999
           });
           searchMarkers.push(marker);
-          
-        }
-        
-        // Criar CTOs temporárias para os pontos pesquisados (para usar createUnionPolygon)
-        const tempCTOs = validPoints.map(({ lat, lng }) => ({
-          latitude: lat.toString(),
-          longitude: lng.toString()
-        }));
-        
-        // Tentar criar polígono fundido para pontos pesquisados
-        const unionPolygon = createUnionPolygon(tempCTOs);
-        
-        if (unionPolygon) {
-          // Se há polígono fundido (sobreposição), usar ele
-          radiusPolygons.push(unionPolygon);
-          console.log(`✅ Polígono fundido criado para ${validPoints.length} ponto(s) pesquisado(s) com sobreposição`);
-        } else {
-          // Se não há sobreposição ou apenas 1 ponto, criar círculos individuais
-          for (const { lat, lng } of validPoints) {
-          const circle = new google.maps.Circle({
-              strokeColor: '#7B68EE',
-              strokeOpacity: 0.6,
-            strokeWeight: 2,
-              fillColor: '#6495ED',
-              fillOpacity: 0.08,
-              map: showRadiusCircles ? map : null,
-            center: { lat, lng },
-              radius: 250,
-              zIndex: 1
-          });
-          radiusCircles.push(circle);
-        }
-        console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para pontos pesquisados`);
         }
       }
 
@@ -1821,7 +1790,41 @@
       }
 
       // Converter Map para array
-      ctos = Array.from(allCTOsMap.values());
+      const foundCTOs = Array.from(allCTOsMap.values());
+      
+      // Criar mancha usando TODAS as CTOs encontradas dentro do raio
+      // EXATAMENTE como no MapaConsulta.svelte
+      if (foundCTOs.length > 0) {
+        const unionPolygon = createUnionPolygon(foundCTOs);
+        
+        if (unionPolygon) {
+          // Se há polígono fundido (sobreposição), usar ele
+          radiusPolygons.push(unionPolygon);
+          console.log(`✅ Polígono fundido criado para ${foundCTOs.length} CTO(s) encontrada(s) dentro do raio`);
+        } else {
+          // Se não há sobreposição ou apenas 1 CTO, criar círculos individuais
+          for (const cto of foundCTOs) {
+            const lat = parseFloat(cto.latitude);
+            const lng = parseFloat(cto.longitude);
+            const circle = new google.maps.Circle({
+              strokeColor: '#7B68EE',
+              strokeOpacity: 0.6,
+              strokeWeight: 2,
+              fillColor: '#6495ED',
+              fillOpacity: 0.08,
+              map: showRadiusCircles ? map : null,
+              center: { lat, lng },
+              radius: 250,
+              zIndex: 1
+            });
+            radiusCircles.push(circle);
+          }
+          console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para CTOs encontradas`);
+        }
+      }
+      
+      // Usar as CTOs encontradas para a tabela
+      ctos = foundCTOs;
 
       console.log(`📍 Busca por endereço/coordenadas: ${ctos.length} CTOs únicas encontradas dentro de 250m`);
 
@@ -2062,56 +2065,34 @@
   // Baseada na lógica do MapaConsulta.svelte
   function createUnionPolygon(ctos) {
     if (ctos.length === 0) return null;
-    if (ctos.length === 1) return null; // Retornar null para criar círculo individual
     
-    const RADIUS_M = 250; // Raio em metros
-    const RADIUS_DEG = RADIUS_M / 111000; // Raio em graus (aproximação)
-    
-    // Para grupos grandes (200+), usar sempre bounding box expandido
-    // Abordagem mais simples, robusta e garante que funciona sem bugs mesmo com 2000+ CTOs
-    // Evita problemas de performance e bugs com convex hull em grupos muito grandes
-    if (ctos.length > 200) {
-      // Calcular bounding box expandido com margem de segurança
-      let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    // Se for apenas uma CTO, criar círculo individual
+    if (ctos.length === 1) {
+      const cto = ctos[0];
+      const lat = parseFloat(cto.latitude);
+      const lng = parseFloat(cto.longitude);
       
-      for (const cto of ctos) {
-        const lat = parseFloat(cto.latitude);
-        const lng = parseFloat(cto.longitude);
-        
-        // Usar margem de 12% para garantir cobertura completa de todas as CTOs
-        const latRadius = RADIUS_DEG * 1.12;
-        const lngRadius = (RADIUS_DEG * 1.12) / Math.cos(lat * Math.PI / 180);
-        
-        minLat = Math.min(minLat, lat - latRadius);
-        maxLat = Math.max(maxLat, lat + latRadius);
-        minLng = Math.min(minLng, lng - lngRadius);
-        maxLng = Math.max(maxLng, lng + lngRadius);
-      }
-      
-      // Criar polígono retangular expandido
-      // Simples, robusto e funciona perfeitamente mesmo com 2000+ CTOs
-      const polygonPath = [
-        { lat: minLat, lng: minLng },
-        { lat: maxLat, lng: minLng },
-        { lat: maxLat, lng: maxLng },
-        { lat: minLat, lng: maxLng }
-      ];
-      
-      return new google.maps.Polygon({
-        paths: polygonPath,
+      const circle = new google.maps.Circle({
         strokeColor: '#7B68EE',
         strokeOpacity: 0.6,
         strokeWeight: 2,
         fillColor: '#6495ED',
         fillOpacity: 0.08,
         map: showRadiusCircles ? map : null,
+        center: { lat, lng },
+        radius: 250,
         zIndex: 1,
-        geodesic: true
+        optimized: false
       });
+      
+      return circle;
     }
     
-    // Para grupos menores (≤200), usar lógica SIMPLES do MapaConsulta.svelte
-    // Esta lógica funciona perfeitamente com 220.000 CTOs, então funciona com qualquer número
+    const RADIUS_M = 250; // Raio em metros
+    const RADIUS_DEG = RADIUS_M / 111000; // Raio em graus (aproximação)
+    
+    // Para múltiplas CTOs, criar um polígono que representa a união real dos círculos
+    // EXATAMENTE como no MapaConsulta.svelte
     // Estratégia: gerar pontos, adicionar interseções, filtrar borda, convex hull, suavizar
     
     // Coletar todos os pontos dos círculos (perímetro de cada círculo)
