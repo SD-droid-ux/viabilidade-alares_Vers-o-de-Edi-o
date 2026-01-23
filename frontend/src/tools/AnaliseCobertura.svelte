@@ -1303,31 +1303,50 @@
         }
         
         // Criar mancha usando APENAS as CTOs encontradas na pesquisa
-        // EXATAMENTE como no MapaConsulta.svelte
+        // Calcular polígono no backend (igual ao MapaConsulta.svelte)
         const foundCTOs = searchedCTOsList.map(({ cto }) => cto);
-        const unionPolygon = createUnionPolygon(foundCTOs);
         
-        if (unionPolygon) {
-          // Se há polígono fundido (sobreposição), usar ele
-          radiusPolygons.push(unionPolygon);
-          console.log(`✅ Polígono fundido criado para ${foundCTOs.length} CTO(s) encontrada(s) na pesquisa`);
-        } else {
-          // Se não há sobreposição ou apenas 1 CTO, criar círculos individuais
-          for (const { cto, lat, lng } of searchedCTOsList) {
-          const circle = new google.maps.Circle({
-              strokeColor: '#7B68EE',
-              strokeOpacity: 0.6,
-            strokeWeight: 2,
-              fillColor: '#6495ED',
-              fillOpacity: 0.08,
-              map: showRadiusCircles ? map : null,
-            center: { lat, lng },
-              radius: 250,
-              zIndex: 1
+        try {
+          const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ctos: foundCTOs })
           });
-          radiusCircles.push(circle);
-        }
-        console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para CTOs pesquisadas`);
+          
+          if (polygonResponse.ok) {
+            const polygonData = await polygonResponse.json();
+            
+            if (polygonData.success && polygonData.geometry) {
+              // Converter GeoJSON para Google Maps Polygon
+              const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
+                lat: coord[1],
+                lng: coord[0]
+              }));
+              
+              const polygon = new google.maps.Polygon({
+                paths: coordinates,
+                strokeColor: '#7B68EE',
+                strokeOpacity: 0.6,
+                strokeWeight: 2,
+                fillColor: '#6495ED',
+                fillOpacity: 0.08,
+                map: showRadiusCircles ? map : null,
+                zIndex: 1,
+                geodesic: true
+              });
+              
+              radiusPolygons.push(polygon);
+              console.log(`✅ Polígono fundido criado no backend para ${foundCTOs.length} CTO(s) encontrada(s) na pesquisa`);
+            } else {
+              console.warn('⚠️ Resposta do backend não contém polígono válido');
+            }
+          } else {
+            console.error('❌ Erro ao calcular polígono no backend:', polygonResponse.status);
+          }
+        } catch (polygonErr) {
+          console.error('❌ Erro ao chamar endpoint de cálculo de polígono:', polygonErr);
         }
       }
 
@@ -1793,33 +1812,49 @@
       const foundCTOs = Array.from(allCTOsMap.values());
       
       // Criar mancha usando TODAS as CTOs encontradas dentro do raio
-      // EXATAMENTE como no MapaConsulta.svelte
+      // Calcular polígono no backend (igual ao MapaConsulta.svelte)
       if (foundCTOs.length > 0) {
-        const unionPolygon = createUnionPolygon(foundCTOs);
-        
-        if (unionPolygon) {
-          // Se há polígono fundido (sobreposição), usar ele
-          radiusPolygons.push(unionPolygon);
-          console.log(`✅ Polígono fundido criado para ${foundCTOs.length} CTO(s) encontrada(s) dentro do raio`);
-        } else {
-          // Se não há sobreposição ou apenas 1 CTO, criar círculos individuais
-          for (const cto of foundCTOs) {
-            const lat = parseFloat(cto.latitude);
-            const lng = parseFloat(cto.longitude);
-            const circle = new google.maps.Circle({
-              strokeColor: '#7B68EE',
-              strokeOpacity: 0.6,
-              strokeWeight: 2,
-              fillColor: '#6495ED',
-              fillOpacity: 0.08,
-              map: showRadiusCircles ? map : null,
-              center: { lat, lng },
-              radius: 250,
-              zIndex: 1
-            });
-            radiusCircles.push(circle);
+        try {
+          const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ctos: foundCTOs })
+          });
+          
+          if (polygonResponse.ok) {
+            const polygonData = await polygonResponse.json();
+            
+            if (polygonData.success && polygonData.geometry) {
+              // Converter GeoJSON para Google Maps Polygon
+              const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
+                lat: coord[1],
+                lng: coord[0]
+              }));
+              
+              const polygon = new google.maps.Polygon({
+                paths: coordinates,
+                strokeColor: '#7B68EE',
+                strokeOpacity: 0.6,
+                strokeWeight: 2,
+                fillColor: '#6495ED',
+                fillOpacity: 0.08,
+                map: showRadiusCircles ? map : null,
+                zIndex: 1,
+                geodesic: true
+              });
+              
+              radiusPolygons.push(polygon);
+              console.log(`✅ Polígono fundido criado no backend para ${foundCTOs.length} CTO(s) encontrada(s) dentro do raio`);
+            } else {
+              console.warn('⚠️ Resposta do backend não contém polígono válido');
+            }
+          } else {
+            console.error('❌ Erro ao calcular polígono no backend:', polygonResponse.status);
           }
-          console.log(`✅ ${radiusCircles.length} círculo(s) de raio de 250m criado(s) para CTOs encontradas`);
+        } catch (polygonErr) {
+          console.error('❌ Erro ao chamar endpoint de cálculo de polígono:', polygonErr);
         }
       }
       
@@ -1934,307 +1969,8 @@
     });
   }
   
-  // Função auxiliar para calcular pontos de interseção entre dois círculos
-  function getCircleIntersections(lat1, lng1, r1, lat2, lng2, r2) {
-    const intersections = [];
-    const d = Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lng2 - lng1, 2));
-    
-    if (d > r1 + r2 || d < Math.abs(r1 - r2)) {
-      return intersections;
-    }
-    
-    const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
-    const h = Math.sqrt(r1 * r1 - a * a);
-    const lat3 = lat1 + a * (lat2 - lat1) / d;
-    const lng3 = lng1 + a * (lng2 - lng1) / d;
-    
-    const lat4a = lat3 + h * (lng2 - lng1) / d;
-    const lng4a = lng3 - h * (lat2 - lat1) / d;
-    const lat4b = lat3 - h * (lng2 - lng1) / d;
-    const lng4b = lng3 + h * (lat2 - lat1) / d;
-    
-    intersections.push({ lat: lat4a, lng: lng4a });
-    intersections.push({ lat: lat4b, lng: lng4b });
-    
-    return intersections;
-  }
-  
-  // Função auxiliar para calcular o produto vetorial (cross product)
-  function crossProduct(o, a, b) {
-    return (a.lng - o.lng) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lng - o.lng);
-  }
-  
-  // Função para calcular convex hull (envoltória convexa)
-  function computeConvexHull(points) {
-    if (points.length < 3) return points;
-    
-    let bottomPoint = points[0];
-    let bottomIndex = 0;
-    for (let i = 1; i < points.length; i++) {
-      if (points[i].lat < bottomPoint.lat || 
-          (points[i].lat === bottomPoint.lat && points[i].lng < bottomPoint.lng)) {
-        bottomPoint = points[i];
-        bottomIndex = i;
-      }
-    }
-    
-    [points[0], points[bottomIndex]] = [points[bottomIndex], points[0]];
-    
-    const sortedPoints = [points[0], ...points.slice(1).sort((a, b) => {
-      const angleA = Math.atan2(a.lat - points[0].lat, a.lng - points[0].lng);
-      const angleB = Math.atan2(b.lat - points[0].lat, b.lng - points[0].lng);
-      if (Math.abs(angleA - angleB) < 0.0001) {
-        const distA = Math.pow(a.lat - points[0].lat, 2) + Math.pow(a.lng - points[0].lng, 2);
-        const distB = Math.pow(b.lat - points[0].lat, 2) + Math.pow(b.lng - points[0].lng, 2);
-        return distA - distB;
-      }
-      return angleA - angleB;
-    })];
-    
-    const hull = [sortedPoints[0], sortedPoints[1]];
-    
-    for (let i = 2; i < sortedPoints.length; i++) {
-      while (hull.length > 1 && 
-             crossProduct(hull[hull.length - 2], hull[hull.length - 1], sortedPoints[i]) <= 0) {
-        hull.pop();
-      }
-      hull.push(sortedPoints[i]);
-    }
-    
-    return hull;
-  }
-  
-  // Função para suavizar bordas do polígono de forma conservadora (menos passos)
-  // Usada para grupos médios para evitar curvas estranhas
-  function smoothPolygonEdgesConservative(points) {
-    if (points.length < 3) return points;
-    
-    const smoothed = [];
-    const smoothingSteps = 1; // Apenas 1 passo para evitar curvas estranhas
-    
-    for (let i = 0; i < points.length; i++) {
-      const current = points[i];
-      const next = points[(i + 1) % points.length];
-      
-      smoothed.push(current);
-      
-      for (let step = 1; step <= smoothingSteps; step++) {
-        const t = step / (smoothingSteps + 1);
-        const smoothT = t * t * (3 - 2 * t);
-        const midLat = current.lat + (next.lat - current.lat) * smoothT;
-        const midLng = current.lng + (next.lng - current.lng) * smoothT;
-        smoothed.push({ lat: midLat, lng: midLng });
-      }
-    }
-    
-    return smoothed;
-  }
-  
-  // Função para suavizar bordas do polígono
-  // Ajustada para melhor qualidade com grupos grandes
-  function smoothPolygonEdges(points) {
-    if (points.length < 3) return points;
-    
-    const smoothed = [];
-    // Para polígonos com muitos pontos, usar mais passos de suavização
-    // Isso melhora a qualidade das bordas em grupos grandes
-    const smoothingSteps = points.length > 100 ? 3 : 2;
-    
-    for (let i = 0; i < points.length; i++) {
-      const current = points[i];
-      const next = points[(i + 1) % points.length];
-      
-      // Adicionar ponto atual
-      smoothed.push(current);
-      
-      // Adicionar pontos intermediários suavizados
-      for (let step = 1; step <= smoothingSteps; step++) {
-        const t = step / (smoothingSteps + 1);
-        // Interpolação linear com suavização
-        const smoothT = t * t * (3 - 2 * t); // Função de suavização (smoothstep)
-        const midLat = current.lat + (next.lat - current.lat) * smoothT;
-        const midLng = current.lng + (next.lng - current.lng) * smoothT;
-        smoothed.push({ lat: midLat, lng: midLng });
-      }
-    }
-    
-    return smoothed;
-  }
-  
-  // Função para criar polígono fundido de círculos sobrepostos
-  // Baseada na lógica do MapaConsulta.svelte
-  function createUnionPolygon(ctos) {
-    if (ctos.length === 0) return null;
-    
-    // Se for apenas uma CTO, criar círculo individual
-    if (ctos.length === 1) {
-      const cto = ctos[0];
-      const lat = parseFloat(cto.latitude);
-      const lng = parseFloat(cto.longitude);
-      
-      const circle = new google.maps.Circle({
-        strokeColor: '#7B68EE',
-        strokeOpacity: 0.6,
-        strokeWeight: 2,
-        fillColor: '#6495ED',
-        fillOpacity: 0.08,
-        map: showRadiusCircles ? map : null,
-        center: { lat, lng },
-        radius: 250,
-        zIndex: 1,
-        optimized: false
-      });
-      
-      return circle;
-    }
-    
-    const RADIUS_M = 250; // Raio em metros
-    const RADIUS_DEG = RADIUS_M / 111000; // Raio em graus (aproximação)
-    
-    // Para múltiplas CTOs, criar um polígono que representa a união real dos círculos
-    // EXATAMENTE como no MapaConsulta.svelte
-    // Estratégia: gerar pontos, adicionar interseções, filtrar borda, convex hull, suavizar
-    
-    // Coletar todos os pontos dos círculos (perímetro de cada círculo)
-    const allPoints = [];
-    const circleCenters = [];
-    const circles = [];
-    
-    for (const cto of ctos) {
-      const lat = parseFloat(cto.latitude);
-      const lng = parseFloat(cto.longitude);
-      circleCenters.push({ lat, lng });
-      circles.push({ lat, lng, radius: RADIUS_DEG });
-      
-      // Criar pontos ao redor do círculo (otimizado: menos pontos para grupos menores)
-      // EXATAMENTE como no MapaConsulta.svelte
-      const pointsPerCircle = ctos.length > 50 ? 64 : ctos.length > 20 ? 48 : 32;
-      const latRadius = RADIUS_DEG;
-      const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
-      
-      for (let i = 0; i < pointsPerCircle; i++) {
-        const angle = (i * 2 * Math.PI) / pointsPerCircle;
-        const pointLat = lat + (latRadius * Math.cos(angle));
-        const pointLng = lng + (lngRadius * Math.sin(angle));
-        allPoints.push({ lat: pointLat, lng: pointLng });
-      }
-    }
-    
-    // Para grupos grandes, adicionar pontos de interseção entre círculos próximos
-    // EXATAMENTE como no MapaConsulta.svelte
-    if (ctos.length > 20) {
-      for (let i = 0; i < circles.length; i++) {
-        for (let j = i + 1; j < circles.length; j++) {
-          const dist = calculateDistance(circles[i].lat, circles[i].lng, circles[j].lat, circles[j].lng);
-          const distDeg = dist / 111000;
-          
-          // Se os círculos se sobrepõem, adicionar pontos de interseção
-          if (distDeg < (RADIUS_DEG * 2)) {
-            const intersections = getCircleIntersections(
-              circles[i].lat, circles[i].lng, RADIUS_DEG,
-              circles[j].lat, circles[j].lng, RADIUS_DEG
-            );
-            allPoints.push(...intersections);
-          }
-        }
-      }
-    }
-    
-    // Filtrar pontos que estão dentro de outros círculos (não são parte da borda externa)
-    // EXATAMENTE como no MapaConsulta.svelte (margem de 5%)
-    const boundaryPoints = allPoints.filter(point => {
-      // Verificar se este ponto está na borda externa (não dentro de todos os círculos)
-      let isInsideAll = true;
-      for (const circle of circles) {
-        const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
-        const distDeg = dist / 111000;
-        const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
-        
-        // Se o ponto está fora deste círculo, não está dentro de todos
-        if (distDeg > circleRadius * 1.05) { // 5% de margem
-          isInsideAll = false;
-          break;
-        }
-      }
-      // Manter pontos que NÃO estão dentro de todos os círculos (são parte da borda)
-      return !isInsideAll;
-    });
-    
-    // Se não temos pontos suficientes na borda, usar todos os pontos
-    // EXATAMENTE como no MapaConsulta.svelte
-    const pointsToUse = boundaryPoints.length >= 3 ? boundaryPoints : allPoints;
-    
-    // Calcular o convex hull (envoltória convexa) dos pontos da borda
-    // EXATAMENTE como no MapaConsulta.svelte
-    const hull = computeConvexHull(pointsToUse);
-    
-    // Se o convex hull falhar ou tiver poucos pontos, usar bounding box expandido
-    if (!hull || hull.length < 3) {
-      let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-      for (const cto of ctos) {
-        const lat = parseFloat(cto.latitude);
-        const lng = parseFloat(cto.longitude);
-        const latRadius = RADIUS_DEG;
-        const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
-        minLat = Math.min(minLat, lat - latRadius);
-        maxLat = Math.max(maxLat, lat + latRadius);
-        minLng = Math.min(minLng, lng - lngRadius);
-        maxLng = Math.max(maxLng, lng + lngRadius);
-      }
-      const polygonPath = [
-        { lat: minLat, lng: minLng },
-        { lat: maxLat, lng: minLng },
-        { lat: maxLat, lng: maxLng },
-        { lat: minLat, lng: maxLng }
-      ];
-      
-      return new google.maps.Polygon({
-        paths: polygonPath,
-        strokeColor: '#7B68EE',
-        strokeOpacity: 0.6,
-        strokeWeight: 2,
-        fillColor: '#6495ED',
-        fillOpacity: 0.08,
-        map: showRadiusCircles ? map : null,
-        zIndex: 1,
-        geodesic: true
-      });
-    }
-    
-    // Suavizar o polígono adicionando pontos intermediários para bordas mais suaves
-    // EXATAMENTE como no MapaConsulta.svelte (2 passos)
-    let smoothedHull;
-    try {
-      smoothedHull = smoothPolygonEdges(hull);
-      if (!smoothedHull || smoothedHull.length < 3) {
-        smoothedHull = hull; // Fallback para hull original se suavização falhar
-      }
-    } catch (smoothErr) {
-      console.warn('⚠️ Erro ao suavizar polígono, usando hull original:', smoothErr);
-      smoothedHull = hull; // Fallback para hull original
-    }
-    
-    // Criar polígono com forma suave e natural
-    try {
-      const polygon = new google.maps.Polygon({
-        paths: smoothedHull,
-        strokeColor: '#7B68EE',
-        strokeOpacity: 0.6,
-        strokeWeight: 2,
-        fillColor: '#6495ED',
-        fillOpacity: 0.08,
-        map: showRadiusCircles ? map : null,
-        zIndex: 1,
-        geodesic: true
-      });
-      
-      return polygon;
-    } catch (polyErr) {
-      console.error('❌ Erro ao criar polígono:', polyErr);
-      // Retornar null em caso de erro
-      return null;
-    }
-  }
+  // Funções de cálculo de polígonos removidas - agora são calculadas no backend
+  // via endpoint /api/coverage/calculate-polygon-for-ctos (igual ao MapaConsulta.svelte)
 
   // Função para exibir resultados no mapa (estilo ViabilidadeAlares)
   async function displayResultsOnMap() {
