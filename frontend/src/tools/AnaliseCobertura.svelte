@@ -1170,6 +1170,43 @@
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c; // Distância em metros
   }
+  
+  // Função para verificar se círculos de 250m se intersectam
+  // Dois círculos se intersectam se a distância entre os centros < 500m (2 * raio)
+  function checkCirclesIntersect(ctos) {
+    if (ctos.length < 2) return false;
+    
+    const RADIUS = 250; // Raio em metros
+    const INTERSECTION_THRESHOLD = RADIUS * 2; // 500m - se distância < 500m, círculos se tocam/fundem
+    
+    // Verificar todos os pares de CTOs
+    for (let i = 0; i < ctos.length; i++) {
+      for (let j = i + 1; j < ctos.length; j++) {
+        const cto1 = ctos[i];
+        const cto2 = ctos[j];
+        
+        const lat1 = parseFloat(cto1.latitude);
+        const lng1 = parseFloat(cto1.longitude);
+        const lat2 = parseFloat(cto2.latitude);
+        const lng2 = parseFloat(cto2.longitude);
+        
+        // Validar coordenadas
+        if (isNaN(lat1) || isNaN(lng1) || isNaN(lat2) || isNaN(lng2)) {
+          continue;
+        }
+        
+        // Calcular distância entre os centros
+        const distance = calculateDistance(lat1, lng1, lat2, lng2);
+        
+        // Se a distância for menor que 500m, os círculos se intersectam
+        if (distance < INTERSECTION_THRESHOLD) {
+          return true; // Encontrou pelo menos um par que se intersecta
+        }
+      }
+    }
+    
+    return false; // Nenhum par se intersecta
+  }
 
   // Função para verificar se uma CTO já está na lista (evitar duplicatas)
   function isCTODuplicate(cto, existingList) {
@@ -1322,48 +1359,72 @@
           radiusCircles.push(circle);
           console.log(`✅ Círculo de 250m criado para 1 CTO encontrada na pesquisa (método antigo)`);
         } else {
-          // Para múltiplas CTOs, calcular polígono no backend (igual ao MapaConsulta.svelte)
-          try {
-            const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ ctos: foundCTOs })
-            });
-            
-            if (polygonResponse.ok) {
-              const polygonData = await polygonResponse.json();
+          // Para múltiplas CTOs, verificar se os círculos se intersectam
+          const hasIntersection = checkCirclesIntersect(foundCTOs);
+          
+          if (hasIntersection) {
+            // Se há interseção, usar função SQL do Supabase (polígono fundido)
+            console.log(`🔍 ${foundCTOs.length} CTO(s) com círculos que se intersectam - usando função SQL do Supabase`);
+            try {
+              const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ ctos: foundCTOs })
+              });
               
-              if (polygonData.success && polygonData.geometry) {
-                // Converter GeoJSON para Google Maps Polygon
-                const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
-                  lat: coord[1],
-                  lng: coord[0]
-                }));
+              if (polygonResponse.ok) {
+                const polygonData = await polygonResponse.json();
                 
-                const polygon = new google.maps.Polygon({
-                  paths: coordinates,
-                  strokeColor: '#7B68EE',
-                  strokeOpacity: 0.6,
-                  strokeWeight: 2,
-                  fillColor: '#6495ED',
-                  fillOpacity: 0.08,
-                  map: showRadiusCircles ? map : null,
-                  zIndex: 1,
-                  geodesic: true
-                });
-                
-                radiusPolygons.push(polygon);
-                console.log(`✅ Polígono fundido criado no backend para ${foundCTOs.length} CTO(s) encontrada(s) na pesquisa`);
+                if (polygonData.success && polygonData.geometry) {
+                  // Converter GeoJSON para Google Maps Polygon
+                  const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
+                    lat: coord[1],
+                    lng: coord[0]
+                  }));
+                  
+                  const polygon = new google.maps.Polygon({
+                    paths: coordinates,
+                    strokeColor: '#7B68EE',
+                    strokeOpacity: 0.6,
+                    strokeWeight: 2,
+                    fillColor: '#6495ED',
+                    fillOpacity: 0.08,
+                    map: showRadiusCircles ? map : null,
+                    zIndex: 1,
+                    geodesic: true
+                  });
+                  
+                  radiusPolygons.push(polygon);
+                  console.log(`✅ Polígono fundido criado no backend para ${foundCTOs.length} CTO(s) encontrada(s) na pesquisa`);
+                } else {
+                  console.warn('⚠️ Resposta do backend não contém polígono válido');
+                }
               } else {
-                console.warn('⚠️ Resposta do backend não contém polígono válido');
+                console.error('❌ Erro ao calcular polígono no backend:', polygonResponse.status);
               }
-            } else {
-              console.error('❌ Erro ao calcular polígono no backend:', polygonResponse.status);
+            } catch (polygonErr) {
+              console.error('❌ Erro ao chamar endpoint de cálculo de polígono:', polygonErr);
             }
-          } catch (polygonErr) {
-            console.error('❌ Erro ao chamar endpoint de cálculo de polígono:', polygonErr);
+          } else {
+            // Se NÃO há interseção, criar círculos individuais (método antigo)
+            console.log(`🔍 ${foundCTOs.length} CTO(s) sem interseção de círculos - usando método antigo (círculos individuais)`);
+            for (const { cto, lat, lng } of searchedCTOsList) {
+              const circle = new google.maps.Circle({
+                strokeColor: '#7B68EE',
+                strokeOpacity: 0.6,
+                strokeWeight: 2,
+                fillColor: '#6495ED',
+                fillOpacity: 0.08,
+                map: showRadiusCircles ? map : null,
+                center: { lat, lng },
+                radius: 250,
+                zIndex: 1
+              });
+              radiusCircles.push(circle);
+            }
+            console.log(`✅ ${radiusCircles.length} círculo(s) de 250m criado(s) para CTOs pesquisadas (método antigo)`);
           }
         }
       }
