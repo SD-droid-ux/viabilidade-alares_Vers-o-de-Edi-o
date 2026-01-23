@@ -1171,41 +1171,73 @@
     return R * c; // Distância em metros
   }
   
-  // Função para verificar se círculos de 250m se intersectam
+  // Função para verificar se dois círculos de 250m se intersectam
   // Dois círculos se intersectam se a distância entre os centros < 500m (2 * raio)
-  function checkCirclesIntersect(ctos) {
-    if (ctos.length < 2) return false;
-    
+  function doCirclesIntersect(cto1, cto2) {
     const RADIUS = 250; // Raio em metros
     const INTERSECTION_THRESHOLD = RADIUS * 2; // 500m - se distância < 500m, círculos se tocam/fundem
     
-    // Verificar todos os pares de CTOs
-    for (let i = 0; i < ctos.length; i++) {
-      for (let j = i + 1; j < ctos.length; j++) {
-        const cto1 = ctos[i];
-        const cto2 = ctos[j];
-        
-        const lat1 = parseFloat(cto1.latitude);
-        const lng1 = parseFloat(cto1.longitude);
-        const lat2 = parseFloat(cto2.latitude);
-        const lng2 = parseFloat(cto2.longitude);
-        
-        // Validar coordenadas
-        if (isNaN(lat1) || isNaN(lng1) || isNaN(lat2) || isNaN(lng2)) {
-          continue;
-        }
-        
-        // Calcular distância entre os centros
-        const distance = calculateDistance(lat1, lng1, lat2, lng2);
-        
-        // Se a distância for menor que 500m, os círculos se intersectam
-        if (distance < INTERSECTION_THRESHOLD) {
-          return true; // Encontrou pelo menos um par que se intersecta
-        }
-      }
+    const lat1 = parseFloat(cto1.latitude);
+    const lng1 = parseFloat(cto1.longitude);
+    const lat2 = parseFloat(cto2.latitude);
+    const lng2 = parseFloat(cto2.longitude);
+    
+    // Validar coordenadas
+    if (isNaN(lat1) || isNaN(lng1) || isNaN(lat2) || isNaN(lng2)) {
+      return false;
     }
     
-    return false; // Nenhum par se intersecta
+    // Calcular distância entre os centros
+    const distance = calculateDistance(lat1, lng1, lat2, lng2);
+    
+    // Se a distância for menor que 500m, os círculos se intersectam
+    return distance < INTERSECTION_THRESHOLD;
+  }
+  
+  // Função para agrupar CTOs que se intersectam (algoritmo de agrupamento)
+  // Retorna array de grupos, onde cada grupo é um array de CTOs que se intersectam
+  function groupCTOsByIntersection(ctos) {
+    if (ctos.length === 0) return [];
+    if (ctos.length === 1) return [[ctos[0]]]; // Grupo único
+    
+    const groups = [];
+    const processed = new Set(); // Rastrear CTOs já processadas
+    
+    for (let i = 0; i < ctos.length; i++) {
+      if (processed.has(i)) continue;
+      
+      // Criar novo grupo começando com esta CTO
+      const currentGroup = [ctos[i]];
+      processed.add(i);
+      
+      // Buscar todas as CTOs que se intersectam com qualquer CTO do grupo atual
+      // Usar busca em largura (BFS) para encontrar todas as conexões transitivas
+      let foundNew = true;
+      while (foundNew) {
+        foundNew = false;
+        
+        // Verificar todas as CTOs não processadas
+        for (let j = 0; j < ctos.length; j++) {
+          if (processed.has(j)) continue;
+          
+          // Verificar se esta CTO se intersecta com alguma CTO do grupo atual
+          for (const groupCTO of currentGroup) {
+            if (doCirclesIntersect(ctos[j], groupCTO)) {
+              // Esta CTO se intersecta com o grupo, adicionar ao grupo
+              currentGroup.push(ctos[j]);
+              processed.add(j);
+              foundNew = true;
+              break; // Parar de verificar esta CTO, já foi adicionada
+            }
+          }
+        }
+      }
+      
+      // Adicionar grupo à lista de grupos
+      groups.push(currentGroup);
+    }
+    
+    return groups;
   }
 
   // Função para verificar se uma CTO já está na lista (evitar duplicatas)
@@ -1342,36 +1374,56 @@
         // Criar mancha usando APENAS as CTOs encontradas na pesquisa
         const foundCTOs = searchedCTOsList.map(({ cto }) => cto);
         
-        // Se for apenas 1 CTO, usar método antigo (criar círculo diretamente)
-        if (foundCTOs.length === 1) {
-          const { cto, lat, lng } = searchedCTOsList[0];
-          const circle = new google.maps.Circle({
-            strokeColor: '#7B68EE',
-            strokeOpacity: 0.6,
-            strokeWeight: 2,
-            fillColor: '#6495ED',
-            fillOpacity: 0.08,
-            map: showRadiusCircles ? map : null,
-            center: { lat, lng },
-            radius: 250,
-            zIndex: 1
-          });
-          radiusCircles.push(circle);
-          console.log(`✅ Círculo de 250m criado para 1 CTO encontrada na pesquisa (método antigo)`);
-        } else {
-          // Para múltiplas CTOs, verificar se os círculos se intersectam
-          const hasIntersection = checkCirclesIntersect(foundCTOs);
+        // Agrupar CTOs que se intersectam
+        const groups = groupCTOsByIntersection(foundCTOs);
+        
+        console.log(`🔍 Agrupamento: ${groups.length} grupo(s) de CTOs identificado(s)`);
+        
+        // Processar cada grupo
+        for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+          const group = groups[groupIndex];
           
-          if (hasIntersection) {
-            // Se há interseção, usar função SQL do Supabase (polígono fundido)
-            console.log(`🔍 ${foundCTOs.length} CTO(s) com círculos que se intersectam - usando função SQL do Supabase`);
+          if (group.length === 1) {
+            // Grupo com 1 CTO: criar círculo individual (método antigo)
+            const cto = group[0];
+            // Encontrar a CTO correspondente em searchedCTOsList para obter lat/lng
+            // Usar comparação de coordenadas para encontrar a correspondente
+            const searchedCTO = searchedCTOsList.find(({ cto: c }) => {
+              const ctoLat = parseFloat(cto.latitude);
+              const ctoLng = parseFloat(cto.longitude);
+              const cLat = parseFloat(c.latitude);
+              const cLng = parseFloat(c.longitude);
+              return Math.abs(ctoLat - cLat) < 0.0001 && Math.abs(ctoLng - cLng) < 0.0001;
+            });
+            
+            if (searchedCTO) {
+              const { lat, lng } = searchedCTO;
+              const circle = new google.maps.Circle({
+                strokeColor: '#7B68EE',
+                strokeOpacity: 0.6,
+                strokeWeight: 2,
+                fillColor: '#6495ED',
+                fillOpacity: 0.08,
+                map: showRadiusCircles ? map : null,
+                center: { lat, lng },
+                radius: 250,
+                zIndex: 1
+              });
+              radiusCircles.push(circle);
+              console.log(`✅ Grupo ${groupIndex + 1} (1 CTO): Círculo individual criado (método antigo)`);
+            } else {
+              console.warn(`⚠️ Grupo ${groupIndex + 1}: CTO não encontrada em searchedCTOsList`);
+            }
+          } else {
+            // Grupo com 2+ CTOs: usar função SQL do Supabase (polígono fundido)
+            console.log(`🔍 Grupo ${groupIndex + 1} (${group.length} CTOs): Círculos se intersectam - usando função SQL do Supabase`);
             try {
               const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ ctos: foundCTOs })
+                body: JSON.stringify({ ctos: group })
               });
               
               if (polygonResponse.ok) {
@@ -1397,36 +1449,20 @@
                   });
                   
                   radiusPolygons.push(polygon);
-                  console.log(`✅ Polígono fundido criado no backend para ${foundCTOs.length} CTO(s) encontrada(s) na pesquisa`);
+                  console.log(`✅ Grupo ${groupIndex + 1} (${group.length} CTOs): Polígono fundido criado no backend`);
                 } else {
-                  console.warn('⚠️ Resposta do backend não contém polígono válido');
+                  console.warn(`⚠️ Grupo ${groupIndex + 1}: Resposta do backend não contém polígono válido`);
                 }
               } else {
-                console.error('❌ Erro ao calcular polígono no backend:', polygonResponse.status);
+                console.error(`❌ Grupo ${groupIndex + 1}: Erro ao calcular polígono no backend:`, polygonResponse.status);
               }
             } catch (polygonErr) {
-              console.error('❌ Erro ao chamar endpoint de cálculo de polígono:', polygonErr);
+              console.error(`❌ Grupo ${groupIndex + 1}: Erro ao chamar endpoint de cálculo de polígono:`, polygonErr);
             }
-          } else {
-            // Se NÃO há interseção, criar círculos individuais (método antigo)
-            console.log(`🔍 ${foundCTOs.length} CTO(s) sem interseção de círculos - usando método antigo (círculos individuais)`);
-            for (const { cto, lat, lng } of searchedCTOsList) {
-              const circle = new google.maps.Circle({
-                strokeColor: '#7B68EE',
-                strokeOpacity: 0.6,
-                strokeWeight: 2,
-                fillColor: '#6495ED',
-                fillOpacity: 0.08,
-                map: showRadiusCircles ? map : null,
-                center: { lat, lng },
-                radius: 250,
-                zIndex: 1
-              });
-              radiusCircles.push(circle);
-            }
-            console.log(`✅ ${radiusCircles.length} círculo(s) de 250m criado(s) para CTOs pesquisadas (método antigo)`);
           }
         }
+        
+        console.log(`✅ Processamento completo: ${radiusPolygons.length} polígono(s) fundido(s) + ${radiusCircles.length} círculo(s) individual(is)`);
       }
 
       // ETAPA 2: Para CADA CTO pesquisada, buscar todas as próximas dentro de 250m
