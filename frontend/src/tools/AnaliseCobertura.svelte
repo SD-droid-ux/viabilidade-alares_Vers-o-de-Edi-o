@@ -2110,10 +2110,9 @@
       });
     }
     
-    // Para grupos menores (≤200), usar lógica completa com convex hull
-    // Para múltiplas CTOs, criar um polígono que representa a união real dos círculos
-    // Estratégia melhorada: usar convex hull refinado + pontos de interseção entre círculos
-    // Isso cria uma forma muito mais precisa que representa a verdadeira área de cobertura
+    // Para grupos menores (≤200), usar lógica SIMPLES do MapaConsulta.svelte
+    // Esta lógica funciona perfeitamente com 220.000 CTOs, então funciona com qualquer número
+    // Estratégia: gerar pontos, adicionar interseções, filtrar borda, convex hull, suavizar
     
     // Coletar todos os pontos dos círculos (perímetro de cada círculo)
     const allPoints = [];
@@ -2126,9 +2125,9 @@
       circleCenters.push({ lat, lng });
       circles.push({ lat, lng, radius: RADIUS_DEG });
       
-      // Criar pontos ao redor do círculo (otimizado: balancear qualidade e performance)
-      // Para grupos muito grandes (100+), reduzir pontos para manter performance
-      const pointsPerCircle = ctos.length > 100 ? 48 : ctos.length > 50 ? 64 : ctos.length > 20 ? 56 : 40;
+      // Criar pontos ao redor do círculo (otimizado: menos pontos para grupos menores)
+      // EXATAMENTE como no MapaConsulta.svelte
+      const pointsPerCircle = ctos.length > 50 ? 64 : ctos.length > 20 ? 48 : 32;
       const latRadius = RADIUS_DEG;
       const lngRadius = RADIUS_DEG / Math.cos(lat * Math.PI / 180);
       
@@ -2140,67 +2139,16 @@
       }
     }
     
-    // Verificar se há sobreposição entre círculos e adicionar pontos de interseção
-    // Para grupos muito grandes (100+), otimizar verificando apenas círculos próximos
-    let hasOverlap = false;
-    const shouldAddAllIntersections = ctos.length > 20;
-    const isVeryLargeGroup = ctos.length > 100;
-    
-    // Para grupos muito grandes, usar otimização espacial (verificar apenas círculos próximos)
-    if (isVeryLargeGroup) {
-      // Criar grid espacial para otimizar busca de círculos próximos
-      const gridSize = RADIUS_DEG * 5; // Tamanho da célula do grid
-      const grid = new Map();
-      
-      // Adicionar círculos ao grid
-      circles.forEach((circle, idx) => {
-        const gridX = Math.floor(circle.lat / gridSize);
-        const gridY = Math.floor(circle.lng / gridSize);
-        const key = `${gridX},${gridY}`;
-        if (!grid.has(key)) grid.set(key, []);
-        grid.get(key).push({ circle, idx });
-      });
-      
-      // Verificar apenas círculos na mesma célula ou células adjacentes
-      for (const [key, cellCircles] of grid.entries()) {
-        const [gridX, gridY] = key.split(',').map(Number);
-        
-        // Verificar círculos na mesma célula e células adjacentes
-        for (let dx = -1; dx <= 1; dx++) {
-          for (let dy = -1; dy <= 1; dy++) {
-            const neighborKey = `${gridX + dx},${gridY + dy}`;
-            const neighborCircles = grid.get(neighborKey) || [];
-            
-            for (const { circle: c1, idx: i } of cellCircles) {
-              for (const { circle: c2, idx: j } of neighborCircles) {
-                if (i >= j) continue; // Evitar duplicatas
-                
-                const dist = calculateDistance(c1.lat, c1.lng, c2.lat, c2.lng);
-                const distDeg = dist / 111000;
-                
-                if (distDeg < (RADIUS_DEG * 2)) {
-                  hasOverlap = true;
-                  const intersections = getCircleIntersections(
-                    c1.lat, c1.lng, RADIUS_DEG,
-                    c2.lat, c2.lng, RADIUS_DEG
-                  );
-                  allPoints.push(...intersections);
-                }
-              }
-            }
-          }
-        }
-      }
-    } else {
-      // Para grupos menores, verificar todos os pares
+    // Para grupos grandes, adicionar pontos de interseção entre círculos próximos
+    // EXATAMENTE como no MapaConsulta.svelte
+    if (ctos.length > 20) {
       for (let i = 0; i < circles.length; i++) {
         for (let j = i + 1; j < circles.length; j++) {
           const dist = calculateDistance(circles[i].lat, circles[i].lng, circles[j].lat, circles[j].lng);
           const distDeg = dist / 111000;
           
-          const overlapThreshold = shouldAddAllIntersections ? (RADIUS_DEG * 2.5) : (RADIUS_DEG * 2);
-          if (distDeg < overlapThreshold) {
-            hasOverlap = true;
+          // Se os círculos se sobrepõem, adicionar pontos de interseção
+          if (distDeg < (RADIUS_DEG * 2)) {
             const intersections = getCircleIntersections(
               circles[i].lat, circles[i].lng, RADIUS_DEG,
               circles[j].lat, circles[j].lng, RADIUS_DEG
@@ -2211,193 +2159,33 @@
       }
     }
     
-    // Se não há sobreposição, retornar null (criar círculos individuais)
-    if (!hasOverlap) {
-      return null;
-    }
-    
     // Filtrar pontos que estão dentro de outros círculos (não são parte da borda externa)
-    // Para grupos médios (50-200), usar filtragem mais conservadora para evitar bugs
-    // Margem maior para grupos médios evita remover pontos importantes da borda
-    const margin = ctos.length > 100 ? 1.05 : ctos.length > 50 ? 1.08 : ctos.length > 20 ? 1.05 : 1.02;
-    let pointsToFilter = allPoints;
-    
-    // Amostragem apenas para grupos muito grandes (100+)
-    // Para grupos 50-100, usar todos os pontos para melhor qualidade
-    if (ctos.length > 100) {
-      const sampleSize = Math.min(12000, allPoints.length);
-      const step = Math.max(1, Math.floor(allPoints.length / sampleSize));
-      pointsToFilter = [];
-      for (let i = 0; i < allPoints.length; i += step) {
-        pointsToFilter.push(allPoints[i]);
-      }
-    }
-    
-    // Para grupos médios (50-200), usar abordagem especial que evita "puxadas"
-    // Em vez de filtrar agressivamente, criar pontos estratégicos que garantem forma suave
-    let pointsToUse;
-    
-    if (ctos.length >= 50 && ctos.length < 200) {
-      // Para grupos médios, criar MUITO MAIS pontos ao redor de cada círculo
-      // Isso garante que o convex hull tenha pontos suficientes para criar forma suave
-      pointsToUse = [];
-      
-      // Gerar 24 pontos ao redor de cada círculo (muito mais denso)
-      // Isso evita "puxadas" porque o convex hull terá mais pontos para trabalhar
-      for (const center of circleCenters) {
-        const latRadius = RADIUS_DEG * 1.08; // 8% de margem para garantir cobertura
-        const lngRadius = (RADIUS_DEG * 1.08) / Math.cos(center.lat * Math.PI / 180);
+    // EXATAMENTE como no MapaConsulta.svelte (margem de 5%)
+    const boundaryPoints = allPoints.filter(point => {
+      // Verificar se este ponto está na borda externa (não dentro de todos os círculos)
+      let isInsideAll = true;
+      for (const circle of circles) {
+        const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
+        const distDeg = dist / 111000;
+        const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
         
-        // 24 pontos uniformemente distribuídos ao redor do círculo
-        for (let i = 0; i < 24; i++) {
-          const angle = (i * 2 * Math.PI) / 24;
-          pointsToUse.push({
-            lat: center.lat + (latRadius * Math.cos(angle)),
-            lng: center.lng + (lngRadius * Math.sin(angle))
-          });
+        // Se o ponto está fora deste círculo, não está dentro de todos
+        if (distDeg > circleRadius * 1.05) { // 5% de margem
+          isInsideAll = false;
+          break;
         }
       }
-      
-      // Adicionar pontos de interseção entre círculos próximos
-      // Isso ajuda a criar forma mais natural onde círculos se encontram
-      for (let i = 0; i < circles.length && i < 150; i++) { // Aumentado limite
-        for (let j = i + 1; j < circles.length && j < 150; j++) {
-          const dist = calculateDistance(circles[i].lat, circles[i].lng, circles[j].lat, circles[j].lng);
-          const distDeg = dist / 111000;
-          
-          if (distDeg < RADIUS_DEG * 3) { // Aumentado threshold para mais interseções
-            const intersections = getCircleIntersections(
-              circles[i].lat, circles[i].lng, RADIUS_DEG * 1.08,
-              circles[j].lat, circles[j].lng, RADIUS_DEG * 1.08
-            );
-            pointsToUse.push(...intersections);
-          }
-        }
-      }
-    } else {
-      // Para grupos menores, usar filtragem normal
-      const boundaryPoints = pointsToFilter.filter(point => {
-        let maxDistance = 0;
-        
-        for (const circle of circles) {
-          const dist = calculateDistance(point.lat, point.lng, circle.lat, circle.lng);
-          const distDeg = dist / 111000;
-          const circleRadius = RADIUS_DEG / Math.cos(circle.lat * Math.PI / 180);
-          const distanceFromEdge = Math.abs(distDeg - circleRadius);
-          
-          if (distanceFromEdge < circleRadius * 0.15) {
-            return true;
-          }
-          
-          maxDistance = Math.max(maxDistance, distDeg);
-        }
-        
-        const avgRadius = RADIUS_DEG;
-        return maxDistance > avgRadius * margin;
-      });
-      
-      if (boundaryPoints.length < 3) {
-        pointsToUse = allPoints;
-      } else {
-        pointsToUse = boundaryPoints;
-      }
-    }
+      // Manter pontos que NÃO estão dentro de todos os círculos (são parte da borda)
+      return !isInsideAll;
+    });
     
-    // Para grupos menores (<50), adicionar pontos estratégicos
-    if (ctos.length < 50 && ctos.length > 20) {
-      // Adicionar pontos nos 8 direções principais de cada círculo
-      for (const center of circleCenters) {
-        const latRadius = RADIUS_DEG;
-        const lngRadius = RADIUS_DEG / Math.cos(center.lat * Math.PI / 180);
-        const sqrt2 = Math.sqrt(2) / 2;
-        pointsToUse.push(
-          { lat: center.lat + latRadius, lng: center.lng }, // Norte
-          { lat: center.lat - latRadius, lng: center.lng }, // Sul
-          { lat: center.lat, lng: center.lng + lngRadius }, // Leste
-          { lat: center.lat, lng: center.lng - lngRadius }, // Oeste
-          { lat: center.lat + latRadius * sqrt2, lng: center.lng + lngRadius * sqrt2 }, // NE
-          { lat: center.lat + latRadius * sqrt2, lng: center.lng - lngRadius * sqrt2 }, // NO
-          { lat: center.lat - latRadius * sqrt2, lng: center.lng + lngRadius * sqrt2 }, // SE
-          { lat: center.lat - latRadius * sqrt2, lng: center.lng - lngRadius * sqrt2 }  // SO
-        );
-      }
-    } else if (ctos.length <= 20) {
-      // Para grupos muito pequenos, adicionar apenas 4 quadrantes
-      for (const center of circleCenters) {
-        const latRadius = RADIUS_DEG;
-        const lngRadius = RADIUS_DEG / Math.cos(center.lat * Math.PI / 180);
-        pointsToUse.push(
-          { lat: center.lat + latRadius, lng: center.lng }, // Norte
-          { lat: center.lat - latRadius, lng: center.lng }, // Sul
-          { lat: center.lat, lng: center.lng + lngRadius }, // Leste
-          { lat: center.lat, lng: center.lng - lngRadius }  // Oeste
-        );
-      }
-    }
-    
-    // Limitar pontos para o convex hull de forma mais inteligente
-    // Para grupos médios, usar mais pontos mas com amostragem estratificada
-    let pointsForHull = pointsToUse;
-    const maxHullPoints = ctos.length > 100 ? 8000 : 12000; // Aumentado para grupos médios
-    if (pointsToUse.length > maxHullPoints) {
-      // Amostragem estratificada: dividir em quadrantes e amostrar de cada um
-      // Isso garante cobertura uniforme de todas as áreas
-      const minLat = Math.min(...pointsToUse.map(p => p.lat));
-      const maxLat = Math.max(...pointsToUse.map(p => p.lat));
-      const minLng = Math.min(...pointsToUse.map(p => p.lng));
-      const maxLng = Math.max(...pointsToUse.map(p => p.lng));
-      
-      const midLat = (minLat + maxLat) / 2;
-      const midLng = (minLng + maxLng) / 2;
-      
-      // Dividir em 4 quadrantes
-      const quadrants = [[], [], [], []];
-      for (const point of pointsToUse) {
-        if (point.lat >= midLat && point.lng >= midLng) quadrants[0].push(point); // NE
-        else if (point.lat >= midLat && point.lng < midLng) quadrants[1].push(point); // NO
-        else if (point.lat < midLat && point.lng >= midLng) quadrants[2].push(point); // SE
-        else quadrants[3].push(point); // SO
-      }
-      
-      pointsForHull = [];
-      const pointsPerQuadrant = Math.floor(maxHullPoints / 4);
-      
-      for (const quadrant of quadrants) {
-        if (quadrant.length === 0) continue;
-        const step = Math.max(1, Math.floor(quadrant.length / pointsPerQuadrant));
-        for (let i = 0; i < quadrant.length; i += step) {
-          pointsForHull.push(quadrant[i]);
-        }
-        // Garantir que extremos de cada quadrante sejam incluídos
-        if (quadrant.length > 0) {
-          if (!pointsForHull.includes(quadrant[0])) pointsForHull.push(quadrant[0]);
-          if (quadrant.length > 1 && !pointsForHull.includes(quadrant[quadrant.length - 1])) {
-            pointsForHull.push(quadrant[quadrant.length - 1]);
-          }
-        }
-      }
-    }
+    // Se não temos pontos suficientes na borda, usar todos os pontos
+    // EXATAMENTE como no MapaConsulta.svelte
+    const pointsToUse = boundaryPoints.length >= 3 ? boundaryPoints : allPoints;
     
     // Calcular o convex hull (envoltória convexa) dos pontos da borda
-    // Isso cria um polígono que envolve todos os círculos de forma natural e precisa
-    let hull;
-    try {
-      // Criar cópia para não modificar original e garantir que temos pontos únicos
-      const uniquePoints = [];
-      const seen = new Set();
-      for (const point of pointsForHull) {
-        const key = `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          uniquePoints.push(point);
-        }
-      }
-      
-      hull = computeConvexHull(uniquePoints);
-    } catch (hullErr) {
-      console.warn('⚠️ Erro ao calcular convex hull:', hullErr);
-      hull = null;
-    }
+    // EXATAMENTE como no MapaConsulta.svelte
+    const hull = computeConvexHull(pointsToUse);
     
     // Se o convex hull falhar ou tiver poucos pontos, usar bounding box expandido
     if (!hull || hull.length < 3) {
@@ -2432,123 +2220,16 @@
       });
     }
     
-    // Validar o hull antes de suavizar para evitar rupturas
-    // Verificar se o hull tem pontos suficientes e forma válida
-    if (hull.length < 3) {
-      // Se o hull é inválido, usar bounding box expandido
-      let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-      for (const cto of ctos) {
-        const lat = parseFloat(cto.latitude);
-        const lng = parseFloat(cto.longitude);
-        const latRadius = RADIUS_DEG * 1.1;
-        const lngRadius = (RADIUS_DEG * 1.1) / Math.cos(lat * Math.PI / 180);
-        minLat = Math.min(minLat, lat - latRadius);
-        maxLat = Math.max(maxLat, lat + latRadius);
-        minLng = Math.min(minLng, lng - lngRadius);
-        maxLng = Math.max(maxLng, lng + lngRadius);
-      }
-      hull = [
-        { lat: minLat, lng: minLng },
-        { lat: maxLat, lng: minLng },
-        { lat: maxLat, lng: maxLng },
-        { lat: minLat, lng: maxLng }
-      ];
-    }
-    
-    // Validar que todos os círculos estão dentro do polígono
-    // Se algum círculo estiver fora, expandir o polígono
-    function isPointInPolygon(point, polygon) {
-      let inside = false;
-      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const xi = polygon[i].lng, yi = polygon[i].lat;
-        const xj = polygon[j].lng, yj = polygon[j].lat;
-        const intersect = ((yi > point.lat) !== (yj > point.lat)) &&
-          (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
-        if (intersect) inside = !inside;
-      }
-      return inside;
-    }
-    
-    // Verificar se todos os círculos estão dentro do hull
-    let needsExpansion = false;
-    for (const center of circleCenters) {
-      const circleRadius = RADIUS_DEG / Math.cos(center.lat * Math.PI / 180);
-      // Verificar se o centro do círculo está dentro do polígono
-      if (!isPointInPolygon(center, hull)) {
-        needsExpansion = true;
-        break;
-      }
-      // Verificar pontos na borda do círculo
-      const testPoints = [
-        { lat: center.lat + circleRadius, lng: center.lng },
-        { lat: center.lat - circleRadius, lng: center.lng },
-        { lat: center.lat, lng: center.lng + circleRadius },
-        { lat: center.lat, lng: center.lng - circleRadius }
-      ];
-      for (const testPoint of testPoints) {
-        if (!isPointInPolygon(testPoint, hull)) {
-          needsExpansion = true;
-          break;
-        }
-      }
-      if (needsExpansion) break;
-    }
-    
-    // Se precisa expandir, adicionar pontos estratégicos e recalcular
-    if (needsExpansion && ctos.length >= 50 && ctos.length < 200) {
-      // Adicionar pontos nos extremos de cada círculo
-      const expandedPoints = [...pointsForHull];
-      for (const center of circleCenters) {
-        const latRadius = RADIUS_DEG * 1.05; // 5% de margem
-        const lngRadius = (RADIUS_DEG * 1.05) / Math.cos(center.lat * Math.PI / 180);
-        expandedPoints.push(
-          { lat: center.lat + latRadius, lng: center.lng },
-          { lat: center.lat - latRadius, lng: center.lng },
-          { lat: center.lat, lng: center.lng + lngRadius },
-          { lat: center.lat, lng: center.lng - lngRadius }
-        );
-      }
-      // Recalcular hull com pontos expandidos
-      try {
-        const uniqueExpanded = [];
-        const seen = new Set();
-        for (const point of expandedPoints) {
-          const key = `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            uniqueExpanded.push(point);
-          }
-        }
-        hull = computeConvexHull(uniqueExpanded);
-      } catch (err) {
-        console.warn('⚠️ Erro ao recalcular hull expandido:', err);
-      }
-    }
-    
-    // Para grupos médios (50-200), usar suavização conservadora
-    // Com mais pontos (24 por círculo), o convex hull já deve estar mais suave
-    // Aplicar suavização leve apenas para polir bordas
+    // Suavizar o polígono adicionando pontos intermediários para bordas mais suaves
+    // EXATAMENTE como no MapaConsulta.svelte (2 passos)
     let smoothedHull;
     try {
-      if (ctos.length >= 50 && ctos.length < 200) {
-        // Para grupos médios, usar suavização conservadora (1 passo)
-        // Com 24 pontos por círculo, o hull já deve estar bem formado
-        smoothedHull = smoothPolygonEdgesConservative(hull);
-        
-        // Se a suavização resultar em poucos pontos, usar hull original
-        if (!smoothedHull || smoothedHull.length < 3) {
-          smoothedHull = hull;
-        }
-      } else {
-        // Para grupos menores, usar suavização normal
-        smoothedHull = smoothPolygonEdges(hull);
-      }
-      
+      smoothedHull = smoothPolygonEdges(hull);
       if (!smoothedHull || smoothedHull.length < 3) {
-        smoothedHull = hull; // Fallback para hull original se processamento falhar
+        smoothedHull = hull; // Fallback para hull original se suavização falhar
       }
     } catch (smoothErr) {
-      console.warn('⚠️ Erro ao processar polígono, usando hull original:', smoothErr);
+      console.warn('⚠️ Erro ao suavizar polígono, usando hull original:', smoothErr);
       smoothedHull = hull; // Fallback para hull original
     }
     
