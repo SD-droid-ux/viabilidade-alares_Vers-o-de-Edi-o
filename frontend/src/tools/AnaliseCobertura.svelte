@@ -1303,50 +1303,68 @@
         }
         
         // Criar mancha usando APENAS as CTOs encontradas na pesquisa
-        // Calcular polígono no backend (igual ao MapaConsulta.svelte)
         const foundCTOs = searchedCTOsList.map(({ cto }) => cto);
         
-        try {
-          const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ ctos: foundCTOs })
+        // Se for apenas 1 CTO, usar método antigo (criar círculo diretamente)
+        if (foundCTOs.length === 1) {
+          const { cto, lat, lng } = searchedCTOsList[0];
+          const circle = new google.maps.Circle({
+            strokeColor: '#7B68EE',
+            strokeOpacity: 0.6,
+            strokeWeight: 2,
+            fillColor: '#6495ED',
+            fillOpacity: 0.08,
+            map: showRadiusCircles ? map : null,
+            center: { lat, lng },
+            radius: 250,
+            zIndex: 1
           });
-          
-          if (polygonResponse.ok) {
-            const polygonData = await polygonResponse.json();
+          radiusCircles.push(circle);
+          console.log(`✅ Círculo de 250m criado para 1 CTO encontrada na pesquisa (método antigo)`);
+        } else {
+          // Para múltiplas CTOs, calcular polígono no backend (igual ao MapaConsulta.svelte)
+          try {
+            const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ ctos: foundCTOs })
+            });
             
-            if (polygonData.success && polygonData.geometry) {
-              // Converter GeoJSON para Google Maps Polygon
-              const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
-                lat: coord[1],
-                lng: coord[0]
-              }));
+            if (polygonResponse.ok) {
+              const polygonData = await polygonResponse.json();
               
-              const polygon = new google.maps.Polygon({
-                paths: coordinates,
-                strokeColor: '#7B68EE',
-                strokeOpacity: 0.6,
-                strokeWeight: 2,
-                fillColor: '#6495ED',
-                fillOpacity: 0.08,
-                map: showRadiusCircles ? map : null,
-                zIndex: 1,
-                geodesic: true
-              });
-              
-              radiusPolygons.push(polygon);
-              console.log(`✅ Polígono fundido criado no backend para ${foundCTOs.length} CTO(s) encontrada(s) na pesquisa`);
+              if (polygonData.success && polygonData.geometry) {
+                // Converter GeoJSON para Google Maps Polygon
+                const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
+                  lat: coord[1],
+                  lng: coord[0]
+                }));
+                
+                const polygon = new google.maps.Polygon({
+                  paths: coordinates,
+                  strokeColor: '#7B68EE',
+                  strokeOpacity: 0.6,
+                  strokeWeight: 2,
+                  fillColor: '#6495ED',
+                  fillOpacity: 0.08,
+                  map: showRadiusCircles ? map : null,
+                  zIndex: 1,
+                  geodesic: true
+                });
+                
+                radiusPolygons.push(polygon);
+                console.log(`✅ Polígono fundido criado no backend para ${foundCTOs.length} CTO(s) encontrada(s) na pesquisa`);
+              } else {
+                console.warn('⚠️ Resposta do backend não contém polígono válido');
+              }
             } else {
-              console.warn('⚠️ Resposta do backend não contém polígono válido');
+              console.error('❌ Erro ao calcular polígono no backend:', polygonResponse.status);
             }
-          } else {
-            console.error('❌ Erro ao calcular polígono no backend:', polygonResponse.status);
+          } catch (polygonErr) {
+            console.error('❌ Erro ao chamar endpoint de cálculo de polígono:', polygonErr);
           }
-        } catch (polygonErr) {
-          console.error('❌ Erro ao chamar endpoint de cálculo de polígono:', polygonErr);
         }
       }
 
