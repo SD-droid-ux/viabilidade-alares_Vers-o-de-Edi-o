@@ -1155,6 +1155,121 @@ app.get('/api/coverage/polygon', async (req, res) => {
   }
 });
 
+// Rota para calcular polígono de cobertura para CTOs específicas (usado pelo AnaliseCobertura.svelte)
+// Usa função SQL no Supabase (calculate_polygon_for_specific_ctos) - igual ao padrão do MapaConsulta.svelte
+app.post('/api/coverage/calculate-polygon-for-ctos', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    if (!supabase || !isSupabaseAvailable()) {
+      return res.status(503).json({
+        success: false,
+        error: 'Supabase não disponível'
+      });
+    }
+    
+    const { ctos } = req.body;
+    
+    if (!ctos || !Array.isArray(ctos) || ctos.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Array de CTOs é obrigatório e não pode estar vazio'
+      });
+    }
+    
+    // Preparar array de CTOs para o Supabase (apenas latitude e longitude)
+    const ctosForSupabase = ctos.map(cto => ({
+      latitude: parseFloat(cto.latitude),
+      longitude: parseFloat(cto.longitude)
+    })).filter(cto => 
+      !isNaN(cto.latitude) && !isNaN(cto.longitude) &&
+      cto.latitude >= -90 && cto.latitude <= 90 &&
+      cto.longitude >= -180 && cto.longitude <= 180
+    );
+    
+    if (ctosForSupabase.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Nenhuma CTO com coordenadas válidas encontrada'
+      });
+    }
+    
+    console.log(`🗺️ [API] Calculando polígono para ${ctosForSupabase.length} CTO(s) usando função SQL do Supabase...`);
+    
+    // Chamar função SQL do Supabase (igual ao padrão do MapaConsulta.svelte)
+    const { data, error } = await supabase.rpc('calculate_polygon_for_specific_ctos', {
+      p_ctos: ctosForSupabase
+    });
+    
+    if (error) {
+      console.error('❌ [API] Erro ao chamar função SQL do Supabase:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao calcular polígono no Supabase',
+        details: error.message
+      });
+    }
+    
+    if (!data || !data.success) {
+      console.error('❌ [API] Função SQL retornou erro:', data);
+      return res.status(500).json({
+        success: false,
+        error: data?.error || 'Erro desconhecido ao calcular polígono',
+        details: data
+      });
+    }
+    
+    // A função SQL retorna geometry como JSONB (já é um objeto JSON)
+    // Se for string, fazer parse
+    let geometry = data.geometry;
+    if (typeof geometry === 'string') {
+      try {
+        geometry = JSON.parse(geometry);
+      } catch (parseErr) {
+        console.error('❌ [API] Erro ao fazer parse do GeoJSON:', parseErr);
+        return res.status(500).json({
+          success: false,
+          error: 'Erro ao processar GeoJSON retornado pelo Supabase'
+        });
+      }
+    }
+    
+    console.log(`✅ [API] Polígono calculado com sucesso: ${data.total_ctos} CTO(s)`);
+    
+    // Retornar resposta no mesmo formato esperado pelo frontend
+    res.json({
+      success: true,
+      geometry: geometry,
+      total_ctos: data.total_ctos || ctosForSupabase.length,
+      is_single_circle: data.is_single_circle || false
+    });
+    
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/coverage/calculate-polygon-for-ctos:', err);
+    
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    res.status(500).json({
+      success: false,
+      error: 'Erro interno',
+      details: err.message
+    });
+  }
+});
+
 // Rota para verificar se um ponto está dentro da cobertura
 app.get('/api/coverage/check-point', async (req, res) => {
   try {
