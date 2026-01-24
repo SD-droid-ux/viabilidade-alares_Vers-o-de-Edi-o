@@ -974,39 +974,71 @@
     const hasSearchedCTOs = searchedCTOKeys.size > 0;
     const allSearchedVisible = areSearchedCTOsVisible();
     
-    // Criar conteúdo do InfoWindow com estrutura similar ao box do usuário
+    // Criar estrutura do box similar ao modal de configurações
     const infoContent = document.createElement('div');
     infoContent.className = 'table-menu-content';
     
+    // Criar header do box
+    const header = document.createElement('div');
+    header.className = 'table-menu-header';
+    const headerTitle = document.createElement('h3');
+    headerTitle.textContent = 'Menu da Tabela';
+    header.appendChild(headerTitle);
+    const closeButton = document.createElement('button');
+    closeButton.className = 'table-menu-close';
+    closeButton.innerHTML = '×';
+    closeButton.setAttribute('aria-label', 'Fechar');
+    closeButton.onclick = (e) => {
+      e.stopPropagation();
+      if (tableMenuInfoWindowElement) {
+        tableMenuInfoWindowElement.remove();
+        tableMenuInfoWindowElement = null;
+      }
+    };
+    header.appendChild(closeButton);
+    infoContent.appendChild(header);
+    
+    // Criar body do box
+    const body = document.createElement('div');
+    body.className = 'table-menu-body';
+    
     if (hasSearchedCTOs) {
-      // Criar botão para marcar/desmarcar CTOs pesquisadas
+      // Criar seção de CTOs pesquisadas
+      const section = document.createElement('div');
+      section.className = 'table-menu-section';
+      
+      const sectionTitle = document.createElement('h4');
+      sectionTitle.className = 'table-menu-section-title';
+      sectionTitle.textContent = 'CTOs Pesquisadas';
+      section.appendChild(sectionTitle);
+      
       const button = document.createElement('button');
-      button.className = 'toggle-searched-button';
+      button.className = 'table-menu-button-action';
       button.innerHTML = `
-        <span class="button-icon">${allSearchedVisible ? '☑️' : '☐'}</span>
         <span class="button-text">${allSearchedVisible ? 'Desmarcar CTOs Pesquisadas' : 'Marcar CTOs Pesquisadas'}</span>
       `;
       button.onclick = async (e) => {
         e.stopPropagation();
         await toggleSearchedCTOs();
-        // Atualizar texto e ícone do botão
+        // Atualizar texto do botão
         const newState = areSearchedCTOsVisible();
-        button.innerHTML = `
-          <span class="button-icon">${newState ? '☑️' : '☐'}</span>
-          <span class="button-text">${newState ? 'Desmarcar CTOs Pesquisadas' : 'Marcar CTOs Pesquisadas'}</span>
-        `;
+        button.querySelector('.button-text').textContent = newState ? 'Desmarcar CTOs Pesquisadas' : 'Marcar CTOs Pesquisadas';
       };
-      infoContent.appendChild(button);
+      section.appendChild(button);
+      
+      body.appendChild(section);
     } else {
       // Se não há CTOs pesquisadas, mostrar mensagem
       const message = document.createElement('div');
-      message.className = 'no-searched-message';
+      message.className = 'table-menu-message';
       message.innerHTML = `
         <span class="message-icon">ℹ️</span>
         <span class="message-text">Nenhuma CTO pesquisada por nome</span>
       `;
-      infoContent.appendChild(message);
+      body.appendChild(message);
     }
+    
+    infoContent.appendChild(body);
     
     // Criar container do InfoWindow
     const infoWindowContainer = document.createElement('div');
@@ -3897,77 +3929,122 @@
   }
 
   .table-menu-infowindow {
-    background: rgba(255, 255, 255, 0.98);
-    backdrop-filter: blur(20px) saturate(180%);
-    border: 1.5px solid rgba(123, 104, 238, 0.2);
+    background: white;
     border-radius: 12px;
-    box-shadow: 
-      0 8px 32px rgba(123, 104, 238, 0.15),
-      0 4px 16px rgba(100, 149, 237, 0.1),
-      0 2px 8px rgba(0, 0, 0, 0.05),
-      inset 0 1px 0 rgba(255, 255, 255, 0.9);
-    min-width: 240px;
+    min-width: 280px;
+    max-width: 400px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
   }
 
   .table-menu-content {
-    padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0;
   }
 
-  .toggle-searched-button {
-    background: transparent;
-    color: #4c1d95;
+  .table-menu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 2px solid #7B68EE;
+    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
+    color: white;
+  }
+
+  .table-menu-header h3 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  .table-menu-close {
+    background: none;
     border: none;
-    border-radius: 0;
-    padding: 0.875rem 1.25rem;
-    font-size: 0.9375rem;
-    font-weight: 500;
+    color: white;
+    font-size: 2rem;
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 0;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    text-align: left;
-    width: 100%;
-    white-space: nowrap;
-  }
-
-  .toggle-searched-button:hover {
-    background: linear-gradient(135deg, rgba(100, 149, 237, 0.08) 0%, rgba(123, 104, 238, 0.08) 100%);
-    color: #7B68EE;
-  }
-
-  .toggle-searched-button:active {
-    background: linear-gradient(135deg, rgba(100, 149, 237, 0.12) 0%, rgba(123, 104, 238, 0.12) 100%);
-  }
-
-  .button-icon {
-    font-size: 1.125rem;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.3s;
     line-height: 1;
-    flex-shrink: 0;
+  }
+
+  .table-menu-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .table-menu-body {
+    padding: 1.5rem;
+  }
+
+  .table-menu-section {
+    margin-bottom: 1.5rem;
+  }
+
+  .table-menu-section:last-child {
+    margin-bottom: 0;
+  }
+
+  .table-menu-section-title {
+    color: #7B68EE;
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 0 0 1.5rem 0;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid #7B68EE;
+  }
+
+  .table-menu-button-action {
+    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: 'Inter', sans-serif;
+    width: 100%;
+    text-align: center;
+  }
+
+  .table-menu-button-action:hover {
+    background: linear-gradient(135deg, #8B7AE8 0%, #7499F0 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(123, 104, 238, 0.3);
+  }
+
+  .table-menu-button-action:active {
+    transform: translateY(0);
   }
 
   .button-text {
-    flex: 1;
+    display: block;
   }
 
-  .no-searched-message {
-    padding: 0.875rem 1.25rem;
+  .table-menu-message {
+    padding: 1rem;
     display: flex;
     align-items: center;
     gap: 0.75rem;
     color: #666;
-    font-size: 0.875rem;
+    font-size: 0.9375rem;
+    background: #f5f5f5;
+    border-radius: 6px;
   }
 
   .message-icon {
-    font-size: 1rem;
+    font-size: 1.25rem;
     flex-shrink: 0;
-    opacity: 0.7;
+    opacity: 0.8;
   }
 
   .message-text {
