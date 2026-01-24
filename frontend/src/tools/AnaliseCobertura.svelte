@@ -914,6 +914,10 @@
   let isMapMinimized = false;
   let isTableMinimized = true; // Começar minimizada quando não há resultados
   
+  // InfoWindow para o botão de menu da tabela
+  let tableMenuInfoWindow = null;
+  let tableMenuInfoWindowElement = null;
+  
   // Reactive statements para calcular estilos automaticamente
   $: sidebarWidthStyle = `${sidebarWidth}px`;
   $: mapHeightStyle = `${mapHeightPixels}px`;
@@ -921,6 +925,63 @@
   // Função para abrir configurações
   function openSettings() {
     showSettingsModal = true;
+  }
+  
+  // Função para abrir InfoWindow do menu da tabela
+  function openTableMenuInfoWindow(event) {
+    // Fechar InfoWindow anterior se existir
+    if (tableMenuInfoWindow) {
+      tableMenuInfoWindow.close();
+      tableMenuInfoWindow = null;
+    }
+    if (tableMenuInfoWindowElement) {
+      tableMenuInfoWindowElement.remove();
+      tableMenuInfoWindowElement = null;
+    }
+    
+    // Criar elemento do InfoWindow
+    const infoContent = document.createElement('div');
+    infoContent.style.padding = '12px';
+    infoContent.style.fontSize = '14px';
+    infoContent.style.color = '#333';
+    infoContent.textContent = 'Em desenvolvimento';
+    
+    // Criar container do InfoWindow
+    const infoWindowContainer = document.createElement('div');
+    infoWindowContainer.className = 'table-menu-infowindow';
+    infoWindowContainer.appendChild(infoContent);
+    
+    // Adicionar ao DOM próximo ao botão
+    const button = event.currentTarget;
+    const buttonRect = button.getBoundingClientRect();
+    const tableHeader = button.closest('.table-header');
+    
+    if (tableHeader) {
+      tableHeader.style.position = 'relative';
+      tableHeader.appendChild(infoWindowContainer);
+      
+      // Posicionar o InfoWindow próximo ao botão
+      const containerRect = tableHeader.getBoundingClientRect();
+      infoWindowContainer.style.position = 'absolute';
+      infoWindowContainer.style.top = `${buttonRect.bottom - containerRect.top + 5}px`;
+      infoWindowContainer.style.right = `${containerRect.right - buttonRect.right}px`;
+      infoWindowContainer.style.zIndex = '1000';
+      
+      tableMenuInfoWindowElement = infoWindowContainer;
+      
+      // Fechar ao clicar fora
+      const closeOnClickOutside = (e) => {
+        if (!infoWindowContainer.contains(e.target) && e.target !== button) {
+          infoWindowContainer.remove();
+          document.removeEventListener('click', closeOnClickOutside);
+          tableMenuInfoWindowElement = null;
+        }
+      };
+      
+      setTimeout(() => {
+        document.addEventListener('click', closeOnClickOutside);
+      }, 0);
+    }
   }
 
   // Função para pré-carregar configurações no hover
@@ -2966,15 +3027,25 @@
           <div class="results-table-container" class:minimized={isTableMinimized} style="flex: {isTableMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isTableMinimized ? '60px' : '200px'};">
             <div class="table-header">
               <h3>Tabela de Equipamentos Encontrados - {ctos.length} Equipamentos Encontrados</h3>
-              <button 
-                class="minimize-button" 
-                disabled={isResizingSidebar || isResizingMapTable}
-                on:click={() => isTableMinimized = !isTableMinimized}
-                aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
-                title={isTableMinimized ? 'Expandir' : 'Minimizar'}
-              >
-                {isTableMinimized ? '⬆️' : '⬇️'}
-              </button>
+              <div class="table-header-buttons">
+                <button 
+                  class="table-menu-button" 
+                  on:click={openTableMenuInfoWindow}
+                  aria-label="Menu da tabela"
+                  title="Menu"
+                >
+                  <span class="vertical-dots"></span>
+                </button>
+                <button 
+                  class="minimize-button" 
+                  disabled={isResizingSidebar || isResizingMapTable}
+                  on:click={() => isTableMinimized = !isTableMinimized}
+                  aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
+                  title={isTableMinimized ? 'Expandir' : 'Minimizar'}
+                >
+                  {isTableMinimized ? '⬆️' : '⬇️'}
+                </button>
+              </div>
             </div>
             {#if !isTableMinimized}
             <div class="table-wrapper">
@@ -3154,15 +3225,25 @@
           <div class="empty-state" class:minimized={isTableMinimized} style="flex: {isTableMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isTableMinimized ? '60px' : '200px'};">
             <div class="table-header">
               <h3>Tabela de Equipamentos Encontrados - Nenhum Equipamento Pesquisado</h3>
-              <button 
-                class="minimize-button" 
-                disabled={isResizingSidebar || isResizingMapTable}
-                on:click={() => isTableMinimized = !isTableMinimized}
-                aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
-                title={isTableMinimized ? 'Expandir' : 'Minimizar'}
-              >
-                {isTableMinimized ? '⬆️' : '⬇️'}
-              </button>
+              <div class="table-header-buttons">
+                <button 
+                  class="table-menu-button" 
+                  on:click={openTableMenuInfoWindow}
+                  aria-label="Menu da tabela"
+                  title="Menu"
+                >
+                  <span class="vertical-dots"></span>
+                </button>
+                <button 
+                  class="minimize-button" 
+                  disabled={isResizingSidebar || isResizingMapTable}
+                  on:click={() => isTableMinimized = !isTableMinimized}
+                  aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
+                  title={isTableMinimized ? 'Expandir' : 'Minimizar'}
+                >
+                  {isTableMinimized ? '⬆️' : '⬇️'}
+                </button>
+              </div>
             </div>
             {#if !isTableMinimized}
               <p>🔍 Realize uma busca para ver os resultados aqui</p>
@@ -3688,6 +3769,7 @@
     align-items: center;
     margin-bottom: 1rem;
     flex-shrink: 0;
+    position: relative;
   }
 
   .table-header h3 {
@@ -3695,6 +3777,68 @@
     color: #4c1d95;
     font-size: 1.125rem;
     font-weight: 600;
+  }
+
+  .table-header-buttons {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .table-menu-button {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+
+  .table-menu-button:hover {
+    background-color: rgba(100, 149, 237, 0.1);
+  }
+
+  .vertical-dots {
+    font-size: 1.5rem;
+    line-height: 0.4;
+    color: #4c1d95;
+    font-weight: bold;
+    display: inline-block;
+    letter-spacing: 0;
+  }
+
+  .vertical-dots::before {
+    content: '•';
+    display: block;
+  }
+
+  .vertical-dots::after {
+    content: '•\A•';
+    white-space: pre;
+    display: block;
+  }
+
+  .table-menu-infowindow {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    min-width: 150px;
+    animation: fadeIn 0.2s ease-in;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(-5px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .results-table-container.minimized {
@@ -3791,6 +3935,7 @@
     align-items: center;
     margin-bottom: 1rem;
     flex-shrink: 0;
+    position: relative;
   }
 
   .empty-state .table-header h3 {
