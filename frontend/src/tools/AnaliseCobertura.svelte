@@ -16,6 +16,8 @@
   let loadingMessage = '';
   let showSettingsModal = false;
   let loadingCTOs = false; // Loading específico para busca de CTOs (inline)
+  let loadingDots = '.'; // Pontos animados para "Buscando..."
+  let loadingDotsInterval = null; // Intervalo para animação dos pontos
   let baseDataExists = true; // Indica se a base de dados foi carregada com sucesso
   
   // Google Maps
@@ -2564,6 +2566,30 @@
   }
 
 
+  // Animação dos pontos em "Buscando..."
+  $: if (loadingCTOs) {
+    // Iniciar animação dos pontos
+    if (loadingDotsInterval) {
+      clearInterval(loadingDotsInterval);
+    }
+    loadingDotsInterval = setInterval(() => {
+      if (loadingDots === '.') {
+        loadingDots = '..';
+      } else if (loadingDots === '..') {
+        loadingDots = '...';
+      } else {
+        loadingDots = '.';
+      }
+    }, 500); // Muda a cada 500ms
+  } else {
+    // Parar animação quando não está carregando
+    if (loadingDotsInterval) {
+      clearInterval(loadingDotsInterval);
+      loadingDotsInterval = null;
+      loadingDots = '.'; // Resetar para o estado inicial
+    }
+  }
+
   // Inicializar ferramenta
   onMount(async () => {
     try {
@@ -2607,6 +2633,12 @@
 
   // Cleanup ao desmontar
   onDestroy(() => {
+    // Limpar intervalo de animação dos pontos
+    if (loadingDotsInterval) {
+      clearInterval(loadingDotsInterval);
+      loadingDotsInterval = null;
+    }
+    
     // Limpar observer do mapa se existir
     if (mapObserver) {
       mapObserver.disconnect();
@@ -2696,7 +2728,7 @@
 
           <button class="search-button" on:click={handleSearch} disabled={loadingCTOs}>
             {#if loadingCTOs}
-              <span class="hourglass-icon">⏳</span> Buscando...
+              <span class="hourglass-icon">⏳</span> Buscando{loadingDots}
             {:else}
               Buscar
             {/if}
