@@ -2702,12 +2702,6 @@
             {/if}
           </button>
 
-          {#if loadingCTOs}
-            <div class="loading-inline">
-              <p>Buscando CTOs...</p>
-            </div>
-          {/if}
-
           {#if error}
             <div class="error-message">
               ⚠️ {error}
