@@ -1016,7 +1016,7 @@
       
       // Criar container para o botão (similar ao layout do modal)
       const buttonContainer = document.createElement('div');
-      buttonContainer.style.marginTop = '1rem';
+      buttonContainer.className = 'table-menu-button-container';
       
       const button = document.createElement('button');
       button.className = 'table-menu-button-action';
@@ -3950,7 +3950,7 @@
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
-    border: 1px solid rgba(123, 104, 238, 0.1);
+    border: 1px solid rgba(123, 104, 238, 0.2);
   }
 
   .table-menu-content {
@@ -3966,15 +3966,14 @@
     border-bottom: 2px solid #7B68EE;
     background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
     color: white;
-    box-shadow: 0 2px 8px rgba(123, 104, 238, 0.2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
 
   .table-menu-header h2 {
     margin: 0;
     font-size: 1.5rem;
     font-weight: 600;
-    color: white;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   }
 
   .table-menu-close {
@@ -3990,18 +3989,12 @@
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    transition: all 0.3s ease;
+    transition: background 0.3s;
     line-height: 1;
-    font-weight: 300;
   }
 
   .table-menu-close:hover {
     background: rgba(255, 255, 255, 0.2);
-    transform: scale(1.1);
-  }
-
-  .table-menu-close:active {
-    transform: scale(0.95);
   }
 
   .table-menu-body {
@@ -4016,7 +4009,12 @@
     margin: 0 0 1.5rem 0;
     padding-bottom: 0.75rem;
     border-bottom: 2px solid #7B68EE;
-    letter-spacing: -0.3px;
+  }
+
+  .table-menu-button-container {
+    display: flex;
+    justify-content: flex-start;
+    margin-top: 1rem;
   }
 
   .table-menu-button-action {
@@ -4028,49 +4026,45 @@
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
     font-family: 'Inter', sans-serif;
-    box-shadow: 0 2px 6px rgba(123, 104, 238, 0.25);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 4px 12px rgba(123, 104, 238, 0.3);
   }
 
   .table-menu-button-action:hover {
     background: linear-gradient(135deg, #8B7AE8 0%, #7499F0 100%);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(123, 104, 238, 0.35);
+    box-shadow: 0 6px 16px rgba(123, 104, 238, 0.4);
   }
 
   .table-menu-button-action:active {
     transform: translateY(0);
-    box-shadow: 0 2px 6px rgba(123, 104, 238, 0.25);
+    box-shadow: 0 2px 8px rgba(123, 104, 238, 0.2);
   }
 
   .button-text {
     display: block;
-    color: white;
   }
 
   .table-menu-message {
-    padding: 1.25rem;
+    padding: 1rem;
     display: flex;
     align-items: center;
     gap: 0.75rem;
     color: #4c1d95;
     font-size: 0.9375rem;
     background: linear-gradient(135deg, rgba(123, 104, 238, 0.05) 0%, rgba(100, 149, 237, 0.05) 100%);
+    border: 1px solid rgba(123, 104, 238, 0.2);
     border-radius: 8px;
-    border: 1px solid rgba(123, 104, 238, 0.15);
+    font-weight: 500;
   }
 
   .message-icon {
-    font-size: 1.25rem;
-    flex-shrink: 0;
-    opacity: 0.9;
-  }
-
-  .message-text {
-    flex: 1;
-    color: #4c1d95;
-    font-weight: 500;
+    font-size: 1.2rem;
+    line-height: 1;
   }
 
   @keyframes fadeIn {
