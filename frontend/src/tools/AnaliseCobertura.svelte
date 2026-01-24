@@ -3978,7 +3978,7 @@
   :global(.table-menu-infowindow) {
     background: white;
     border-radius: 12px;
-    width: 500px;
+    width: 420px;
     max-width: 90vw;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
