@@ -134,8 +134,25 @@
       console.error('Erro ao carregar usuário:', err);
     }
     
-    // Mostrar Dashboard imediatamente (sem await)
     isLoggedIn = true;
+    
+    // Verificar se há hash na URL para carregar ferramenta específica
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash;
+      if (hash && hash.startsWith('#/')) {
+        const toolId = hash.substring(2);
+        const tool = getToolById(toolId);
+        if (tool && tool.available) {
+          // Carregar ferramenta específica
+          currentTool = toolId;
+          currentView = 'tool';
+          startHeartbeat();
+          return;
+        }
+      }
+    }
+    
+    // Se não há hash ou ferramenta inválida, mostrar Dashboard
     currentView = 'dashboard';
     currentTool = null;
     
@@ -226,12 +243,83 @@
       currentView = 'dashboard';
       currentTool = null;
       userTipo = 'user';
+      
+      // Limpar hash da URL se existir
+      if (typeof window !== 'undefined') {
+        window.location.hash = '';
+      }
     } catch (err) {
       console.error('Erro ao fazer logout:', err);
     }
   }
 
-  // onMount removido - cada ferramenta gerencia sua própria inicialização
+  // Função para processar a URL e carregar ferramenta se necessário
+  function processUrl() {
+    if (typeof window === 'undefined') return;
+    
+    const hash = window.location.hash;
+    // Formato esperado: #/tool-id
+    if (hash && hash.startsWith('#/')) {
+      const toolId = hash.substring(2); // Remove '#/'
+      
+      // Verificar se é um ID de ferramenta válido
+      const tool = getToolById(toolId);
+      if (tool && tool.available) {
+        // Verificar se o usuário está logado
+        if (typeof localStorage !== 'undefined') {
+          const storedIsLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+          const storedUser = localStorage.getItem('usuario');
+          
+          if (storedIsLoggedIn && storedUser) {
+            // Usuário está logado, carregar ferramenta
+            currentUser = storedUser;
+            userTipo = localStorage.getItem('userTipo') || 'user';
+            isLoggedIn = true;
+            currentTool = toolId;
+            currentView = 'tool';
+            startHeartbeat();
+            return;
+          }
+        }
+        
+        // Se não está logado, manter na tela de login
+        // O login vai redirecionar para a ferramenta após autenticação
+        isLoggedIn = false;
+        currentView = 'login';
+      }
+    } else {
+      // Sem hash, verificar se está logado para mostrar dashboard
+      if (typeof localStorage !== 'undefined') {
+        const storedIsLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+        const storedUser = localStorage.getItem('usuario');
+        
+        if (storedIsLoggedIn && storedUser) {
+          currentUser = storedUser;
+          userTipo = localStorage.getItem('userTipo') || 'user';
+          isLoggedIn = true;
+          currentView = 'dashboard';
+          startHeartbeat();
+        }
+      }
+    }
+  }
+
+  // Processar URL ao montar o componente
+  import { onMount } from 'svelte';
+  onMount(() => {
+    processUrl();
+    
+    // Listener para mudanças no hash (navegação manual)
+    const handleHashChange = () => {
+      processUrl();
+    };
+    
+    window.addEventListener('hashchange', handleHashChange);
+    
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  });
 
 </script>
 
