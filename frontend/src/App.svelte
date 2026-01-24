@@ -259,7 +259,7 @@
         onBackToDashboard={handleBackToDashboard}
         onOpenSettings={handleOpenSettings}
         onSettingsHover={handleSettingsHover}
-        showSettingsButton={toolSettingsHandler !== null}
+        showSettingsButton={toolSettingsHandler !== null && tool.id !== 'analise-cobertura'}
       >
         <svelte:component this={tool.component} 
           currentUser={currentUser}
