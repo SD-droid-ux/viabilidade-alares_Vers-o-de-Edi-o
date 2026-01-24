@@ -2696,7 +2696,7 @@
 
           <button class="search-button" on:click={handleSearch} disabled={loadingCTOs}>
             {#if loadingCTOs}
-              ⏳ Buscando...
+              <span class="hourglass-icon">⏳</span> Buscando...
             {:else}
               Buscar
             {/if}
@@ -3276,6 +3276,29 @@
     opacity: 0.6;
     cursor: not-allowed;
     transform: none;
+  }
+
+  .hourglass-icon {
+    display: inline-block;
+    animation: hourglass-rotate 1.5s linear infinite;
+  }
+
+  @keyframes hourglass-rotate {
+    0% {
+      transform: rotate(0deg);
+    }
+    25% {
+      transform: rotate(90deg);
+    }
+    50% {
+      transform: rotate(180deg);
+    }
+    75% {
+      transform: rotate(270deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
   }
 
   .loading-inline {
