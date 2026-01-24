@@ -959,7 +959,7 @@
     await displayResultsOnMap();
   }
   
-  // Função para abrir InfoWindow do menu da tabela sobre o mapa
+  // Função para abrir InfoWindow do menu da tabela sobre a tabela
   function openTableMenuInfoWindow(event) {
     event.stopPropagation(); // Prevenir propagação do evento
     
@@ -1005,29 +1005,35 @@
     infoWindowContainer.className = 'table-menu-infowindow';
     infoWindowContainer.appendChild(infoContent);
     
-    // Adicionar ao mapa (sobre o mapa) - tentar diferentes seletores
-    let mapContainer = document.querySelector('.map-container');
-    if (!mapContainer) {
-      // Se não encontrar, tentar adicionar ao body ou ao container principal
-      mapContainer = document.querySelector('.main-area') || document.body;
-    }
+    // Encontrar o container da tabela
+    const buttonElement = event.currentTarget;
+    const tableHeader = buttonElement.closest('.table-header');
+    const tableContainer = buttonElement.closest('.results-table-container, .empty-state');
     
-    if (mapContainer) {
-      mapContainer.style.position = 'relative';
-      mapContainer.appendChild(infoWindowContainer);
+    if (tableContainer && tableHeader) {
+      // Garantir que o container tenha position relative
+      if (getComputedStyle(tableContainer).position === 'static') {
+        tableContainer.style.position = 'relative';
+      }
       
-      // Posicionar o InfoWindow no centro superior do mapa
+      // Adicionar o box ao container da tabela
+      tableContainer.appendChild(infoWindowContainer);
+      
+      // Calcular posição relativa ao header da tabela
+      const headerRect = tableHeader.getBoundingClientRect();
+      const containerRect = tableContainer.getBoundingClientRect();
+      
+      // Posicionar o InfoWindow abaixo do header da tabela, alinhado à direita
       infoWindowContainer.style.position = 'absolute';
-      infoWindowContainer.style.top = '80px'; // Abaixo do header do mapa
-      infoWindowContainer.style.left = '50%';
-      infoWindowContainer.style.transform = 'translateX(-50%)';
+      infoWindowContainer.style.top = `${headerRect.bottom - containerRect.top + 5}px`;
+      infoWindowContainer.style.right = `${containerRect.right - headerRect.right + 10}px`;
       infoWindowContainer.style.zIndex = '10000'; // Z-index muito alto para ficar acima de tudo
       
       tableMenuInfoWindowElement = infoWindowContainer;
       
       // Fechar ao clicar fora
       const closeOnClickOutside = (e) => {
-        if (infoWindowContainer && !infoWindowContainer.contains(e.target) && e.target !== event.currentTarget) {
+        if (infoWindowContainer && !infoWindowContainer.contains(e.target) && e.target !== buttonElement) {
           if (infoWindowContainer.parentNode) {
             infoWindowContainer.remove();
           }
@@ -1040,7 +1046,7 @@
         document.addEventListener('click', closeOnClickOutside);
       }, 100);
     } else {
-      console.error('Não foi possível encontrar o container do mapa');
+      console.error('Não foi possível encontrar o container da tabela');
     }
   }
 
