@@ -45,6 +45,9 @@
   // Mapa para controlar quais CTOs estão visíveis no mapa (key: identificador único da CTO)
   let ctoVisibility = new Map(); // Map<ctoKey, boolean>
   
+  // Set para armazenar as chaves das CTOs pesquisadas pelo usuário (apenas na pesquisa por nome)
+  let searchedCTOKeys = new Set(); // Set<ctoKey>
+  
   // Função para gerar uma chave única para uma CTO (declarada aqui para uso nos reactive statements)
   function getCTOKey(cto) {
     // Usar nome + coordenadas para criar chave única
@@ -1392,6 +1395,8 @@
     loadingCTOs = true;
     error = null;
     ctos = [];
+    // Limpar CTOs pesquisadas quando iniciar nova busca
+    searchedCTOKeys.clear();
     // Minimizar tabela quando limpar resultados
     isTableMinimized = true;
     clearMap();
@@ -1846,6 +1851,8 @@
     loadingCTOs = true;
     error = null;
     ctos = [];
+    // Limpar CTOs pesquisadas quando iniciar nova busca
+    searchedCTOKeys.clear();
     // Minimizar tabela quando limpar resultados
     isTableMinimized = true;
     clearMap();
@@ -3811,8 +3818,37 @@
     border: 1px solid rgba(123, 104, 238, 0.3);
     border-radius: 6px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    min-width: 150px;
+    min-width: 200px;
     animation: fadeIn 0.2s ease-in;
+  }
+
+  .table-menu-content {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .toggle-searched-button {
+    background: linear-gradient(135deg, #6495ED 0%, #7B68EE 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .toggle-searched-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(100, 149, 237, 0.3);
+  }
+
+  .toggle-searched-button:active {
+    transform: translateY(0);
   }
 
   @keyframes fadeIn {
