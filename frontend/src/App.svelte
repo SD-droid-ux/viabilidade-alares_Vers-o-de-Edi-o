@@ -84,6 +84,8 @@
   let currentTool = null; // ID da ferramenta atual
   let toolSettingsHandler = null; // Função de configurações da ferramenta atual
   let toolSettingsHoverHandler = null; // Função de pré-carregamento no hover da engrenagem
+  let broadcastChannel = null; // Canal de comunicação entre abas
+  let isToolInNewTab = false; // Flag para indicar se a ferramenta está em nova aba
 
   // ============================================
   // FUNÇÕES DO PORTAL (Gerenciamento Global)
@@ -146,6 +148,7 @@
           // Carregar ferramenta específica
           currentTool = toolId;
           currentView = 'tool';
+          isToolInNewTab = true; // Marcar que está em nova aba (tem hash na URL)
           startHeartbeat();
           return;
         }
@@ -155,6 +158,7 @@
     // Se não há hash ou ferramenta inválida, mostrar Dashboard
     currentView = 'dashboard';
     currentTool = null;
+    isToolInNewTab = false; // Dashboard não está em nova aba
     
     // Iniciar heartbeat em background (não bloquear)
     startHeartbeat();
@@ -178,12 +182,66 @@
   }
 
   // Função para voltar ao Dashboard
-  function handleBackToDashboard() {
-    currentView = 'dashboard';
-    currentTool = null;
-    toolSettingsHandler = null; // Limpar handler de configurações
-    toolSettingsHoverHandler = null; // Limpar handler de hover
-    // Cada ferramenta gerencia sua própria limpeza através do onDestroy do componente
+  async function handleBackToDashboard() {
+    // Se a ferramenta está em nova aba, tentar encontrar Dashboard aberto
+    if (isToolInNewTab && typeof window !== 'undefined' && broadcastChannel) {
+      try {
+        // Enviar mensagem para verificar se há Dashboard aberto
+        const dashboardFound = await new Promise((resolve) => {
+          const timeout = setTimeout(() => resolve(false), 500); // Timeout de 500ms
+          
+          const messageHandler = (event) => {
+            if (event.data.type === 'dashboard-response') {
+              clearTimeout(timeout);
+              broadcastChannel.removeEventListener('message', messageHandler);
+              resolve(true);
+            }
+          };
+          
+          broadcastChannel.addEventListener('message', messageHandler);
+          broadcastChannel.postMessage({ type: 'dashboard-request' });
+        });
+        
+        if (dashboardFound) {
+          // Dashboard encontrado, focar na aba do Dashboard e fechar esta aba
+          // Tentar focar na aba que abriu esta ferramenta (window.opener)
+          if (window.opener && !window.opener.closed) {
+            window.opener.focus();
+            window.close();
+          } else {
+            // Se não tem window.opener, tentar encontrar a aba do Dashboard
+            // Enviar mensagem para o Dashboard se focar
+            broadcastChannel.postMessage({ type: 'focus-dashboard' });
+            // Aguardar um pouco antes de fechar para dar tempo do Dashboard focar
+            setTimeout(() => {
+              window.close();
+            }, 100);
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn('Erro ao verificar Dashboard aberto:', err);
+      }
+    }
+    
+    // Se não encontrou Dashboard ou não está em nova aba
+    if (isToolInNewTab && typeof window !== 'undefined') {
+      // Abrir Dashboard em nova aba
+      const currentUrl = window.location.origin + window.location.pathname;
+      const dashboardWindow = window.open(currentUrl, '_blank');
+      // Fechar esta aba após abrir o Dashboard
+      if (dashboardWindow) {
+        setTimeout(() => {
+          window.close();
+        }, 100);
+      }
+    } else {
+      // Comportamento normal: voltar ao Dashboard na mesma aba
+      currentView = 'dashboard';
+      currentTool = null;
+      toolSettingsHandler = null;
+      toolSettingsHoverHandler = null;
+    }
   }
 
   // Função para registrar handler de configurações da ferramenta
@@ -277,6 +335,7 @@
             isLoggedIn = true;
             currentTool = toolId;
             currentView = 'tool';
+            isToolInNewTab = true; // Marcar que está em nova aba (tem hash na URL)
             startHeartbeat();
             return;
           }
@@ -298,6 +357,7 @@
           userTipo = localStorage.getItem('userTipo') || 'user';
           isLoggedIn = true;
           currentView = 'dashboard';
+          isToolInNewTab = false; // Dashboard não está em nova aba
           startHeartbeat();
         }
       }
@@ -305,9 +365,31 @@
   }
 
   // Processar URL ao montar o componente
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   onMount(() => {
     processUrl();
+    
+    // Inicializar BroadcastChannel para comunicação entre abas
+    if (typeof BroadcastChannel !== 'undefined') {
+      broadcastChannel = new BroadcastChannel('dashboard-communication');
+      
+      // Listener para mensagens do BroadcastChannel
+      const messageHandler = (event) => {
+        if (event.data.type === 'dashboard-request') {
+          // Se estamos no Dashboard, responder
+          if (currentView === 'dashboard' && isLoggedIn) {
+            broadcastChannel.postMessage({ type: 'dashboard-response' });
+          }
+        } else if (event.data.type === 'focus-dashboard') {
+          // Se estamos no Dashboard, focar a janela
+          if (currentView === 'dashboard' && isLoggedIn && typeof window !== 'undefined') {
+            window.focus();
+          }
+        }
+      };
+      
+      broadcastChannel.addEventListener('message', messageHandler);
+    }
     
     // Listener para mudanças no hash (navegação manual)
     const handleHashChange = () => {
@@ -317,6 +399,10 @@
     window.addEventListener('hashchange', handleHashChange);
     
     return () => {
+      if (broadcastChannel) {
+        broadcastChannel.close();
+        broadcastChannel = null;
+      }
       window.removeEventListener('hashchange', handleHashChange);
     };
   });
