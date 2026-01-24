@@ -2013,34 +2013,24 @@
       const foundCTOs = Array.from(allCTOsMap.values());
       
       // Criar mancha usando a mesma lógica da pesquisa por nome: baseada nos ENDEREÇOS pesquisados
+      // A mancha é o círculo de 250m do endereço pesquisado, não das CTOs encontradas
       if (validPoints.length > 0 && map) {
-        // Se 1 endereço: criar círculo direto (método antigo)
+        // Se 1 endereço: criar círculo de 250m centrado no endereço (método antigo)
         if (validPoints.length === 1) {
           const point = validPoints[0];
-          const pointKey = `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
-          const ctosForPoint = pointToCTOsMap.get(pointKey) || [];
-          
-          // Criar círculo individual para cada CTO encontrada
-          for (const cto of ctosForPoint) {
-            const lat = parseFloat(cto.latitude);
-            const lng = parseFloat(cto.longitude);
-            
-            if (!isNaN(lat) && !isNaN(lng)) {
-              const circle = new google.maps.Circle({
-                strokeColor: '#7B68EE',
-                strokeOpacity: 0.6,
-                strokeWeight: 2,
-                fillColor: '#6495ED',
-                fillOpacity: 0.08,
-                map: showRadiusCircles ? map : null,
-                center: { lat, lng },
-                radius: 250,
-                zIndex: 1
-              });
-              radiusCircles.push(circle);
-            }
-          }
-          console.log(`✅ 1 endereço pesquisado: ${ctosForPoint.length} círculo(s) individual(is) criado(s) (método antigo)`);
+          const circle = new google.maps.Circle({
+            strokeColor: '#7B68EE',
+            strokeOpacity: 0.6,
+            strokeWeight: 2,
+            fillColor: '#6495ED',
+            fillOpacity: 0.08,
+            map: showRadiusCircles ? map : null,
+            center: { lat: point.lat, lng: point.lng },
+            radius: 250,
+            zIndex: 1
+          });
+          radiusCircles.push(circle);
+          console.log(`✅ 1 endereço pesquisado: 1 círculo de 250m criado (método antigo)`);
         } else {
           // Múltiplos endereços: agrupar por interseção
           const groups = groupPointsByIntersection(validPoints);
@@ -2051,95 +2041,73 @@
           for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
             const group = groups[groupIndex];
             
-            // Coletar todas as CTOs dos endereços deste grupo
-            const ctosForGroup = [];
-            for (const point of group) {
-              const pointKey = `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
-              const ctosForPoint = pointToCTOsMap.get(pointKey) || [];
-              ctosForGroup.push(...ctosForPoint);
-            }
-            
-            // Remover duplicatas das CTOs do grupo
-            const uniqueCTOsForGroup = [];
-            const seenCTOs = new Set();
-            for (const cto of ctosForGroup) {
-              const ctoKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
-              if (!seenCTOs.has(ctoKey)) {
-                seenCTOs.add(ctoKey);
-                uniqueCTOsForGroup.push(cto);
-              }
-            }
-            
             if (group.length === 1) {
-              // Grupo com 1 endereço: criar círculo individual para cada CTO (método antigo)
-              for (const cto of uniqueCTOsForGroup) {
-                const lat = parseFloat(cto.latitude);
-                const lng = parseFloat(cto.longitude);
-                
-                if (!isNaN(lat) && !isNaN(lng)) {
-                  const circle = new google.maps.Circle({
-                    strokeColor: '#7B68EE',
-                    strokeOpacity: 0.6,
-                    strokeWeight: 2,
-                    fillColor: '#6495ED',
-                    fillOpacity: 0.08,
-                    map: showRadiusCircles ? map : null,
-                    center: { lat, lng },
-                    radius: 250,
-                    zIndex: 1
-                  });
-                  radiusCircles.push(circle);
-                }
-              }
-              console.log(`✅ Grupo ${groupIndex + 1} (1 endereço): ${uniqueCTOsForGroup.length} círculo(s) individual(is) criado(s) (método antigo)`);
+              // Grupo com 1 endereço: criar círculo de 250m centrado no endereço (método antigo)
+              const point = group[0];
+              const circle = new google.maps.Circle({
+                strokeColor: '#7B68EE',
+                strokeOpacity: 0.6,
+                strokeWeight: 2,
+                fillColor: '#6495ED',
+                fillOpacity: 0.08,
+                map: showRadiusCircles ? map : null,
+                center: { lat: point.lat, lng: point.lng },
+                radius: 250,
+                zIndex: 1
+              });
+              radiusCircles.push(circle);
+              console.log(`✅ Grupo ${groupIndex + 1} (1 endereço): 1 círculo de 250m criado (método antigo)`);
             } else {
               // Grupo com 2+ endereços: usar função SQL do Supabase (polígono fundido)
-              if (uniqueCTOsForGroup.length > 0) {
-                console.log(`🔍 Grupo ${groupIndex + 1} (${group.length} endereços, ${uniqueCTOsForGroup.length} CTOs): Círculos se intersectam - usando função SQL do Supabase`);
-                try {
-                  const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ ctos: uniqueCTOsForGroup })
-                  });
+              // Criar objetos "falsos" de CTO com apenas lat/lng dos endereços para usar a função SQL
+              const fakeCTOs = group.map((point, index) => ({
+                latitude: point.lat.toString(),
+                longitude: point.lng.toString(),
+                nome: `Endereço ${index + 1}` // Nome fictício, não usado no cálculo
+              }));
+              
+              console.log(`🔍 Grupo ${groupIndex + 1} (${group.length} endereços): Círculos se intersectam - usando função SQL do Supabase`);
+              try {
+                const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({ ctos: fakeCTOs })
+                });
+                
+                if (polygonResponse.ok) {
+                  const polygonData = await polygonResponse.json();
                   
-                  if (polygonResponse.ok) {
-                    const polygonData = await polygonResponse.json();
+                  if (polygonData.success && polygonData.geometry) {
+                    // Converter GeoJSON para Google Maps Polygon
+                    const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
+                      lat: coord[1],
+                      lng: coord[0]
+                    }));
                     
-                    if (polygonData.success && polygonData.geometry) {
-                      // Converter GeoJSON para Google Maps Polygon
-                      const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
-                        lat: coord[1],
-                        lng: coord[0]
-                      }));
-                      
-                      const polygon = new google.maps.Polygon({
-                        paths: coordinates,
-                        strokeColor: '#7B68EE',
-                        strokeOpacity: 0.6,
-                        strokeWeight: 2,
-                        fillColor: '#6495ED',
-                        fillOpacity: 0.08,
-                        map: showRadiusCircles ? map : null,
-                        zIndex: 1,
-                        geodesic: true
-                      });
-                      
-                      radiusPolygons.push(polygon);
-                      console.log(`✅ Grupo ${groupIndex + 1}: Polígono fundido criado no backend para ${uniqueCTOsForGroup.length} CTO(s) de ${group.length} endereço(s)`);
-                    } else {
-                      console.warn(`⚠️ Grupo ${groupIndex + 1}: Resposta do backend não contém polígono válido`);
-                    }
+                    const polygon = new google.maps.Polygon({
+                      paths: coordinates,
+                      strokeColor: '#7B68EE',
+                      strokeOpacity: 0.6,
+                      strokeWeight: 2,
+                      fillColor: '#6495ED',
+                      fillOpacity: 0.08,
+                      map: showRadiusCircles ? map : null,
+                      zIndex: 1,
+                      geodesic: true
+                    });
+                    
+                    radiusPolygons.push(polygon);
+                    console.log(`✅ Grupo ${groupIndex + 1}: Polígono fundido criado no backend para ${group.length} endereço(s)`);
                   } else {
-                    console.error(`❌ Grupo ${groupIndex + 1}: Erro ao calcular polígono no backend:`, polygonResponse.status);
+                    console.warn(`⚠️ Grupo ${groupIndex + 1}: Resposta do backend não contém polígono válido`);
                   }
-                } catch (polygonErr) {
-                  console.error(`❌ Grupo ${groupIndex + 1}: Erro ao chamar endpoint de cálculo de polígono:`, polygonErr);
+                } else {
+                  console.error(`❌ Grupo ${groupIndex + 1}: Erro ao calcular polígono no backend:`, polygonResponse.status);
                 }
-              } else {
-                console.warn(`⚠️ Grupo ${groupIndex + 1}: Nenhuma CTO encontrada para os ${group.length} endereço(s)`);
+              } catch (polygonErr) {
+                console.error(`❌ Grupo ${groupIndex + 1}: Erro ao chamar endpoint de cálculo de polígono:`, polygonErr);
               }
             }
           }
