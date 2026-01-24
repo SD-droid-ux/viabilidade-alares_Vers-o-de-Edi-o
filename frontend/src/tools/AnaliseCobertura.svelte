@@ -1247,6 +1247,74 @@
     return groups;
   }
 
+  // Função para verificar se dois pontos (endereços) se intersectam (círculos de 250m)
+  function doPointsIntersect(point1, point2) {
+    const RADIUS = 250; // Raio em metros
+    const INTERSECTION_THRESHOLD = RADIUS * 2; // 500m - se distância < 500m, círculos se tocam/fundem
+    
+    const lat1 = point1.lat;
+    const lng1 = point1.lng;
+    const lat2 = point2.lat;
+    const lng2 = point2.lng;
+    
+    // Validar coordenadas
+    if (isNaN(lat1) || isNaN(lng1) || isNaN(lat2) || isNaN(lng2)) {
+      return false;
+    }
+    
+    // Calcular distância entre os pontos
+    const distance = calculateDistance(lat1, lng1, lat2, lng2);
+    
+    // Se a distância for menor que 500m, os círculos se intersectam
+    return distance < INTERSECTION_THRESHOLD;
+  }
+  
+  // Função para agrupar pontos (endereços) que se intersectam (algoritmo de agrupamento)
+  // Retorna array de grupos, onde cada grupo é um array de pontos que se intersectam
+  function groupPointsByIntersection(points) {
+    if (points.length === 0) return [];
+    if (points.length === 1) return [[points[0]]]; // Grupo único
+    
+    const groups = [];
+    const processed = new Set(); // Rastrear pontos já processados
+    
+    for (let i = 0; i < points.length; i++) {
+      if (processed.has(i)) continue;
+      
+      // Criar novo grupo começando com este ponto
+      const currentGroup = [points[i]];
+      processed.add(i);
+      
+      // Buscar todos os pontos que se intersectam com qualquer ponto do grupo atual
+      // Usar busca em largura (BFS) para encontrar todas as conexões transitivas
+      let foundNew = true;
+      while (foundNew) {
+        foundNew = false;
+        
+        // Verificar todos os pontos não processados
+        for (let j = 0; j < points.length; j++) {
+          if (processed.has(j)) continue;
+          
+          // Verificar se este ponto se intersecta com algum ponto do grupo atual
+          for (const groupPoint of currentGroup) {
+            if (doPointsIntersect(points[j], groupPoint)) {
+              // Este ponto se intersecta com o grupo, adicionar ao grupo
+              currentGroup.push(points[j]);
+              processed.add(j);
+              foundNew = true;
+              break; // Parar de verificar este ponto, já foi adicionado
+            }
+          }
+        }
+      }
+      
+      // Adicionar grupo à lista de grupos
+      groups.push(currentGroup);
+    }
+    
+    return groups;
+  }
+
   // Função para verificar se uma CTO já está na lista (evitar duplicatas)
   function isCTODuplicate(cto, existingList) {
     return existingList.some(existing => 
@@ -1908,10 +1976,15 @@
 
       const nearbyResults = await Promise.all(nearbyPromises);
 
-      // Consolidar todas as CTOs encontradas (evitando duplicatas por coordenadas)
-      const allCTOsMap = new Map(); // Chave: coordenadas para evitar duplicatas
+      // Mapear cada endereço para suas CTOs encontradas
+      const pointToCTOsMap = new Map(); // Map<pointKey, CTO[]>
+      const allCTOsMap = new Map(); // Chave: coordenadas para evitar duplicatas (para a tabela)
       
-      for (const { data, lat, lng } of nearbyResults) {
+      for (let i = 0; i < validPoints.length; i++) {
+        const point = validPoints[i];
+        const { data, lat, lng } = nearbyResults[i];
+        const pointKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+        
         if (data?.success && data.ctos) {
           // Filtrar apenas CTOs dentro de 250m (garantir precisão)
           const nearbyCTOs = data.ctos.filter(cto => {
@@ -1920,34 +1993,35 @@
             return distance <= 250;
           });
 
-          // Adicionar CTOs ao Map (evitando duplicatas)
+          // Armazenar CTOs deste ponto
+          pointToCTOsMap.set(pointKey, nearbyCTOs);
+
+          // Adicionar CTOs ao Map global (evitando duplicatas para a tabela)
           for (const cto of nearbyCTOs) {
             const ctoKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
             if (!allCTOsMap.has(ctoKey)) {
               allCTOsMap.set(ctoKey, cto);
             }
           }
+        } else {
+          // Nenhuma CTO encontrada para este ponto
+          pointToCTOsMap.set(pointKey, []);
         }
       }
 
-      // Converter Map para array
+      // Converter Map para array (para a tabela)
       const foundCTOs = Array.from(allCTOsMap.values());
       
-      // Criar mancha usando APENAS as CTOs encontradas dentro do raio
-      // Aplicar mesma lógica da pesquisa por nome: agrupar por interseção
-      if (foundCTOs.length > 0 && map) {
-        // Agrupar CTOs que se intersectam
-        const groups = groupCTOsByIntersection(foundCTOs);
-        
-        console.log(`🔍 Agrupamento: ${groups.length} grupo(s) de CTOs identificado(s)`);
-        
-        // Processar cada grupo
-        for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
-          const group = groups[groupIndex];
+      // Criar mancha usando a mesma lógica da pesquisa por nome: baseada nos ENDEREÇOS pesquisados
+      if (validPoints.length > 0 && map) {
+        // Se 1 endereço: criar círculo direto (método antigo)
+        if (validPoints.length === 1) {
+          const point = validPoints[0];
+          const pointKey = `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
+          const ctosForPoint = pointToCTOsMap.get(pointKey) || [];
           
-          if (group.length === 1) {
-            // Grupo com 1 CTO: criar círculo individual (método antigo)
-            const cto = group[0];
+          // Criar círculo individual para cada CTO encontrada
+          for (const cto of ctosForPoint) {
             const lat = parseFloat(cto.latitude);
             const lng = parseFloat(cto.longitude);
             
@@ -1964,54 +2038,109 @@
                 zIndex: 1
               });
               radiusCircles.push(circle);
-              console.log(`✅ Grupo ${groupIndex + 1} (1 CTO): Círculo individual criado (método antigo)`);
-            } else {
-              console.warn(`⚠️ Grupo ${groupIndex + 1}: CTO sem coordenadas válidas`);
             }
-          } else {
-            // Grupo com 2+ CTOs: usar função SQL do Supabase (polígono fundido)
-            console.log(`🔍 Grupo ${groupIndex + 1} (${group.length} CTOs): Círculos se intersectam - usando função SQL do Supabase`);
-            try {
-              const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ ctos: group })
-              });
-              
-              if (polygonResponse.ok) {
-                const polygonData = await polygonResponse.json();
+          }
+          console.log(`✅ 1 endereço pesquisado: ${ctosForPoint.length} círculo(s) individual(is) criado(s) (método antigo)`);
+        } else {
+          // Múltiplos endereços: agrupar por interseção
+          const groups = groupPointsByIntersection(validPoints);
+          
+          console.log(`🔍 Agrupamento: ${groups.length} grupo(s) de endereços identificado(s)`);
+          
+          // Processar cada grupo
+          for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+            const group = groups[groupIndex];
+            
+            // Coletar todas as CTOs dos endereços deste grupo
+            const ctosForGroup = [];
+            for (const point of group) {
+              const pointKey = `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`;
+              const ctosForPoint = pointToCTOsMap.get(pointKey) || [];
+              ctosForGroup.push(...ctosForPoint);
+            }
+            
+            // Remover duplicatas das CTOs do grupo
+            const uniqueCTOsForGroup = [];
+            const seenCTOs = new Set();
+            for (const cto of ctosForGroup) {
+              const ctoKey = `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
+              if (!seenCTOs.has(ctoKey)) {
+                seenCTOs.add(ctoKey);
+                uniqueCTOsForGroup.push(cto);
+              }
+            }
+            
+            if (group.length === 1) {
+              // Grupo com 1 endereço: criar círculo individual para cada CTO (método antigo)
+              for (const cto of uniqueCTOsForGroup) {
+                const lat = parseFloat(cto.latitude);
+                const lng = parseFloat(cto.longitude);
                 
-                if (polygonData.success && polygonData.geometry) {
-                  // Converter GeoJSON para Google Maps Polygon
-                  const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
-                    lat: coord[1],
-                    lng: coord[0]
-                  }));
-                  
-                  const polygon = new google.maps.Polygon({
-                    paths: coordinates,
+                if (!isNaN(lat) && !isNaN(lng)) {
+                  const circle = new google.maps.Circle({
                     strokeColor: '#7B68EE',
                     strokeOpacity: 0.6,
                     strokeWeight: 2,
                     fillColor: '#6495ED',
                     fillOpacity: 0.08,
                     map: showRadiusCircles ? map : null,
-                    zIndex: 1,
-                    geodesic: true
+                    center: { lat, lng },
+                    radius: 250,
+                    zIndex: 1
+                  });
+                  radiusCircles.push(circle);
+                }
+              }
+              console.log(`✅ Grupo ${groupIndex + 1} (1 endereço): ${uniqueCTOsForGroup.length} círculo(s) individual(is) criado(s) (método antigo)`);
+            } else {
+              // Grupo com 2+ endereços: usar função SQL do Supabase (polígono fundido)
+              if (uniqueCTOsForGroup.length > 0) {
+                console.log(`🔍 Grupo ${groupIndex + 1} (${group.length} endereços, ${uniqueCTOsForGroup.length} CTOs): Círculos se intersectam - usando função SQL do Supabase`);
+                try {
+                  const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ ctos: uniqueCTOsForGroup })
                   });
                   
-                  radiusPolygons.push(polygon);
-                  console.log(`✅ Grupo ${groupIndex + 1}: Polígono fundido criado no backend para ${group.length} CTO(s)`);
-                } else {
-                  console.warn(`⚠️ Grupo ${groupIndex + 1}: Resposta do backend não contém polígono válido`);
+                  if (polygonResponse.ok) {
+                    const polygonData = await polygonResponse.json();
+                    
+                    if (polygonData.success && polygonData.geometry) {
+                      // Converter GeoJSON para Google Maps Polygon
+                      const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
+                        lat: coord[1],
+                        lng: coord[0]
+                      }));
+                      
+                      const polygon = new google.maps.Polygon({
+                        paths: coordinates,
+                        strokeColor: '#7B68EE',
+                        strokeOpacity: 0.6,
+                        strokeWeight: 2,
+                        fillColor: '#6495ED',
+                        fillOpacity: 0.08,
+                        map: showRadiusCircles ? map : null,
+                        zIndex: 1,
+                        geodesic: true
+                      });
+                      
+                      radiusPolygons.push(polygon);
+                      console.log(`✅ Grupo ${groupIndex + 1}: Polígono fundido criado no backend para ${uniqueCTOsForGroup.length} CTO(s) de ${group.length} endereço(s)`);
+                    } else {
+                      console.warn(`⚠️ Grupo ${groupIndex + 1}: Resposta do backend não contém polígono válido`);
+                    }
+                  } else {
+                    console.error(`❌ Grupo ${groupIndex + 1}: Erro ao calcular polígono no backend:`, polygonResponse.status);
+                  }
+                } catch (polygonErr) {
+                  console.error(`❌ Grupo ${groupIndex + 1}: Erro ao chamar endpoint de cálculo de polígono:`, polygonErr);
                 }
               } else {
-                console.error(`❌ Grupo ${groupIndex + 1}: Erro ao calcular polígono no backend:`, polygonResponse.status);
+                console.warn(`⚠️ Grupo ${groupIndex + 1}: Nenhuma CTO encontrada para os ${group.length} endereço(s)`);
               }
-            } catch (polygonErr) {
-              console.error(`❌ Grupo ${groupIndex + 1}: Erro ao chamar endpoint de cálculo de polígono:`, polygonErr);
             }
           }
         }
