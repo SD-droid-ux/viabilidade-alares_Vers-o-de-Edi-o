@@ -1933,50 +1933,87 @@
       // Converter Map para array
       const foundCTOs = Array.from(allCTOsMap.values());
       
-      // Criar mancha usando TODAS as CTOs encontradas dentro do raio
-      // Calcular polígono no backend (igual ao MapaConsulta.svelte)
-      if (foundCTOs.length > 0) {
-        try {
-          const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ ctos: foundCTOs })
-          });
+      // Criar mancha usando APENAS as CTOs encontradas dentro do raio
+      // Aplicar mesma lógica da pesquisa por nome: agrupar por interseção
+      if (foundCTOs.length > 0 && map) {
+        // Agrupar CTOs que se intersectam
+        const groups = groupCTOsByIntersection(foundCTOs);
+        
+        console.log(`🔍 Agrupamento: ${groups.length} grupo(s) de CTOs identificado(s)`);
+        
+        // Processar cada grupo
+        for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+          const group = groups[groupIndex];
           
-          if (polygonResponse.ok) {
-            const polygonData = await polygonResponse.json();
+          if (group.length === 1) {
+            // Grupo com 1 CTO: criar círculo individual (método antigo)
+            const cto = group[0];
+            const lat = parseFloat(cto.latitude);
+            const lng = parseFloat(cto.longitude);
             
-            if (polygonData.success && polygonData.geometry) {
-              // Converter GeoJSON para Google Maps Polygon
-              const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
-                lat: coord[1],
-                lng: coord[0]
-              }));
-              
-              const polygon = new google.maps.Polygon({
-                paths: coordinates,
+            if (!isNaN(lat) && !isNaN(lng)) {
+              const circle = new google.maps.Circle({
                 strokeColor: '#7B68EE',
                 strokeOpacity: 0.6,
                 strokeWeight: 2,
                 fillColor: '#6495ED',
                 fillOpacity: 0.08,
                 map: showRadiusCircles ? map : null,
-                zIndex: 1,
-                geodesic: true
+                center: { lat, lng },
+                radius: 250,
+                zIndex: 1
               });
-              
-              radiusPolygons.push(polygon);
-              console.log(`✅ Polígono fundido criado no backend para ${foundCTOs.length} CTO(s) encontrada(s) dentro do raio`);
+              radiusCircles.push(circle);
+              console.log(`✅ Grupo ${groupIndex + 1} (1 CTO): Círculo individual criado (método antigo)`);
             } else {
-              console.warn('⚠️ Resposta do backend não contém polígono válido');
+              console.warn(`⚠️ Grupo ${groupIndex + 1}: CTO sem coordenadas válidas`);
             }
           } else {
-            console.error('❌ Erro ao calcular polígono no backend:', polygonResponse.status);
+            // Grupo com 2+ CTOs: usar função SQL do Supabase (polígono fundido)
+            console.log(`🔍 Grupo ${groupIndex + 1} (${group.length} CTOs): Círculos se intersectam - usando função SQL do Supabase`);
+            try {
+              const polygonResponse = await fetch(getApiUrl('/api/coverage/calculate-polygon-for-ctos'), {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ ctos: group })
+              });
+              
+              if (polygonResponse.ok) {
+                const polygonData = await polygonResponse.json();
+                
+                if (polygonData.success && polygonData.geometry) {
+                  // Converter GeoJSON para Google Maps Polygon
+                  const coordinates = polygonData.geometry.coordinates[0].map(coord => ({
+                    lat: coord[1],
+                    lng: coord[0]
+                  }));
+                  
+                  const polygon = new google.maps.Polygon({
+                    paths: coordinates,
+                    strokeColor: '#7B68EE',
+                    strokeOpacity: 0.6,
+                    strokeWeight: 2,
+                    fillColor: '#6495ED',
+                    fillOpacity: 0.08,
+                    map: showRadiusCircles ? map : null,
+                    zIndex: 1,
+                    geodesic: true
+                  });
+                  
+                  radiusPolygons.push(polygon);
+                  console.log(`✅ Grupo ${groupIndex + 1}: Polígono fundido criado no backend para ${group.length} CTO(s)`);
+                } else {
+                  console.warn(`⚠️ Grupo ${groupIndex + 1}: Resposta do backend não contém polígono válido`);
+                }
+              } else {
+                console.error(`❌ Grupo ${groupIndex + 1}: Erro ao calcular polígono no backend:`, polygonResponse.status);
+              }
+            } catch (polygonErr) {
+              console.error(`❌ Grupo ${groupIndex + 1}: Erro ao chamar endpoint de cálculo de polígono:`, polygonErr);
+            }
           }
-        } catch (polygonErr) {
-          console.error('❌ Erro ao chamar endpoint de cálculo de polígono:', polygonErr);
         }
       }
       
