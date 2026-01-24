@@ -965,6 +965,10 @@
     
     // Fechar InfoWindow anterior se existir
     if (tableMenuInfoWindowElement) {
+      // Restaurar overflow original
+      if (tableMenuInfoWindowElement._restoreOverflow) {
+        tableMenuInfoWindowElement._restoreOverflow();
+      }
       tableMenuInfoWindowElement.remove();
       tableMenuInfoWindowElement = null;
       return; // Se já estava aberto, apenas fecha
@@ -1059,40 +1063,69 @@
     const tableContainer = buttonElement.closest('.results-table-container, .empty-state');
     
     if (tableContainer && tableHeader) {
-      // Garantir que o container tenha position relative
+      // Garantir que o container tenha position relative e overflow visible
       if (getComputedStyle(tableContainer).position === 'static') {
         tableContainer.style.position = 'relative';
       }
+      // Garantir que o overflow não corte o InfoWindow
+      const originalOverflow = getComputedStyle(tableContainer).overflow;
+      tableContainer.style.overflow = 'visible';
       
       // Adicionar o box ao container da tabela
       tableContainer.appendChild(infoWindowContainer);
       
-      // Calcular posição relativa ao header da tabela
-      const headerRect = tableHeader.getBoundingClientRect();
+      // Calcular posição relativa ao botão dos três pontos
+      const buttonRect = buttonElement.getBoundingClientRect();
       const containerRect = tableContainer.getBoundingClientRect();
+      const headerRect = tableHeader.getBoundingClientRect();
       
-      // Posicionar o InfoWindow centralizado abaixo do header da tabela
-      const boxWidth = 500; // Largura do box
-      const containerWidth = containerRect.width;
+      // Posicionar o InfoWindow alinhado à direita, abaixo do header
+      const padding = 10; // Espaçamento mínimo das bordas
       
       infoWindowContainer.style.position = 'absolute';
-      infoWindowContainer.style.top = `${headerRect.bottom - containerRect.top + 10}px`;
-      // Centralizar o box, mas garantir que não saia da tela
-      const leftPosition = Math.max(10, (containerWidth - boxWidth) / 2);
-      infoWindowContainer.style.left = `${leftPosition}px`;
-      infoWindowContainer.style.right = 'auto';
+      infoWindowContainer.style.top = `${headerRect.bottom - containerRect.top + 5}px`;
+      
+      // Alinhar à direita do container (próximo ao botão dos três pontos)
+      // Usar right para garantir alinhamento correto
+      infoWindowContainer.style.right = `${padding}px`;
+      infoWindowContainer.style.left = 'auto';
       infoWindowContainer.style.zIndex = '10000'; // Z-index muito alto para ficar acima de tudo
       
       tableMenuInfoWindowElement = infoWindowContainer;
       
+      // Restaurar overflow original quando fechar
+      const restoreOverflow = () => {
+        if (tableContainer && originalOverflow) {
+          tableContainer.style.overflow = originalOverflow;
+        }
+      };
+      
+      // Salvar função de restore para usar quando fechar
+      infoWindowContainer._restoreOverflow = restoreOverflow;
+      
+      // Função para fechar o InfoWindow e restaurar overflow
+      const closeInfoWindow = () => {
+        if (infoWindowContainer && infoWindowContainer.parentNode) {
+          // Restaurar overflow original
+          if (infoWindowContainer._restoreOverflow) {
+            infoWindowContainer._restoreOverflow();
+          }
+          infoWindowContainer.remove();
+        }
+        document.removeEventListener('click', closeOnClickOutside);
+        tableMenuInfoWindowElement = null;
+      };
+      
+      // Atualizar o botão fechar para usar a nova função
+      closeButton.onclick = (e) => {
+        e.stopPropagation();
+        closeInfoWindow();
+      };
+      
       // Fechar ao clicar fora
       const closeOnClickOutside = (e) => {
         if (infoWindowContainer && !infoWindowContainer.contains(e.target) && e.target !== buttonElement) {
-          if (infoWindowContainer.parentNode) {
-            infoWindowContainer.remove();
-          }
-          document.removeEventListener('click', closeOnClickOutside);
-          tableMenuInfoWindowElement = null;
+          closeInfoWindow();
         }
       };
       
@@ -3942,7 +3975,7 @@
     display: block;
   }
 
-  .table-menu-infowindow {
+  :global(.table-menu-infowindow) {
     background: white;
     border-radius: 12px;
     width: 500px;
@@ -3953,12 +3986,12 @@
     border: 1px solid rgba(123, 104, 238, 0.2);
   }
 
-  .table-menu-content {
+  :global(.table-menu-content) {
     display: flex;
     flex-direction: column;
   }
 
-  .table-menu-header {
+  :global(.table-menu-header) {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -3969,14 +4002,14 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   }
 
-  .table-menu-header h2 {
+  :global(.table-menu-header h2) {
     margin: 0;
     font-size: 1.5rem;
     font-weight: 600;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   }
 
-  .table-menu-close {
+  :global(.table-menu-close) {
     background: none;
     border: none;
     color: white;
@@ -3993,16 +4026,16 @@
     line-height: 1;
   }
 
-  .table-menu-close:hover {
+  :global(.table-menu-close:hover) {
     background: rgba(255, 255, 255, 0.2);
   }
 
-  .table-menu-body {
+  :global(.table-menu-body) {
     padding: 1.5rem;
     background: white;
   }
 
-  .table-menu-section-title {
+  :global(.table-menu-section-title) {
     color: #7B68EE;
     font-size: 1.2rem;
     font-weight: 600;
@@ -4011,13 +4044,13 @@
     border-bottom: 2px solid #7B68EE;
   }
 
-  .table-menu-button-container {
+  :global(.table-menu-button-container) {
     display: flex;
     justify-content: flex-start;
     margin-top: 1rem;
   }
 
-  .table-menu-button-action {
+  :global(.table-menu-button-action) {
     background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
     color: white;
     border: none;
@@ -4034,22 +4067,22 @@
     box-shadow: 0 4px 12px rgba(123, 104, 238, 0.3);
   }
 
-  .table-menu-button-action:hover {
+  :global(.table-menu-button-action:hover) {
     background: linear-gradient(135deg, #8B7AE8 0%, #7499F0 100%);
     transform: translateY(-2px);
     box-shadow: 0 6px 16px rgba(123, 104, 238, 0.4);
   }
 
-  .table-menu-button-action:active {
+  :global(.table-menu-button-action:active) {
     transform: translateY(0);
     box-shadow: 0 2px 8px rgba(123, 104, 238, 0.2);
   }
 
-  .button-text {
+  :global(.button-text) {
     display: block;
   }
 
-  .table-menu-message {
+  :global(.table-menu-message) {
     padding: 1rem;
     display: flex;
     align-items: center;
@@ -4062,9 +4095,15 @@
     font-weight: 500;
   }
 
-  .message-icon {
+  :global(.message-icon) {
     font-size: 1.2rem;
     line-height: 1;
+  }
+
+  :global(.message-text) {
+    flex: 1;
+    color: #4c1d95;
+    font-weight: 500;
   }
 
   @keyframes fadeIn {
