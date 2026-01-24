@@ -927,16 +927,13 @@
     showSettingsModal = true;
   }
   
-  // Função para abrir InfoWindow do menu da tabela
+  // Função para abrir InfoWindow do menu da tabela sobre o mapa
   function openTableMenuInfoWindow(event) {
     // Fechar InfoWindow anterior se existir
-    if (tableMenuInfoWindow) {
-      tableMenuInfoWindow.close();
-      tableMenuInfoWindow = null;
-    }
     if (tableMenuInfoWindowElement) {
       tableMenuInfoWindowElement.remove();
       tableMenuInfoWindowElement = null;
+      return; // Se já estava aberto, apenas fecha
     }
     
     // Criar elemento do InfoWindow
@@ -951,27 +948,25 @@
     infoWindowContainer.className = 'table-menu-infowindow';
     infoWindowContainer.appendChild(infoContent);
     
-    // Adicionar ao DOM próximo ao botão
-    const button = event.currentTarget;
-    const buttonRect = button.getBoundingClientRect();
-    const tableHeader = button.closest('.table-header');
-    
-    if (tableHeader) {
-      tableHeader.style.position = 'relative';
-      tableHeader.appendChild(infoWindowContainer);
+    // Adicionar ao mapa (sobre o mapa)
+    const mapContainer = document.querySelector('.map-container');
+    if (mapContainer && map) {
+      mapContainer.style.position = 'relative';
+      mapContainer.appendChild(infoWindowContainer);
       
-      // Posicionar o InfoWindow próximo ao botão
-      const containerRect = tableHeader.getBoundingClientRect();
+      // Posicionar o InfoWindow no centro superior do mapa
+      const mapRect = mapContainer.getBoundingClientRect();
       infoWindowContainer.style.position = 'absolute';
-      infoWindowContainer.style.top = `${buttonRect.bottom - containerRect.top + 5}px`;
-      infoWindowContainer.style.right = `${containerRect.right - buttonRect.right}px`;
+      infoWindowContainer.style.top = '80px'; // Abaixo do header do mapa
+      infoWindowContainer.style.left = '50%';
+      infoWindowContainer.style.transform = 'translateX(-50%)';
       infoWindowContainer.style.zIndex = '1000';
       
       tableMenuInfoWindowElement = infoWindowContainer;
       
       // Fechar ao clicar fora
       const closeOnClickOutside = (e) => {
-        if (!infoWindowContainer.contains(e.target) && e.target !== button) {
+        if (!infoWindowContainer.contains(e.target) && e.target !== event.currentTarget) {
           infoWindowContainer.remove();
           document.removeEventListener('click', closeOnClickOutside);
           tableMenuInfoWindowElement = null;
@@ -1534,18 +1529,18 @@
             
             if (searchedCTO) {
               const { lat, lng } = searchedCTO;
-              const circle = new google.maps.Circle({
+          const circle = new google.maps.Circle({
                 strokeColor: '#7B68EE',
                 strokeOpacity: 0.6,
-                strokeWeight: 2,
+            strokeWeight: 2,
                 fillColor: '#6495ED',
                 fillOpacity: 0.08,
                 map: showRadiusCircles ? map : null,
-                center: { lat, lng },
+            center: { lat, lng },
                 radius: 250,
                 zIndex: 1
-              });
-              radiusCircles.push(circle);
+          });
+          radiusCircles.push(circle);
               console.log(`✅ Grupo ${groupIndex + 1} (1 CTO): Círculo individual criado (método antigo)`);
             } else {
               console.warn(`⚠️ Grupo ${groupIndex + 1}: CTO não encontrada em searchedCTOsList`);
@@ -3029,22 +3024,22 @@
               <h3>Tabela de Equipamentos Encontrados - {ctos.length} Equipamentos Encontrados</h3>
               <div class="table-header-buttons">
                 <button 
-                  class="table-menu-button" 
+                  class="minimize-button table-menu-button" 
                   on:click={openTableMenuInfoWindow}
                   aria-label="Menu da tabela"
                   title="Menu"
                 >
                   <span class="vertical-dots"></span>
                 </button>
-                <button 
-                  class="minimize-button" 
-                  disabled={isResizingSidebar || isResizingMapTable}
-                  on:click={() => isTableMinimized = !isTableMinimized}
-                  aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
-                  title={isTableMinimized ? 'Expandir' : 'Minimizar'}
-                >
-                  {isTableMinimized ? '⬆️' : '⬇️'}
-                </button>
+              <button 
+                class="minimize-button" 
+                disabled={isResizingSidebar || isResizingMapTable}
+                on:click={() => isTableMinimized = !isTableMinimized}
+                aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
+                title={isTableMinimized ? 'Expandir' : 'Minimizar'}
+              >
+                {isTableMinimized ? '⬆️' : '⬇️'}
+              </button>
               </div>
             </div>
             {#if !isTableMinimized}
@@ -3227,22 +3222,22 @@
               <h3>Tabela de Equipamentos Encontrados - Nenhum Equipamento Pesquisado</h3>
               <div class="table-header-buttons">
                 <button 
-                  class="table-menu-button" 
+                  class="minimize-button table-menu-button" 
                   on:click={openTableMenuInfoWindow}
                   aria-label="Menu da tabela"
                   title="Menu"
                 >
                   <span class="vertical-dots"></span>
                 </button>
-                <button 
-                  class="minimize-button" 
-                  disabled={isResizingSidebar || isResizingMapTable}
-                  on:click={() => isTableMinimized = !isTableMinimized}
-                  aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
-                  title={isTableMinimized ? 'Expandir' : 'Minimizar'}
-                >
-                  {isTableMinimized ? '⬆️' : '⬇️'}
-                </button>
+              <button 
+                class="minimize-button" 
+                disabled={isResizingSidebar || isResizingMapTable}
+                on:click={() => isTableMinimized = !isTableMinimized}
+                aria-label={isTableMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
+                title={isTableMinimized ? 'Expandir' : 'Minimizar'}
+              >
+                {isTableMinimized ? '⬆️' : '⬇️'}
+              </button>
               </div>
             </div>
             {#if !isTableMinimized}
@@ -3785,29 +3780,19 @@
     align-items: center;
   }
 
-  .table-menu-button {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    padding: 0.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    transition: background-color 0.2s;
-  }
-
-  .table-menu-button:hover {
-    background-color: rgba(100, 149, 237, 0.1);
-  }
 
   .vertical-dots {
-    font-size: 1.5rem;
-    line-height: 0.4;
-    color: #4c1d95;
+    font-size: 0.875rem;
+    line-height: 0.5;
+    color: #7B68EE;
     font-weight: bold;
     display: inline-block;
     letter-spacing: 0;
+    opacity: 0.7;
+  }
+
+  .table-menu-button:hover .vertical-dots {
+    opacity: 1;
   }
 
   .vertical-dots::before {
@@ -3823,8 +3808,8 @@
 
   .table-menu-infowindow {
     background: white;
-    border: 1px solid #ddd;
-    border-radius: 8px;
+    border: 1px solid rgba(123, 104, 238, 0.3);
+    border-radius: 6px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     min-width: 150px;
     animation: fadeIn 0.2s ease-in;
