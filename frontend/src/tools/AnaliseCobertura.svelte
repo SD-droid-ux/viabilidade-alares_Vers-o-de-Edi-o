@@ -930,8 +930,39 @@
     showSettingsModal = true;
   }
   
+  // Função para verificar se todas as CTOs pesquisadas estão marcadas
+  function areSearchedCTOsVisible() {
+    if (searchedCTOKeys.size === 0) return false;
+    for (const ctoKey of searchedCTOKeys) {
+      if (!ctoVisibility.get(ctoKey)) {
+        return false;
+      }
+    }
+    return true;
+  }
+  
+  // Função para marcar/desmarcar apenas as CTOs pesquisadas pelo usuário
+  async function toggleSearchedCTOs() {
+    const allVisible = areSearchedCTOsVisible();
+    
+    // Marcar ou desmarcar todas as CTOs pesquisadas
+    for (const ctoKey of searchedCTOKeys) {
+      ctoVisibility.set(ctoKey, !allVisible);
+    }
+    
+    // Forçar reatividade
+    ctoVisibility = ctoVisibility;
+    ctoNumbersVersion++;
+    
+    // Atualizar mapa
+    await tick();
+    await displayResultsOnMap();
+  }
+  
   // Função para abrir InfoWindow do menu da tabela sobre o mapa
   function openTableMenuInfoWindow(event) {
+    event.stopPropagation(); // Prevenir propagação do evento
+    
     // Fechar InfoWindow anterior se existir
     if (tableMenuInfoWindowElement) {
       tableMenuInfoWindowElement.remove();
@@ -939,38 +970,67 @@
       return; // Se já estava aberto, apenas fecha
     }
     
-    // Criar elemento do InfoWindow
+    // Verificar se há CTOs pesquisadas (apenas funciona para pesquisa por nome)
+    const hasSearchedCTOs = searchedCTOKeys.size > 0;
+    const allSearchedVisible = areSearchedCTOsVisible();
+    
+    // Criar conteúdo do InfoWindow
     const infoContent = document.createElement('div');
-    infoContent.style.padding = '12px';
-    infoContent.style.fontSize = '14px';
-    infoContent.style.color = '#333';
-    infoContent.textContent = 'Em desenvolvimento';
+    infoContent.className = 'table-menu-content';
+    
+    if (hasSearchedCTOs) {
+      // Criar botão para marcar/desmarcar CTOs pesquisadas
+      const button = document.createElement('button');
+      button.className = 'toggle-searched-button';
+      button.textContent = allSearchedVisible ? 'Desmarcar CTOs Pesquisadas' : 'Marcar CTOs Pesquisadas';
+      button.onclick = async (e) => {
+        e.stopPropagation();
+        await toggleSearchedCTOs();
+        // Atualizar texto do botão
+        const newState = areSearchedCTOsVisible();
+        button.textContent = newState ? 'Desmarcar CTOs Pesquisadas' : 'Marcar CTOs Pesquisadas';
+      };
+      infoContent.appendChild(button);
+    } else {
+      // Se não há CTOs pesquisadas, mostrar mensagem
+      const message = document.createElement('div');
+      message.textContent = 'Nenhuma CTO pesquisada por nome';
+      message.style.color = '#666';
+      message.style.fontSize = '12px';
+      infoContent.appendChild(message);
+    }
     
     // Criar container do InfoWindow
     const infoWindowContainer = document.createElement('div');
     infoWindowContainer.className = 'table-menu-infowindow';
     infoWindowContainer.appendChild(infoContent);
     
-    // Adicionar ao mapa (sobre o mapa)
-    const mapContainer = document.querySelector('.map-container');
-    if (mapContainer && map) {
+    // Adicionar ao mapa (sobre o mapa) - tentar diferentes seletores
+    let mapContainer = document.querySelector('.map-container');
+    if (!mapContainer) {
+      // Se não encontrar, tentar adicionar ao body ou ao container principal
+      mapContainer = document.querySelector('.main-area') || document.body;
+    }
+    
+    if (mapContainer) {
       mapContainer.style.position = 'relative';
       mapContainer.appendChild(infoWindowContainer);
       
       // Posicionar o InfoWindow no centro superior do mapa
-      const mapRect = mapContainer.getBoundingClientRect();
       infoWindowContainer.style.position = 'absolute';
       infoWindowContainer.style.top = '80px'; // Abaixo do header do mapa
       infoWindowContainer.style.left = '50%';
       infoWindowContainer.style.transform = 'translateX(-50%)';
-      infoWindowContainer.style.zIndex = '1000';
+      infoWindowContainer.style.zIndex = '10000'; // Z-index muito alto para ficar acima de tudo
       
       tableMenuInfoWindowElement = infoWindowContainer;
       
       // Fechar ao clicar fora
       const closeOnClickOutside = (e) => {
-        if (!infoWindowContainer.contains(e.target) && e.target !== event.currentTarget) {
-          infoWindowContainer.remove();
+        if (infoWindowContainer && !infoWindowContainer.contains(e.target) && e.target !== event.currentTarget) {
+          if (infoWindowContainer.parentNode) {
+            infoWindowContainer.remove();
+          }
           document.removeEventListener('click', closeOnClickOutside);
           tableMenuInfoWindowElement = null;
         }
@@ -978,7 +1038,9 @@
       
       setTimeout(() => {
         document.addEventListener('click', closeOnClickOutside);
-      }, 0);
+      }, 100);
+    } else {
+      console.error('Não foi possível encontrar o container do mapa');
     }
   }
 
@@ -1484,6 +1546,13 @@
       }
 
       console.log(`✅ ${searchedCTOsList.length} CTO(s) pesquisada(s) encontrada(s)`);
+
+      // Armazenar as chaves das CTOs pesquisadas pelo usuário
+      searchedCTOKeys.clear();
+      for (const { cto } of searchedCTOsList) {
+        const ctoKey = getCTOKey(cto);
+        searchedCTOKeys.add(ctoKey);
+      }
 
       // Criar marcadores azuis para TODAS as CTOs pesquisadas
       // Usando AdvancedMarkerElement (API moderna recomendada pelo Google)
