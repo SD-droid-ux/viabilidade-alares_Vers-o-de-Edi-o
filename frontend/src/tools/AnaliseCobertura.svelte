@@ -974,15 +974,15 @@
     const hasSearchedCTOs = searchedCTOKeys.size > 0;
     const allSearchedVisible = areSearchedCTOsVisible();
     
-    // Criar estrutura do box similar ao modal de configurações
+    // Criar estrutura do box exatamente como o modal "Alterar Dados"
     const infoContent = document.createElement('div');
     infoContent.className = 'table-menu-content';
     
-    // Criar header do box
+    // Criar header do box (igual ao modal)
     const header = document.createElement('div');
     header.className = 'table-menu-header';
-    const headerTitle = document.createElement('h3');
-    headerTitle.textContent = 'Menu da Tabela';
+    const headerTitle = document.createElement('h2');
+    headerTitle.textContent = 'Ajuste na Tabela';
     header.appendChild(headerTitle);
     const closeButton = document.createElement('button');
     closeButton.className = 'table-menu-close';
@@ -998,22 +998,29 @@
     header.appendChild(closeButton);
     infoContent.appendChild(header);
     
-    // Criar body do box
+    // Criar body do box (igual ao modal)
     const body = document.createElement('div');
     body.className = 'table-menu-body';
     
     if (hasSearchedCTOs) {
-      // Criar seção de CTOs pesquisadas
+      // Criar seção de CTOs pesquisadas (estilo igual ao modal)
       const section = document.createElement('div');
-      section.className = 'table-menu-section';
+      section.style.marginBottom = '2rem';
+      section.style.paddingBottom = '2rem';
+      section.style.borderBottom = '1px solid #e0e0e0';
       
-      const sectionTitle = document.createElement('h4');
+      const sectionTitle = document.createElement('h3');
       sectionTitle.className = 'table-menu-section-title';
       sectionTitle.textContent = 'CTOs Pesquisadas';
       section.appendChild(sectionTitle);
       
+      // Criar container para o botão (similar ao layout do modal)
+      const buttonContainer = document.createElement('div');
+      buttonContainer.style.marginTop = '1rem';
+      
       const button = document.createElement('button');
       button.className = 'table-menu-button-action';
+      button.type = 'button';
       button.innerHTML = `
         <span class="button-text">${allSearchedVisible ? 'Desmarcar CTOs Pesquisadas' : 'Marcar CTOs Pesquisadas'}</span>
       `;
@@ -1024,7 +1031,8 @@
         const newState = areSearchedCTOsVisible();
         button.querySelector('.button-text').textContent = newState ? 'Desmarcar CTOs Pesquisadas' : 'Marcar CTOs Pesquisadas';
       };
-      section.appendChild(button);
+      buttonContainer.appendChild(button);
+      section.appendChild(buttonContainer);
       
       body.appendChild(section);
     } else {
@@ -1063,10 +1071,16 @@
       const headerRect = tableHeader.getBoundingClientRect();
       const containerRect = tableContainer.getBoundingClientRect();
       
-      // Posicionar o InfoWindow abaixo do header da tabela, alinhado à direita
+      // Posicionar o InfoWindow centralizado abaixo do header da tabela
+      const boxWidth = 500; // Largura do box
+      const containerWidth = containerRect.width;
+      
       infoWindowContainer.style.position = 'absolute';
-      infoWindowContainer.style.top = `${headerRect.bottom - containerRect.top + 5}px`;
-      infoWindowContainer.style.right = `${containerRect.right - headerRect.right + 10}px`;
+      infoWindowContainer.style.top = `${headerRect.bottom - containerRect.top + 10}px`;
+      // Centralizar o box, mas garantir que não saia da tela
+      const leftPosition = Math.max(10, (containerWidth - boxWidth) / 2);
+      infoWindowContainer.style.left = `${leftPosition}px`;
+      infoWindowContainer.style.right = 'auto';
       infoWindowContainer.style.zIndex = '10000'; // Z-index muito alto para ficar acima de tudo
       
       tableMenuInfoWindowElement = infoWindowContainer;
@@ -3931,8 +3945,8 @@
   .table-menu-infowindow {
     background: white;
     border-radius: 12px;
-    min-width: 280px;
-    max-width: 400px;
+    width: 500px;
+    max-width: 90vw;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
     animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
@@ -3953,7 +3967,7 @@
     color: white;
   }
 
-  .table-menu-header h3 {
+  .table-menu-header h2 {
     margin: 0;
     font-size: 1.5rem;
     font-weight: 600;
@@ -3984,14 +3998,6 @@
     padding: 1.5rem;
   }
 
-  .table-menu-section {
-    margin-bottom: 1.5rem;
-  }
-
-  .table-menu-section:last-child {
-    margin-bottom: 0;
-  }
-
   .table-menu-section-title {
     color: #7B68EE;
     font-size: 1.2rem;
@@ -4012,8 +4018,6 @@
     cursor: pointer;
     transition: all 0.2s ease;
     font-family: 'Inter', sans-serif;
-    width: 100%;
-    text-align: center;
   }
 
   .table-menu-button-action:hover {
