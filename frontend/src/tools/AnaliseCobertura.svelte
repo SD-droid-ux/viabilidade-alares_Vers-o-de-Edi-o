@@ -974,7 +974,7 @@
     const hasSearchedCTOs = searchedCTOKeys.size > 0;
     const allSearchedVisible = areSearchedCTOsVisible();
     
-    // Criar conteúdo do InfoWindow
+    // Criar conteúdo do InfoWindow com estrutura similar ao box do usuário
     const infoContent = document.createElement('div');
     infoContent.className = 'table-menu-content';
     
@@ -982,21 +982,29 @@
       // Criar botão para marcar/desmarcar CTOs pesquisadas
       const button = document.createElement('button');
       button.className = 'toggle-searched-button';
-      button.textContent = allSearchedVisible ? 'Desmarcar CTOs Pesquisadas' : 'Marcar CTOs Pesquisadas';
+      button.innerHTML = `
+        <span class="button-icon">${allSearchedVisible ? '☑️' : '☐'}</span>
+        <span class="button-text">${allSearchedVisible ? 'Desmarcar CTOs Pesquisadas' : 'Marcar CTOs Pesquisadas'}</span>
+      `;
       button.onclick = async (e) => {
         e.stopPropagation();
         await toggleSearchedCTOs();
-        // Atualizar texto do botão
+        // Atualizar texto e ícone do botão
         const newState = areSearchedCTOsVisible();
-        button.textContent = newState ? 'Desmarcar CTOs Pesquisadas' : 'Marcar CTOs Pesquisadas';
+        button.innerHTML = `
+          <span class="button-icon">${newState ? '☑️' : '☐'}</span>
+          <span class="button-text">${newState ? 'Desmarcar CTOs Pesquisadas' : 'Marcar CTOs Pesquisadas'}</span>
+        `;
       };
       infoContent.appendChild(button);
     } else {
       // Se não há CTOs pesquisadas, mostrar mensagem
       const message = document.createElement('div');
-      message.textContent = 'Nenhuma CTO pesquisada por nome';
-      message.style.color = '#666';
-      message.style.fontSize = '12px';
+      message.className = 'no-searched-message';
+      message.innerHTML = `
+        <span class="message-icon">ℹ️</span>
+        <span class="message-text">Nenhuma CTO pesquisada por nome</span>
+      `;
       infoContent.appendChild(message);
     }
     
@@ -3889,41 +3897,81 @@
   }
 
   .table-menu-infowindow {
-    background: white;
-    border: 1px solid rgba(123, 104, 238, 0.3);
-    border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    min-width: 200px;
-    animation: fadeIn 0.2s ease-in;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1.5px solid rgba(123, 104, 238, 0.2);
+    border-radius: 12px;
+    box-shadow: 
+      0 8px 32px rgba(123, 104, 238, 0.15),
+      0 4px 16px rgba(100, 149, 237, 0.1),
+      0 2px 8px rgba(0, 0, 0, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    min-width: 240px;
+    animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
   }
 
   .table-menu-content {
-    padding: 12px;
+    padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0;
   }
 
   .toggle-searched-button {
-    background: linear-gradient(135deg, #6495ED 0%, #7B68EE 100%);
-    color: white;
+    background: transparent;
+    color: #4c1d95;
     border: none;
-    border-radius: 6px;
-    padding: 0.5rem 1rem;
-    font-size: 0.875rem;
+    border-radius: 0;
+    padding: 0.875rem 1.25rem;
+    font-size: 0.9375rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-align: left;
+    width: 100%;
     white-space: nowrap;
   }
 
   .toggle-searched-button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(100, 149, 237, 0.3);
+    background: linear-gradient(135deg, rgba(100, 149, 237, 0.08) 0%, rgba(123, 104, 238, 0.08) 100%);
+    color: #7B68EE;
   }
 
   .toggle-searched-button:active {
-    transform: translateY(0);
+    background: linear-gradient(135deg, rgba(100, 149, 237, 0.12) 0%, rgba(123, 104, 238, 0.12) 100%);
+  }
+
+  .button-icon {
+    font-size: 1.125rem;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .button-text {
+    flex: 1;
+  }
+
+  .no-searched-message {
+    padding: 0.875rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #666;
+    font-size: 0.875rem;
+  }
+
+  .message-icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+
+  .message-text {
+    flex: 1;
   }
 
   @keyframes fadeIn {
