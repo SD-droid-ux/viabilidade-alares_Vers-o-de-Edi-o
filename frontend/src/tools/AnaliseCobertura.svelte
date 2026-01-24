@@ -248,6 +248,11 @@
   
   // Handler para click em header de coluna
   function handleColumnHeaderClick(e, colIndex) {
+    // Desativar seleção de coluna na coluna 0 (checkbox "marcar todos")
+    if (colIndex === 0) {
+      return; // Não fazer nada se clicar na coluna do checkbox
+    }
+    
     // Não processar se clicou no checkbox do header
     if (e.target.tagName === 'INPUT' || 
         e.target.type === 'checkbox' ||
