@@ -80,7 +80,7 @@
   let isLoading = false;
   let loadingMessage = '';
   let heartbeatInterval = null;
-  let currentView = 'dashboard'; // 'dashboard' ou 'tool' (ferramenta específica)
+  let currentView = null; // 'dashboard', 'tool', 'login' ou null (será definido pelo processUrl)
   let currentTool = null; // ID da ferramenta atual
   let toolSettingsHandler = null; // Função de configurações da ferramenta atual
   let toolSettingsHoverHandler = null; // Função de pré-carregamento no hover da engrenagem
@@ -341,10 +341,10 @@
           }
         }
         
-        // Se não está logado, manter na tela de login
-        // O login vai redirecionar para a ferramenta após autenticação
+        // Se não está logado, mostrar loading primeiro, depois login
         isLoggedIn = false;
-        currentView = 'login';
+        showInitialLoading();
+        return;
       }
     } else {
       // Sem hash, verificar se está logado para mostrar dashboard
@@ -359,9 +359,28 @@
           currentView = 'dashboard';
           isToolInNewTab = false; // Dashboard não está em nova aba
           startHeartbeat();
+        } else {
+          // Não está logado, mostrar loading primeiro, depois login
+          showInitialLoading();
         }
+      } else {
+        // localStorage não disponível, mostrar loading primeiro
+        showInitialLoading();
       }
     }
+  }
+
+  // Função para mostrar loading inicial antes do login
+  function showInitialLoading() {
+    isLoading = true;
+    loadingMessage = 'Carregando...';
+    isLoggedIn = false;
+    
+    // Após um tempo, mostrar tela de login
+    setTimeout(() => {
+      isLoading = false;
+      currentView = 'login';
+    }, 1500); // 1.5 segundos de loading
   }
 
   // Processar URL ao montar o componente
