@@ -14,7 +14,10 @@
 
   function handleToolClick(tool) {
     if (tool.available) {
-      onToolSelect(tool.id);
+      // Abrir ferramenta em nova aba com URL específica
+      const currentUrl = window.location.origin + window.location.pathname;
+      const toolUrl = `${currentUrl}#/${tool.id}`;
+      window.open(toolUrl, '_blank');
     }
   }
 
