@@ -87,6 +87,21 @@
   let broadcastChannel = null; // Canal de comunicação entre abas
   let isToolInNewTab = false; // Flag para indicar se a ferramenta está em nova aba
 
+  // Atualizar título da aba do navegador dinamicamente
+  $: if (typeof document !== 'undefined') {
+    if (currentView === 'tool' && currentTool) {
+      const tool = getToolById(currentTool);
+      if (tool) {
+        document.title = tool.title;
+      } else {
+        document.title = 'Viabilidade Alares - Engenharia';
+      }
+    } else {
+      // Dashboard, Login ou Loading: manter título padrão
+      document.title = 'Viabilidade Alares - Engenharia';
+    }
+  }
+
   // ============================================
   // FUNÇÕES DO PORTAL (Gerenciamento Global)
   // ============================================
@@ -518,4 +533,3 @@
     box-shadow: 0 4px 8px rgba(123, 104, 238, 0.3);
   }
 </style>
-
