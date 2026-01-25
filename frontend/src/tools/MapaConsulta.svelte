@@ -59,6 +59,12 @@
   // Controles de visualização
   let coverageOpacity = 0.4; // Opacidade das manchas (0-1)
   
+  // Toggle switch de arrastar
+  let toggleSwitchPosition = false; // false = esquerda, true = direita
+  let isDraggingToggle = false;
+  let toggleDragStartX = 0;
+  let toggleSwitchElement = null;
+  
   // Reactive statements
   $: sidebarWidthStyle = `${sidebarWidth}px`;
   // mapHeightStyle removido - mapa agora usa toda altura disponível
@@ -1642,6 +1648,80 @@
     document.body.style.userSelect = '';
   }
 
+  // Funções de arrastar toggle switch
+  function handleToggleMouseDown(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingToggle = true;
+    toggleDragStartX = e.clientX;
+    document.addEventListener('mousemove', handleToggleMouseMove, { passive: false, capture: true });
+    document.addEventListener('mouseup', handleToggleMouseUp, { passive: false, capture: true });
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+  }
+
+  function handleToggleTouchStart(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingToggle = true;
+    toggleDragStartX = e.touches[0].clientX;
+    document.addEventListener('touchmove', handleToggleTouchMove, { passive: false, capture: true });
+    document.addEventListener('touchend', handleToggleTouchEnd, { passive: false, capture: true });
+    document.body.style.userSelect = 'none';
+  }
+
+  function handleToggleMouseMove(e) {
+    if (!isDraggingToggle || !toggleSwitchElement) return;
+    e.preventDefault();
+    
+    const rect = toggleSwitchElement.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const deltaX = e.clientX - toggleDragStartX;
+    
+    // Se o movimento for significativo, alternar posição
+    if (Math.abs(deltaX) > 10) {
+      const newPosition = e.clientX > centerX;
+      if (newPosition !== toggleSwitchPosition) {
+        toggleSwitchPosition = newPosition;
+        toggleDragStartX = e.clientX; // Reset para evitar múltiplas alternâncias
+      }
+    }
+  }
+
+  function handleToggleTouchMove(e) {
+    if (!isDraggingToggle || !toggleSwitchElement) return;
+    e.preventDefault();
+    
+    const rect = toggleSwitchElement.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const touchX = e.touches[0].clientX;
+    const deltaX = touchX - toggleDragStartX;
+    
+    // Se o movimento for significativo, alternar posição
+    if (Math.abs(deltaX) > 10) {
+      const newPosition = touchX > centerX;
+      if (newPosition !== toggleSwitchPosition) {
+        toggleSwitchPosition = newPosition;
+        toggleDragStartX = touchX; // Reset para evitar múltiplas alternâncias
+      }
+    }
+  }
+
+  function handleToggleMouseUp(e) {
+    isDraggingToggle = false;
+    document.removeEventListener('mousemove', handleToggleMouseMove, { capture: true });
+    document.removeEventListener('mouseup', handleToggleMouseUp, { capture: true });
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+
+  function handleToggleTouchEnd(e) {
+    isDraggingToggle = false;
+    document.removeEventListener('touchmove', handleToggleTouchMove, { capture: true });
+    document.removeEventListener('touchend', handleToggleTouchEnd, { capture: true });
+    document.body.style.userSelect = '';
+  }
+
   // Carregar preferências salvas
   function loadResizePreferences() {
     try {
@@ -1873,16 +1953,31 @@
         <div class="map-container" style="height: 100%; min-height: 0;">
           <div class="map-header">
             <h3>Mapa de Cobertura</h3>
-            <div style="display: flex; gap: 0.5rem;">
-              <button 
-                class="minimize-button drag-handle-button" 
-                aria-label="Arrastar mapa"
-                title="Arrastar"
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <div 
+                class="toggle-switch-container"
+                bind:this={toggleSwitchElement}
+                on:mousedown={handleToggleMouseDown}
+                on:touchstart={handleToggleTouchStart}
+                role="switch"
+                aria-checked={toggleSwitchPosition}
+                aria-label="Toggle switch"
+                tabindex="0"
+                on:keydown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleSwitchPosition = !toggleSwitchPosition;
+                  }
+                }}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M9 5h6M9 12h6M9 19h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
+                <div class="toggle-switch-track" class:active={toggleSwitchPosition}>
+                  <div class="toggle-switch-handle" class:active={toggleSwitchPosition}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M9 5h6M9 12h6M9 19h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <div id="map-consulta" class="map" bind:this={mapElement}></div>
@@ -1997,25 +2092,88 @@
     pointer-events: none;
   }
 
-  .drag-handle-button {
-    color: #7B68EE;
-    transition: all 0.25s ease;
+  .toggle-switch-container {
+    position: relative;
+    width: 48px;
+    height: 24px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+  }
+
+  .toggle-switch-container:focus {
+    outline: 2px solid rgba(123, 104, 238, 0.5);
+    outline-offset: 2px;
+    border-radius: 12px;
+  }
+
+  .toggle-switch-track {
+    width: 100%;
+    height: 100%;
+    background: #e5e7eb;
+    border: 1px solid #d1d5db;
+    border-radius: 12px;
+    position: relative;
+    transition: all 0.3s ease;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+
+  .toggle-switch-track.active {
+    background: linear-gradient(135deg, #6495ED 0%, #7B68EE 100%);
+    border-color: #7B68EE;
+  }
+
+  .toggle-switch-handle {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
     cursor: grab;
   }
 
-  .drag-handle-button:hover {
-    background-color: rgba(123, 104, 238, 0.1);
+  .toggle-switch-handle:active {
+    cursor: grabbing;
+  }
+
+  .toggle-switch-handle.active {
+    transform: translateX(24px);
+    background: white;
+    border-color: #7B68EE;
+    box-shadow: 0 2px 6px rgba(123, 104, 238, 0.3);
+  }
+
+  .toggle-switch-handle svg {
+    width: 10px;
+    height: 10px;
+    color: #6b7280;
+    transition: color 0.3s ease;
+  }
+
+  .toggle-switch-handle.active svg {
     color: #7B68EE;
   }
 
-  .drag-handle-button:active {
-    cursor: grabbing;
-    background-color: rgba(123, 104, 238, 0.2);
-    transform: scale(0.95);
+  .toggle-switch-container:hover .toggle-switch-track {
+    border-color: #7B68EE;
   }
 
-  .drag-handle-button svg {
-    display: block;
+  .toggle-switch-container:hover .toggle-switch-handle {
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+  }
+
+  .toggle-switch-container:hover .toggle-switch-handle.active {
+    box-shadow: 0 3px 8px rgba(123, 104, 238, 0.4);
   }
 
   .vertical-title {
