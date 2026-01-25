@@ -955,6 +955,12 @@
       const allCTOs = new Map();
       const RADIUS_M = (CELL_SIZE_KM / 2) * 1000 * 1.2; // Raio com sobreposição
       
+      const totalCells = cellsLat * cellsLng;
+      let cellsProcessed = 0;
+      const BATCH_SIZE = 10; // Processar 10 células por vez
+      
+      console.log(`📊 Processando ${totalCells} células para carregar CTOs...`);
+      
       for (let i = 0; i < cellsLat; i++) {
         for (let j = 0; j < cellsLng; j++) {
           const cellLat = minLat + (i * CELL_SIZE_DEG) + (CELL_SIZE_DEG / 2);
@@ -982,6 +988,16 @@
           } catch (err) {
             console.warn('⚠️ Erro ao buscar CTOs na célula:', err);
           }
+          
+          cellsProcessed++;
+          
+          // Yield ao navegador a cada lote
+          if (cellsProcessed % BATCH_SIZE === 0) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            if (cellsProcessed % (BATCH_SIZE * 5) === 0) {
+              console.log(`📊 Progresso: ${cellsProcessed}/${totalCells} células processadas, ${allCTOs.size} CTOs encontradas`);
+            }
+          }
         }
       }
       
@@ -1008,14 +1024,20 @@
 
   // Calcular ocupação média ponderada para uma célula usando IDW
   function calculateCellOccupation(cellLat, cellLng, radiusKm) {
+    if (!ctosWithOccupation || ctosWithOccupation.length === 0) {
+      return 0;
+    }
+    
     const radiusM = radiusKm * 1000;
     let weightedSum = 0;
     let weightSum = 0;
+    let ctoCount = 0;
     
     ctosWithOccupation.forEach(cto => {
       const distance = calculateDistance(cellLat, cellLng, cto.lat, cto.lng);
       
       if (distance <= radiusM) {
+        ctoCount++;
         // IDW: peso = 1 / (distância^2)
         const weight = 1 / (Math.pow(distance / 1000, 2) + 0.1); // +0.1 para evitar divisão por zero
         weightedSum += cto.pct_ocup * weight;
@@ -1023,7 +1045,8 @@
       }
     });
     
-    return weightSum > 0 ? weightedSum / weightSum : 0;
+    const result = weightSum > 0 ? weightedSum / weightSum : 0;
+    return result;
   }
 
   // Limpar polígonos de calor
@@ -1039,20 +1062,32 @@
   // Desenhar mapa de calor
   async function drawHeatmap() {
     if (!map || !google || !google.maps || !coveragePolygonGeoJSON) {
+      console.error('❌ drawHeatmap: Pré-requisitos não atendidos', { map: !!map, google: !!google, coveragePolygonGeoJSON: !!coveragePolygonGeoJSON });
       return;
     }
     
+    console.log('🔥 Iniciando desenho do mapa de calor...');
+    
     // Carregar CTOs se necessário
     if (ctosWithOccupation.length === 0) {
-      await loadCTOsForHeatmap();
+      console.log('📥 CTOs não carregadas, iniciando carregamento...');
+      try {
+        await loadCTOsForHeatmap();
+        console.log(`✅ Carregamento concluído: ${ctosWithOccupation.length} CTOs`);
+      } catch (err) {
+        console.error('❌ Erro ao carregar CTOs:', err);
+        error = 'Erro ao carregar CTOs para mapa de calor. Tente novamente.';
+        return;
+      }
     }
     
     if (ctosWithOccupation.length === 0) {
       console.warn('⚠️ Nenhuma CTO com ocupação encontrada para mapa de calor');
+      error = 'Nenhuma CTO com ocupação encontrada na área de cobertura.';
       return;
     }
     
-    console.log('🔥 Desenhando mapa de calor...');
+    console.log(`🔥 Desenhando mapa de calor com ${ctosWithOccupation.length} CTOs...`);
     
     // Limpar polígonos de calor anteriores
     clearHeatmapPolygons();
@@ -1094,7 +1129,9 @@
     const cellsLat = Math.ceil(latRange / CELL_SIZE_DEG);
     const cellsLng = Math.ceil(lngRange / CELL_SIZE_DEG);
     
-    console.log(`📊 Criando grid de ${cellsLat}x${cellsLng} células...`);
+    console.log(`📊 Criando grid de ${cellsLat}x${cellsLng} células (${cellsLat * cellsLng} total)...`);
+    console.log(`📍 Bounds: lat [${minLat.toFixed(4)}, ${maxLat.toFixed(4)}], lng [${minLng.toFixed(4)}, ${maxLng.toFixed(4)}]`);
+    console.log(`📊 CTOs disponíveis para cálculo: ${ctosWithOccupation.length}`);
     
     // Verificar se ponto está dentro do polígono de cobertura
     const isPointInPolygon = (lat, lng) => {
@@ -1116,6 +1153,11 @@
         
         // Calcular ocupação da célula
         const occupation = calculateCellOccupation(cellLat, cellLng, INFLUENCE_RADIUS_KM);
+        
+        // Log para debug (apenas algumas células)
+        if (cellsProcessed % 100 === 0 && occupation > 0) {
+          console.log(`📊 Célula ${cellsProcessed}: ocupação = ${occupation.toFixed(2)}%`);
+        }
         
         if (occupation > 0) {
           // Criar polígono da célula
@@ -1157,6 +1199,22 @@
     }
     
     console.log(`✅ Mapa de calor renderizado: ${heatmapPolygons.length} células`);
+    
+    // Ajustar zoom se necessário
+    if (heatmapPolygons.length > 0 && bounds && !bounds.isEmpty()) {
+      try {
+        google.maps.event.trigger(map, 'resize');
+        await new Promise(resolve => setTimeout(resolve, 300));
+        map.fitBounds(bounds, {
+          top: 50,
+          right: 50,
+          bottom: 50,
+          left: 50
+        });
+      } catch (err) {
+        console.warn('⚠️ Erro ao ajustar zoom do mapa de calor:', err);
+      }
+    }
   }
 
   // Desenhar polígono de cobertura no mapa (versão otimizada usando dados do backend)
@@ -1200,7 +1258,20 @@
       // Modo mapa de calor
       console.log('🔥 Modo: Mapa de Calor');
       clearCoverageCircles(); // Limpar polígonos uniformes
-      await drawHeatmap();
+      error = null; // Limpar erros anteriores
+      try {
+        await drawHeatmap();
+        if (heatmapPolygons.length === 0 && ctosWithOccupation.length > 0) {
+          console.warn('⚠️ Nenhuma célula foi criada no mapa de calor');
+          error = 'Mapa de calor renderizado, mas nenhuma célula foi criada. Verifique os dados.';
+        } else if (heatmapPolygons.length > 0) {
+          console.log(`✅ Mapa de calor renderizado com sucesso: ${heatmapPolygons.length} células`);
+          error = null; // Limpar erro se sucesso
+        }
+      } catch (err) {
+        console.error('❌ Erro ao desenhar mapa de calor:', err);
+        error = 'Erro ao desenhar mapa de calor: ' + (err.message || 'Erro desconhecido');
+      }
     } else {
       // Modo uniforme (padrão)
       console.log(`🗺️ Modo: Uniforme - Desenhando polígono de cobertura (${coverageData?.total_ctos || 0} CTOs)...`);
