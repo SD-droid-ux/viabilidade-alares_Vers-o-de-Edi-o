@@ -2065,7 +2065,7 @@
     }
   });
 
-    // Cleanup ao desmontar
+  // Cleanup ao desmontar
   onDestroy(() => {
     clearCoverageCircles();
     clearSearchMarkers();
