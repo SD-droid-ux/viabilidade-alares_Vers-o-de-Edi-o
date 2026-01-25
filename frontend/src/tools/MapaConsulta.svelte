@@ -2018,7 +2018,9 @@
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       toggleSwitchPosition = !toggleSwitchPosition;
-      toggleHeatmapMode().catch(err => console.error('Erro ao alternar modo:', err));
+      if (map && coveragePolygonGeoJSON) {
+        toggleHeatmapMode().catch(err => console.error('Erro ao alternar modo:', err));
+      }
     }
   }
 
