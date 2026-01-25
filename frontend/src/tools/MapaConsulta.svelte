@@ -2013,6 +2013,15 @@
     document.body.style.userSelect = '';
   }
 
+  // Função para lidar com teclado no toggle switch
+  function handleToggleKeydown(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggleSwitchPosition = !toggleSwitchPosition;
+      toggleHeatmapMode().catch(err => console.error('Erro ao alternar modo:', err));
+    }
+  }
+
   // Carregar preferências salvas
   function loadResizePreferences() {
     try {
@@ -2254,13 +2263,7 @@
                 aria-checked={toggleSwitchPosition}
                 aria-label="Toggle switch"
                 tabindex="0"
-                on:keydown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    toggleSwitchPosition = !toggleSwitchPosition;
-                    toggleHeatmapMode().catch(err => console.error('Erro ao alternar modo:', err));
-                  }
-                }}
+                on:keydown={handleToggleKeydown}
               >
                 <div class="toggle-switch-track" class:active={toggleSwitchPosition}>
                   <div class="toggle-switch-handle" class:active={toggleSwitchPosition}>
