@@ -60,10 +60,15 @@
   let coverageOpacity = 0.4; // Opacidade das manchas (0-1)
   
   // Toggle switch de arrastar
-  let toggleSwitchPosition = true; // false = esquerda, true = direita (padrão: direita/ativo)
+  let toggleSwitchPosition = true; // false = esquerda (calor), true = direita (uniforme) (padrão: direita/ativo)
   let isDraggingToggle = false;
   let toggleDragStartX = 0;
   let toggleSwitchElement = null;
+  
+  // Mapa de calor
+  let heatmapPolygons = []; // Array para armazenar polígonos do mapa de calor
+  let ctosWithOccupation = []; // Array para armazenar CTOs com pct_ocup
+  let isHeatmapMode = false; // false = uniforme, true = calor
   
   // Reactive statements
   $: sidebarWidthStyle = `${sidebarWidth}px`;
@@ -902,6 +907,258 @@
     return intersections;
   }
 
+  // Carregar CTOs com ocupação para mapa de calor
+  async function loadCTOsForHeatmap() {
+    if (ctosWithOccupation.length > 0) {
+      return; // Já carregado
+    }
+    
+    try {
+      console.log('📥 Carregando CTOs com ocupação para mapa de calor...');
+      
+      // Obter bounds do polígono de cobertura
+      if (!coveragePolygonGeoJSON) return;
+      
+      let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+      
+      const extractBounds = (coords) => {
+        if (Array.isArray(coords[0][0])) {
+          coords.forEach(ring => extractBounds(ring));
+        } else {
+          coords.forEach(coord => {
+            const lng = coord[0];
+            const lat = coord[1];
+            minLat = Math.min(minLat, lat);
+            maxLat = Math.max(maxLat, lat);
+            minLng = Math.min(minLng, lng);
+            maxLng = Math.max(maxLng, lng);
+          });
+        }
+      };
+      
+      if (coveragePolygonGeoJSON.type === 'Polygon') {
+        extractBounds(coveragePolygonGeoJSON.coordinates);
+      } else if (coveragePolygonGeoJSON.type === 'MultiPolygon') {
+        coveragePolygonGeoJSON.coordinates.forEach(poly => {
+          poly.forEach(ring => extractBounds(ring));
+        });
+      }
+      
+      // Buscar CTOs na área usando grade otimizada
+      const CELL_SIZE_KM = 50; // Células de 50km para buscar CTOs
+      const CELL_SIZE_DEG = CELL_SIZE_KM / 111;
+      const latRange = maxLat - minLat;
+      const lngRange = maxLng - minLng;
+      const cellsLat = Math.ceil(latRange / CELL_SIZE_DEG);
+      const cellsLng = Math.ceil(lngRange / CELL_SIZE_DEG);
+      
+      const allCTOs = new Map();
+      const RADIUS_M = (CELL_SIZE_KM / 2) * 1000 * 1.2; // Raio com sobreposição
+      
+      for (let i = 0; i < cellsLat; i++) {
+        for (let j = 0; j < cellsLng; j++) {
+          const cellLat = minLat + (i * CELL_SIZE_DEG) + (CELL_SIZE_DEG / 2);
+          const cellLng = minLng + (j * CELL_SIZE_DEG) + (CELL_SIZE_DEG / 2);
+          
+          try {
+            const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${cellLat}&lng=${cellLng}&radius=${RADIUS_M}`));
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success && data.ctos) {
+                data.ctos.forEach(cto => {
+                  if (cto.latitude && cto.longitude && cto.pct_ocup !== undefined && cto.pct_ocup !== null) {
+                    const key = cto.id ? `id_${cto.id}` : `${parseFloat(cto.latitude).toFixed(6)},${parseFloat(cto.longitude).toFixed(6)}`;
+                    if (!allCTOs.has(key)) {
+                      allCTOs.set(key, {
+                        lat: parseFloat(cto.latitude),
+                        lng: parseFloat(cto.longitude),
+                        pct_ocup: parseFloat(cto.pct_ocup) || 0
+                      });
+                    }
+                  }
+                });
+              }
+            }
+          } catch (err) {
+            console.warn('⚠️ Erro ao buscar CTOs na célula:', err);
+          }
+        }
+      }
+      
+      ctosWithOccupation = Array.from(allCTOs.values());
+      console.log(`✅ ${ctosWithOccupation.length} CTOs carregadas para mapa de calor`);
+      
+    } catch (err) {
+      console.error('❌ Erro ao carregar CTOs para mapa de calor:', err);
+    }
+  }
+
+  // Calcular cor baseada na ocupação
+  function getOccupationColor(pctOcup) {
+    if (pctOcup < 50) {
+      return '#22c55e'; // Verde - Baixa ocupação
+    } else if (pctOcup < 70) {
+      return '#eab308'; // Amarelo - Média ocupação
+    } else if (pctOcup < 85) {
+      return '#f97316'; // Laranja - Acima da média
+    } else {
+      return '#ef4444'; // Vermelho - Alta ocupação
+    }
+  }
+
+  // Calcular ocupação média ponderada para uma célula usando IDW
+  function calculateCellOccupation(cellLat, cellLng, radiusKm) {
+    const radiusM = radiusKm * 1000;
+    let weightedSum = 0;
+    let weightSum = 0;
+    
+    ctosWithOccupation.forEach(cto => {
+      const distance = calculateDistance(cellLat, cellLng, cto.lat, cto.lng);
+      
+      if (distance <= radiusM) {
+        // IDW: peso = 1 / (distância^2)
+        const weight = 1 / (Math.pow(distance / 1000, 2) + 0.1); // +0.1 para evitar divisão por zero
+        weightedSum += cto.pct_ocup * weight;
+        weightSum += weight;
+      }
+    });
+    
+    return weightSum > 0 ? weightedSum / weightSum : 0;
+  }
+
+  // Desenhar mapa de calor
+  async function drawHeatmap() {
+    if (!map || !google || !google.maps || !coveragePolygonGeoJSON) {
+      return;
+    }
+    
+    // Carregar CTOs se necessário
+    if (ctosWithOccupation.length === 0) {
+      await loadCTOsForHeatmap();
+    }
+    
+    if (ctosWithOccupation.length === 0) {
+      console.warn('⚠️ Nenhuma CTO com ocupação encontrada para mapa de calor');
+      return;
+    }
+    
+    console.log('🔥 Desenhando mapa de calor...');
+    
+    // Limpar polígonos de calor anteriores
+    clearHeatmapPolygons();
+    
+    // Parâmetros do grid
+    const CELL_SIZE_KM = 1; // Células de 1km
+    const CELL_SIZE_DEG = CELL_SIZE_KM / 111;
+    const INFLUENCE_RADIUS_KM = 2; // Raio de influência de 2km
+    
+    // Obter bounds do polígono
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    
+    const extractBounds = (coords) => {
+      if (Array.isArray(coords[0][0])) {
+        coords.forEach(ring => extractBounds(ring));
+      } else {
+        coords.forEach(coord => {
+          const lng = coord[0];
+          const lat = coord[1];
+          minLat = Math.min(minLat, lat);
+          maxLat = Math.max(maxLat, lat);
+          minLng = Math.min(minLng, lng);
+          maxLng = Math.max(maxLng, lng);
+        });
+      }
+    };
+    
+    if (coveragePolygonGeoJSON.type === 'Polygon') {
+      extractBounds(coveragePolygonGeoJSON.coordinates);
+    } else if (coveragePolygonGeoJSON.type === 'MultiPolygon') {
+      coveragePolygonGeoJSON.coordinates.forEach(poly => {
+        poly.forEach(ring => extractBounds(ring));
+      });
+    }
+    
+    // Criar grid
+    const latRange = maxLat - minLat;
+    const lngRange = maxLng - minLng;
+    const cellsLat = Math.ceil(latRange / CELL_SIZE_DEG);
+    const cellsLng = Math.ceil(lngRange / CELL_SIZE_DEG);
+    
+    console.log(`📊 Criando grid de ${cellsLat}x${cellsLng} células...`);
+    
+    // Verificar se ponto está dentro do polígono de cobertura
+    const isPointInPolygon = (lat, lng) => {
+      // Simplificação: verificar se está dentro do bounding box
+      // Para precisão total, seria necessário verificar se está dentro do polígono real
+      return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
+    };
+    
+    const bounds = new google.maps.LatLngBounds();
+    let cellsProcessed = 0;
+    const BATCH_SIZE = 100; // Processar em lotes para não travar o navegador
+    
+    for (let i = 0; i < cellsLat; i++) {
+      for (let j = 0; j < cellsLng; j++) {
+        const cellLat = minLat + (i * CELL_SIZE_DEG) + (CELL_SIZE_DEG / 2);
+        const cellLng = minLng + (j * CELL_SIZE_DEG) + (CELL_SIZE_DEG / 2);
+        
+        if (!isPointInPolygon(cellLat, cellLng)) continue;
+        
+        // Calcular ocupação da célula
+        const occupation = calculateCellOccupation(cellLat, cellLng, INFLUENCE_RADIUS_KM);
+        
+        if (occupation > 0) {
+          // Criar polígono da célula
+          const halfCell = CELL_SIZE_DEG / 2;
+          const cellPaths = [
+            { lat: cellLat - halfCell, lng: cellLng - halfCell },
+            { lat: cellLat + halfCell, lng: cellLng - halfCell },
+            { lat: cellLat + halfCell, lng: cellLng + halfCell },
+            { lat: cellLat - halfCell, lng: cellLng + halfCell }
+          ];
+          
+          const color = getOccupationColor(occupation);
+          
+          const polygon = new google.maps.Polygon({
+            paths: cellPaths,
+            strokeColor: color,
+            strokeOpacity: 0.3,
+            strokeWeight: 0.5,
+            fillColor: color,
+            fillOpacity: coverageOpacity * 0.8, // Ligeiramente mais transparente
+            map: map,
+            zIndex: 1,
+            geodesic: true
+          });
+          
+          heatmapPolygons.push(polygon);
+          
+          // Adicionar ao bounds
+          cellPaths.forEach(path => bounds.extend(path));
+        }
+        
+        cellsProcessed++;
+        
+        // Yield ao navegador a cada lote
+        if (cellsProcessed % BATCH_SIZE === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+      }
+    }
+    
+    console.log(`✅ Mapa de calor renderizado: ${heatmapPolygons.length} células`);
+  }
+
+  // Limpar polígonos de calor
+  function clearHeatmapPolygons() {
+    heatmapPolygons.forEach(polygon => {
+      if (polygon && polygon.setMap) {
+        polygon.setMap(null);
+      }
+    });
+    heatmapPolygons = [];
+  }
+
   // Desenhar polígono de cobertura no mapa (versão otimizada usando dados do backend)
   async function drawCoverageArea() {
     // Verificar se tudo está pronto
@@ -936,11 +1193,21 @@
       await new Promise(resolve => setTimeout(resolve, 300));
     }
 
-    console.log(`🗺️ Desenhando polígono de cobertura (${coverageData?.total_ctos || 0} CTOs)...`);
-    console.log(`📐 Dimensões do mapa: ${mapRect.width}x${mapRect.height}`);
+    // Determinar modo baseado no toggle switch
+    isHeatmapMode = !toggleSwitchPosition; // false = direita (uniforme), true = esquerda (calor)
+    
+    if (isHeatmapMode) {
+      // Modo mapa de calor
+      console.log('🔥 Modo: Mapa de Calor');
+      clearCoverageCircles(); // Limpar polígonos uniformes
+      await drawHeatmap();
+    } else {
+      // Modo uniforme (padrão)
+      console.log(`🗺️ Modo: Uniforme - Desenhando polígono de cobertura (${coverageData?.total_ctos || 0} CTOs)...`);
+      console.log(`📐 Dimensões do mapa: ${mapRect.width}x${mapRect.height}`);
 
-    // Limpar polígonos anteriores
-    clearCoverageCircles();
+      // Limpar polígonos de calor
+      clearHeatmapPolygons();
 
     // Aguardar um pouco para garantir que o mapa está totalmente renderizado
     await new Promise(resolve => setTimeout(resolve, 200));
@@ -1050,22 +1317,42 @@
       coverageOpacity = 0.4;
     }
     
-    // Atualizar opacidade de todos os polígonos
+    // Atualizar opacidade de todos os polígonos uniformes
     coveragePolygons.forEach(polygon => {
       if (polygon && polygon.setOptions) {
         polygon.setOptions({ fillOpacity: coverageOpacity });
       }
     });
+    
+    // Atualizar opacidade de todos os polígonos de calor
+    heatmapPolygons.forEach(polygon => {
+      if (polygon && polygon.setOptions) {
+        polygon.setOptions({ fillOpacity: coverageOpacity * 0.8 });
+      }
+    });
+  }
+  
+  // Função para alternar modo e redesenhar
+  async function toggleHeatmapMode() {
+    if (!map || !coveragePolygonGeoJSON) return;
+    
+    isHeatmapMode = !toggleSwitchPosition;
+    
+    // Redesenhar mapa
+    await drawCoverageArea();
   }
   
   function clearCoverageCircles() {
-    // Limpar polígonos de cobertura
+    // Limpar polígonos de cobertura uniforme
     coveragePolygons.forEach(polygon => {
       if (polygon && polygon.setMap) {
         polygon.setMap(null);
       }
     });
     coveragePolygons = [];
+    
+    // Também limpar polígonos de calor quando limpar cobertura uniforme
+    clearHeatmapPolygons();
   }
 
   // Limpar marcadores de busca
@@ -1684,6 +1971,8 @@
       if (newPosition !== toggleSwitchPosition) {
         toggleSwitchPosition = newPosition;
         toggleDragStartX = e.clientX; // Reset para evitar múltiplas alternâncias
+        // Redesenhar mapa quando toggle mudar
+        toggleHeatmapMode();
       }
     }
   }
@@ -1703,6 +1992,8 @@
       if (newPosition !== toggleSwitchPosition) {
         toggleSwitchPosition = newPosition;
         toggleDragStartX = touchX; // Reset para evitar múltiplas alternâncias
+        // Redesenhar mapa quando toggle mudar
+        toggleHeatmapMode();
       }
     }
   }
@@ -1967,6 +2258,7 @@
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     toggleSwitchPosition = !toggleSwitchPosition;
+                    toggleHeatmapMode();
                   }
                 }}
               >
