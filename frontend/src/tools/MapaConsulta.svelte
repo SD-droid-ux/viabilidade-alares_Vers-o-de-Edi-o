@@ -1010,16 +1010,54 @@
   }
 
   // Calcular cor baseada na ocupação
+  // Função para criar gradiente suave de cores baseado na ocupação
+  // Segue o mesmo padrão das CTOs: Verde (0-50%) → Laranja (50-80%) → Vermelho (80-100%)
+  // Mas com gradiente suave entre as faixas
   function getOccupationColor(pctOcup) {
-    if (pctOcup < 50) {
-      return '#22c55e'; // Verde - Baixa ocupação
-    } else if (pctOcup < 70) {
-      return '#eab308'; // Amarelo - Média ocupação
-    } else if (pctOcup < 85) {
-      return '#f97316'; // Laranja - Acima da média
+    const porcentagem = parseFloat(pctOcup) || 0;
+    const normalized = Math.max(0, Math.min(100, porcentagem));
+    
+    // Cores base (mesmas do AnaliseCobertura.svelte)
+    const verde = '#4CAF50';      // 0-50%
+    const laranja = '#FF9800';    // 50-80%
+    const vermelho = '#F44336';   // 80-100%
+    
+    // Criar gradiente suave entre as faixas
+    if (normalized < 50) {
+      // Verde claro → Verde escuro (0-50%)
+      // Interpolar dentro da faixa verde para criar gradiente
+      const ratio = normalized / 50;
+      const verdeClaro = '#81C784'; // Verde mais claro
+      return interpolateColor(verdeClaro, verde, ratio);
+    } else if (normalized < 80) {
+      // Verde → Laranja (50-80%)
+      const ratio = (normalized - 50) / 30;
+      return interpolateColor(verde, laranja, ratio);
     } else {
-      return '#ef4444'; // Vermelho - Alta ocupação
+      // Laranja → Vermelho (80-100%)
+      const ratio = (normalized - 80) / 20;
+      return interpolateColor(laranja, vermelho, ratio);
     }
+  }
+
+  // Função auxiliar para interpolar entre duas cores
+  function interpolateColor(color1, color2, ratio) {
+    const hex1 = color1.replace('#', '');
+    const hex2 = color2.replace('#', '');
+    
+    const r1 = parseInt(hex1.substring(0, 2), 16);
+    const g1 = parseInt(hex1.substring(2, 4), 16);
+    const b1 = parseInt(hex1.substring(4, 6), 16);
+    
+    const r2 = parseInt(hex2.substring(0, 2), 16);
+    const g2 = parseInt(hex2.substring(2, 4), 16);
+    const b2 = parseInt(hex2.substring(4, 6), 16);
+    
+    const r = Math.round(r1 + (r2 - r1) * ratio);
+    const g = Math.round(g1 + (g2 - g1) * ratio);
+    const b = Math.round(b1 + (b2 - b1) * ratio);
+    
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
   }
 
   // Calcular ocupação média ponderada para uma célula usando IDW
