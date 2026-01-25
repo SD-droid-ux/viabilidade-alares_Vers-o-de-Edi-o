@@ -60,7 +60,7 @@
   let coverageOpacity = 0.4; // Opacidade das manchas (0-1)
   
   // Toggle switch de arrastar
-  let toggleSwitchPosition = false; // false = esquerda, true = direita
+  let toggleSwitchPosition = true; // false = esquerda, true = direita (padrão: direita/ativo)
   let isDraggingToggle = false;
   let toggleDragStartX = 0;
   let toggleSwitchElement = null;
