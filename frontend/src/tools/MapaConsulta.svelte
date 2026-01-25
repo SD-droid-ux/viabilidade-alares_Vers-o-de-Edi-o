@@ -1059,161 +1059,97 @@
     heatmapPolygons = [];
   }
 
-  // Desenhar mapa de calor
+  // Desenhar mapa de calor usando dados pré-calculados do backend
   async function drawHeatmap() {
     if (!map || !google || !google.maps || !coveragePolygonGeoJSON) {
       console.error('❌ drawHeatmap: Pré-requisitos não atendidos', { map: !!map, google: !!google, coveragePolygonGeoJSON: !!coveragePolygonGeoJSON });
       return;
     }
     
-    console.log('🔥 Iniciando desenho do mapa de calor...');
-    
-    // Carregar CTOs se necessário
-    if (ctosWithOccupation.length === 0) {
-      console.log('📥 CTOs não carregadas, iniciando carregamento...');
-      try {
-        await loadCTOsForHeatmap();
-        console.log(`✅ Carregamento concluído: ${ctosWithOccupation.length} CTOs`);
-      } catch (err) {
-        console.error('❌ Erro ao carregar CTOs:', err);
-        error = 'Erro ao carregar CTOs para mapa de calor. Tente novamente.';
-        return;
-      }
-    }
-    
-    if (ctosWithOccupation.length === 0) {
-      console.warn('⚠️ Nenhuma CTO com ocupação encontrada para mapa de calor');
-      error = 'Nenhuma CTO com ocupação encontrada na área de cobertura.';
-      return;
-    }
-    
-    console.log(`🔥 Desenhando mapa de calor com ${ctosWithOccupation.length} CTOs...`);
+    console.log('🔥 Iniciando desenho do mapa de calor (usando dados do backend)...');
     
     // Limpar polígonos de calor anteriores
     clearHeatmapPolygons();
     
-    // Parâmetros do grid
-    const CELL_SIZE_KM = 1; // Células de 1km
-    const CELL_SIZE_DEG = CELL_SIZE_KM / 111;
-    const INFLUENCE_RADIUS_KM = 2; // Raio de influência de 2km
-    
-    // Obter bounds do polígono
-    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-    
-    const extractBounds = (coords) => {
-      if (Array.isArray(coords[0][0])) {
-        coords.forEach(ring => extractBounds(ring));
-      } else {
-        coords.forEach(coord => {
-          const lng = coord[0];
-          const lat = coord[1];
-          minLat = Math.min(minLat, lat);
-          maxLat = Math.max(maxLat, lat);
-          minLng = Math.min(minLng, lng);
-          maxLng = Math.max(maxLng, lng);
-        });
+    try {
+      // Carregar grid de calor pré-calculado do backend
+      const response = await fetch(getApiUrl('/api/coverage/heatmap-grid?cell_size_km=1&influence_radius_km=2'));
+      
+      if (!response.ok) {
+        throw new Error(`Erro ao carregar grid de calor: ${response.status}`);
       }
-    };
-    
-    if (coveragePolygonGeoJSON.type === 'Polygon') {
-      extractBounds(coveragePolygonGeoJSON.coordinates);
-    } else if (coveragePolygonGeoJSON.type === 'MultiPolygon') {
-      coveragePolygonGeoJSON.coordinates.forEach(poly => {
-        poly.forEach(ring => extractBounds(ring));
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || data.message || 'Erro desconhecido ao carregar grid de calor');
+      }
+      
+      if (!data.grid_cells || data.grid_cells.length === 0) {
+        console.warn('⚠️ Nenhuma célula de calor encontrada');
+        error = 'Nenhuma célula de calor encontrada. Execute o cálculo de polígonos primeiro.';
+        return;
+      }
+      
+      console.log(`✅ Grid de calor carregado: ${data.cells_with_data} células com dados`);
+      
+      // Renderizar células do grid
+      const bounds = new google.maps.LatLngBounds();
+      let cellsRendered = 0;
+      
+      data.grid_cells.forEach((cell, index) => {
+        const halfCell = cell.half_cell_size_deg || (1.0 / 111.0 / 2.0);
+        const cellPaths = [
+          { lat: cell.lat - halfCell, lng: cell.lng - halfCell },
+          { lat: cell.lat + halfCell, lng: cell.lng - halfCell },
+          { lat: cell.lat + halfCell, lng: cell.lng + halfCell },
+          { lat: cell.lat - halfCell, lng: cell.lng + halfCell }
+        ];
+        
+        const color = getOccupationColor(cell.occupation);
+        
+        const polygon = new google.maps.Polygon({
+          paths: cellPaths,
+          strokeColor: color,
+          strokeOpacity: 0.3,
+          strokeWeight: 0.5,
+          fillColor: color,
+          fillOpacity: coverageOpacity * 0.8,
+          map: map,
+          zIndex: 1,
+          geodesic: true
+        });
+        
+        heatmapPolygons.push(polygon);
+        cellPaths.forEach(path => bounds.extend(path));
+        cellsRendered++;
       });
-    }
-    
-    // Criar grid
-    const latRange = maxLat - minLat;
-    const lngRange = maxLng - minLng;
-    const cellsLat = Math.ceil(latRange / CELL_SIZE_DEG);
-    const cellsLng = Math.ceil(lngRange / CELL_SIZE_DEG);
-    
-    console.log(`📊 Criando grid de ${cellsLat}x${cellsLng} células (${cellsLat * cellsLng} total)...`);
-    console.log(`📍 Bounds: lat [${minLat.toFixed(4)}, ${maxLat.toFixed(4)}], lng [${minLng.toFixed(4)}, ${maxLng.toFixed(4)}]`);
-    console.log(`📊 CTOs disponíveis para cálculo: ${ctosWithOccupation.length}`);
-    
-    // Verificar se ponto está dentro do polígono de cobertura
-    const isPointInPolygon = (lat, lng) => {
-      // Simplificação: verificar se está dentro do bounding box
-      // Para precisão total, seria necessário verificar se está dentro do polígono real
-      return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
-    };
-    
-    const bounds = new google.maps.LatLngBounds();
-    let cellsProcessed = 0;
-    const BATCH_SIZE = 100; // Processar em lotes para não travar o navegador
-    
-    for (let i = 0; i < cellsLat; i++) {
-      for (let j = 0; j < cellsLng; j++) {
-        const cellLat = minLat + (i * CELL_SIZE_DEG) + (CELL_SIZE_DEG / 2);
-        const cellLng = minLng + (j * CELL_SIZE_DEG) + (CELL_SIZE_DEG / 2);
-        
-        if (!isPointInPolygon(cellLat, cellLng)) continue;
-        
-        // Calcular ocupação da célula
-        const occupation = calculateCellOccupation(cellLat, cellLng, INFLUENCE_RADIUS_KM);
-        
-        // Log para debug (apenas algumas células)
-        if (cellsProcessed % 100 === 0 && occupation > 0) {
-          console.log(`📊 Célula ${cellsProcessed}: ocupação = ${occupation.toFixed(2)}%`);
-        }
-        
-        if (occupation > 0) {
-          // Criar polígono da célula
-          const halfCell = CELL_SIZE_DEG / 2;
-          const cellPaths = [
-            { lat: cellLat - halfCell, lng: cellLng - halfCell },
-            { lat: cellLat + halfCell, lng: cellLng - halfCell },
-            { lat: cellLat + halfCell, lng: cellLng + halfCell },
-            { lat: cellLat - halfCell, lng: cellLng + halfCell }
-          ];
-          
-          const color = getOccupationColor(occupation);
-          
-          const polygon = new google.maps.Polygon({
-            paths: cellPaths,
-            strokeColor: color,
-            strokeOpacity: 0.3,
-            strokeWeight: 0.5,
-            fillColor: color,
-            fillOpacity: coverageOpacity * 0.8, // Ligeiramente mais transparente
-            map: map,
-            zIndex: 1,
-            geodesic: true
+      
+      console.log(`✅ ${cellsRendered} células renderizadas no mapa`);
+      
+      // Ajustar zoom se necessário
+      if (heatmapPolygons.length > 0 && bounds && !bounds.isEmpty()) {
+        try {
+          google.maps.event.trigger(map, 'resize');
+          await new Promise(resolve => setTimeout(resolve, 300));
+          map.fitBounds(bounds, {
+            top: 50,
+            right: 50,
+            bottom: 50,
+            left: 50
           });
-          
-          heatmapPolygons.push(polygon);
-          
-          // Adicionar ao bounds
-          cellPaths.forEach(path => bounds.extend(path));
-        }
-        
-        cellsProcessed++;
-        
-        // Yield ao navegador a cada lote
-        if (cellsProcessed % BATCH_SIZE === 0) {
-          await new Promise(resolve => setTimeout(resolve, 0));
+        } catch (err) {
+          console.warn('⚠️ Erro ao ajustar zoom do mapa de calor:', err);
         }
       }
-    }
-    
-    console.log(`✅ Mapa de calor renderizado: ${heatmapPolygons.length} células`);
-    
-    // Ajustar zoom se necessário
-    if (heatmapPolygons.length > 0 && bounds && !bounds.isEmpty()) {
-      try {
-        google.maps.event.trigger(map, 'resize');
-        await new Promise(resolve => setTimeout(resolve, 300));
-        map.fitBounds(bounds, {
-          top: 50,
-          right: 50,
-          bottom: 50,
-          left: 50
-        });
-      } catch (err) {
-        console.warn('⚠️ Erro ao ajustar zoom do mapa de calor:', err);
-      }
+      
+    } catch (err) {
+      console.error('❌ Erro ao carregar/desenhar mapa de calor:', err);
+      error = 'Erro ao carregar mapa de calor: ' + (err.message || 'Erro desconhecido');
+      
+      // Fallback: tentar método antigo (cálculo no frontend) se disponível
+      console.log('⚠️ Tentando método de fallback (cálculo no frontend)...');
+      // Não implementar fallback por enquanto, apenas mostrar erro
     }
   }
 
