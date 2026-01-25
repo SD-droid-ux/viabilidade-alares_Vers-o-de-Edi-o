@@ -28,7 +28,7 @@ export const toolsRegistry = [
     id: 'viabilidade-alares',
     title: 'Viabilidade Alares - Engenharia',
     description: 'Análise de viabilidade técnica para identificação de CTOs próximas a endereços de clientes',
-    icon: '🏗️',
+    icon: '🔍',
     color: '#7B68EE',
     component: ViabilidadeAlares,
     available: true
@@ -46,7 +46,7 @@ export const toolsRegistry = [
     id: 'calculadora-orcamento',
     title: 'Calculadora de Orçamento',
     description: 'Cálculo de orçamentos para projetos de engenharia',
-    icon: '💰',
+    icon: '🧮',
     color: '#10B981',
     component: CalculadoraOrcamento,
     available: true
