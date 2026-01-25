@@ -77,8 +77,8 @@
   let isLoggedIn = false;
   let currentUser = '';
   let userTipo = 'user'; // Tipo de usuário: 'admin' ou 'user'
-  let isLoading = false;
-  let loadingMessage = '';
+  let isLoading = true; // Iniciar com loading ativo
+  let loadingMessage = 'Carregando...';
   let heartbeatInterval = null;
   let currentView = null; // 'dashboard', 'tool', 'login' ou null (será definido pelo processUrl)
   let currentTool = null; // ID da ferramenta atual
@@ -329,21 +329,27 @@
           const storedUser = localStorage.getItem('usuario');
           
           if (storedIsLoggedIn && storedUser) {
-            // Usuário está logado, carregar ferramenta
-            currentUser = storedUser;
-            userTipo = localStorage.getItem('userTipo') || 'user';
-            isLoggedIn = true;
-            currentTool = toolId;
-            currentView = 'tool';
-            isToolInNewTab = true; // Marcar que está em nova aba (tem hash na URL)
-            startHeartbeat();
+            // Usuário está logado, mostrar loading e depois carregar ferramenta
+            setTimeout(() => {
+              currentUser = storedUser;
+              userTipo = localStorage.getItem('userTipo') || 'user';
+              isLoggedIn = true;
+              currentTool = toolId;
+              currentView = 'tool';
+              isToolInNewTab = true; // Marcar que está em nova aba (tem hash na URL)
+              isLoading = false;
+              startHeartbeat();
+            }, 1500); // 1.5 segundos de loading
             return;
           }
         }
         
         // Se não está logado, mostrar loading primeiro, depois login
         isLoggedIn = false;
-        showInitialLoading();
+        setTimeout(() => {
+          isLoading = false;
+          currentView = 'login';
+        }, 1500); // 1.5 segundos de loading
         return;
       }
     } else {
@@ -353,39 +359,40 @@
         const storedUser = localStorage.getItem('usuario');
         
         if (storedIsLoggedIn && storedUser) {
-          currentUser = storedUser;
-          userTipo = localStorage.getItem('userTipo') || 'user';
-          isLoggedIn = true;
-          currentView = 'dashboard';
-          isToolInNewTab = false; // Dashboard não está em nova aba
-          startHeartbeat();
+          // Usuário está logado, mostrar loading e depois carregar dashboard
+          setTimeout(() => {
+            currentUser = storedUser;
+            userTipo = localStorage.getItem('userTipo') || 'user';
+            isLoggedIn = true;
+            currentView = 'dashboard';
+            isToolInNewTab = false; // Dashboard não está em nova aba
+            isLoading = false;
+            startHeartbeat();
+          }, 1500); // 1.5 segundos de loading
         } else {
           // Não está logado, mostrar loading primeiro, depois login
-          showInitialLoading();
+          setTimeout(() => {
+            isLoading = false;
+            currentView = 'login';
+          }, 1500); // 1.5 segundos de loading
         }
       } else {
-        // localStorage não disponível, mostrar loading primeiro
-        showInitialLoading();
+        // localStorage não disponível, mostrar loading primeiro, depois login
+        setTimeout(() => {
+          isLoading = false;
+          currentView = 'login';
+        }, 1500); // 1.5 segundos de loading
       }
     }
   }
 
-  // Função para mostrar loading inicial antes do login
-  function showInitialLoading() {
-    isLoading = true;
-    loadingMessage = 'Carregando...';
-    isLoggedIn = false;
-    
-    // Após um tempo, mostrar tela de login
-    setTimeout(() => {
-      isLoading = false;
-      currentView = 'login';
-    }, 1500); // 1.5 segundos de loading
-  }
-
   // Processar URL ao montar o componente
-  import { onMount, onDestroy } from 'svelte';
-  onMount(() => {
+  import { onMount, onDestroy, tick } from 'svelte';
+  onMount(async () => {
+    // Aguardar um tick para garantir que o Loading seja renderizado primeiro
+    await tick();
+    
+    // Processar URL após garantir que o Loading está visível
     processUrl();
     
     // Inicializar BroadcastChannel para comunicação entre abas
@@ -511,3 +518,4 @@
     box-shadow: 0 4px 8px rgba(123, 104, 238, 0.3);
   }
 </style>
+
