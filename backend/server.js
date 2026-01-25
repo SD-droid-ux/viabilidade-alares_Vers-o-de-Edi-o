@@ -929,9 +929,14 @@ app.post('/api/coverage/calculate', async (req, res) => {
               console.log(`✅ [API] Polígono salvo: ID ${finalResult.polygon_id}, ${finalResult.total_ctos} CTOs, ${finalResult.area_km2?.toFixed(2)} km²`);
               
               // Calcular grid de calor automaticamente após finalizar polígonos (opcional, não bloqueia)
+              // Processar em background para não bloquear
               (async () => {
                 try {
-                  console.log('🔥 [API] Iniciando cálculo do grid de calor...');
+                  console.log('🔥 [API] Iniciando cálculo do grid de calor em background...');
+                  
+                  // Chamar endpoint de cálculo do grid (que processa em lotes se necessário)
+                  // Por enquanto, vamos tentar calcular diretamente
+                  // Se der timeout, o endpoint /api/coverage/calculate-heatmap pode ser chamado manualmente
                   const { data: heatmapData, error: heatmapError } = await supabase.rpc('calculate_heatmap_grid', {
                     p_cell_size_km: 1.0,
                     p_influence_radius_km: 2.0
@@ -939,11 +944,15 @@ app.post('/api/coverage/calculate', async (req, res) => {
                   
                   if (heatmapError) {
                     console.warn('⚠️ [API] Erro ao calcular grid de calor (não crítico):', heatmapError);
+                    console.warn('💡 [API] Dica: O grid de calor pode ser calculado manualmente via POST /api/coverage/calculate-heatmap');
                   } else if (heatmapData && heatmapData.success) {
                     console.log(`✅ [API] Grid de calor calculado: ${heatmapData.cells_with_data} células com dados`);
+                  } else {
+                    console.warn('⚠️ [API] Grid de calor não calculado:', heatmapData?.error);
                   }
                 } catch (heatmapErr) {
                   console.warn('⚠️ [API] Erro ao calcular grid de calor (não crítico):', heatmapErr);
+                  console.warn('💡 [API] Dica: O grid de calor pode ser calculado manualmente via POST /api/coverage/calculate-heatmap');
                 }
               })();
             } else {
