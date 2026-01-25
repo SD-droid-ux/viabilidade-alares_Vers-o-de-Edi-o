@@ -927,6 +927,25 @@ app.post('/api/coverage/calculate', async (req, res) => {
             if (finalData && finalData.length > 0 && finalData[0].success) {
               const finalResult = finalData[0];
               console.log(`✅ [API] Polígono salvo: ID ${finalResult.polygon_id}, ${finalResult.total_ctos} CTOs, ${finalResult.area_km2?.toFixed(2)} km²`);
+              
+              // Calcular grid de calor automaticamente após finalizar polígonos (opcional, não bloqueia)
+              (async () => {
+                try {
+                  console.log('🔥 [API] Iniciando cálculo do grid de calor...');
+                  const { data: heatmapData, error: heatmapError } = await supabase.rpc('calculate_heatmap_grid', {
+                    p_cell_size_km: 1.0,
+                    p_influence_radius_km: 2.0
+                  });
+                  
+                  if (heatmapError) {
+                    console.warn('⚠️ [API] Erro ao calcular grid de calor (não crítico):', heatmapError);
+                  } else if (heatmapData && heatmapData.success) {
+                    console.log(`✅ [API] Grid de calor calculado: ${heatmapData.cells_with_data} células com dados`);
+                  }
+                } catch (heatmapErr) {
+                  console.warn('⚠️ [API] Erro ao calcular grid de calor (não crítico):', heatmapErr);
+                }
+              })();
             } else {
               console.error('❌ [API] Erro ao finalizar:', finalData);
             }
@@ -1138,6 +1157,168 @@ app.get('/api/coverage/polygon', async (req, res) => {
     
   } catch (err) {
     console.error('❌ [API] Erro na rota /api/coverage/polygon:', err);
+    
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno', 
+      details: err.message 
+    });
+  }
+});
+
+// Rota para calcular grid de calor (heatmap)
+app.post('/api/coverage/calculate-heatmap', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    console.log('🔥 [API] Iniciando cálculo do grid de calor...');
+    
+    if (!supabase || !isSupabaseAvailable()) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'Supabase não disponível' 
+      });
+    }
+    
+    // Parâmetros do grid (opcionais, com defaults)
+    const cellSizeKm = parseFloat(req.body.cell_size_km) || 1.0;
+    const influenceRadiusKm = parseFloat(req.body.influence_radius_km) || 2.0;
+    
+    // Calcular grid usando função SQL
+    const { data, error } = await supabase.rpc('calculate_heatmap_grid', {
+      p_cell_size_km: cellSizeKm,
+      p_influence_radius_km: influenceRadiusKm
+    });
+    
+    if (error) {
+      console.error('❌ [API] Erro ao calcular grid de calor:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Erro ao calcular grid de calor', 
+        details: error.message 
+      });
+    }
+    
+    if (!data || !data.success) {
+      return res.status(400).json({ 
+        success: false, 
+        error: data?.error || 'Erro desconhecido ao calcular grid de calor'
+      });
+    }
+    
+    console.log(`✅ [API] Grid de calor calculado: ${data.cells_with_data} células com dados de ${data.total_cells} células totais`);
+    
+    res.json({
+      success: true,
+      polygon_id: data.polygon_id,
+      grid_cells: data.grid_cells,
+      total_cells: data.total_cells,
+      cells_with_data: data.cells_with_data,
+      cell_size_km: data.cell_size_km,
+      influence_radius_km: data.influence_radius_km,
+      bounds: data.bounds
+    });
+    
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/coverage/calculate-heatmap:', err);
+    
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno', 
+      details: err.message 
+    });
+  }
+});
+
+// Rota para obter grid de calor (heatmap)
+app.get('/api/coverage/heatmap-grid', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    if (!supabase || !isSupabaseAvailable()) {
+      return res.status(503).json({ 
+        success: false, 
+        error: 'Supabase não disponível' 
+      });
+    }
+    
+    // Parâmetros opcionais
+    const cellSizeKm = parseFloat(req.query.cell_size_km) || 1.0;
+    const influenceRadiusKm = parseFloat(req.query.influence_radius_km) || 2.0;
+    const recalculate = req.query.recalculate === 'true';
+    
+    // Se não for para recalcular, tentar buscar do cache (futuro)
+    // Por enquanto, sempre recalcula
+    if (recalculate) {
+      console.log('🔥 [API] Recalculando grid de calor...');
+    }
+    
+    // Calcular grid usando função SQL
+    const { data, error } = await supabase.rpc('calculate_heatmap_grid', {
+      p_cell_size_km: cellSizeKm,
+      p_influence_radius_km: influenceRadiusKm
+    });
+    
+    if (error) {
+      console.error('❌ [API] Erro ao calcular grid de calor:', error);
+      return res.status(500).json({ 
+        success: false, 
+        error: 'Erro ao calcular grid de calor', 
+        details: error.message 
+      });
+    }
+    
+    if (!data || !data.success) {
+      return res.json({ 
+        success: false, 
+        error: data?.error || 'Erro desconhecido ao calcular grid de calor',
+        message: data?.error || 'Nenhum polígono de cobertura ativo encontrado. Execute o cálculo de polígonos primeiro.'
+      });
+    }
+    
+    res.json({
+      success: true,
+      polygon_id: data.polygon_id,
+      grid_cells: data.grid_cells,
+      total_cells: data.total_cells,
+      cells_with_data: data.cells_with_data,
+      cell_size_km: data.cell_size_km,
+      influence_radius_km: data.influence_radius_km,
+      bounds: data.bounds
+    });
+    
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/coverage/heatmap-grid:', err);
     
     const origin = req.headers.origin;
     if (origin) {
