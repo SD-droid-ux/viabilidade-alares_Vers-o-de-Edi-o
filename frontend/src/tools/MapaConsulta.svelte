@@ -1026,6 +1026,16 @@
     return weightSum > 0 ? weightedSum / weightSum : 0;
   }
 
+  // Limpar polígonos de calor
+  function clearHeatmapPolygons() {
+    heatmapPolygons.forEach(polygon => {
+      if (polygon && polygon.setMap) {
+        polygon.setMap(null);
+      }
+    });
+    heatmapPolygons = [];
+  }
+
   // Desenhar mapa de calor
   async function drawHeatmap() {
     if (!map || !google || !google.maps || !coveragePolygonGeoJSON) {
@@ -1147,16 +1157,6 @@
     }
     
     console.log(`✅ Mapa de calor renderizado: ${heatmapPolygons.length} células`);
-  }
-
-  // Limpar polígonos de calor
-  function clearHeatmapPolygons() {
-    heatmapPolygons.forEach(polygon => {
-      if (polygon && polygon.setMap) {
-        polygon.setMap(null);
-      }
-    });
-    heatmapPolygons = [];
   }
 
   // Desenhar polígono de cobertura no mapa (versão otimizada usando dados do backend)
@@ -1971,8 +1971,8 @@
       if (newPosition !== toggleSwitchPosition) {
         toggleSwitchPosition = newPosition;
         toggleDragStartX = e.clientX; // Reset para evitar múltiplas alternâncias
-        // Redesenhar mapa quando toggle mudar
-        toggleHeatmapMode();
+        // Redesenhar mapa quando toggle mudar (sem await para não bloquear)
+        toggleHeatmapMode().catch(err => console.error('Erro ao alternar modo:', err));
       }
     }
   }
@@ -1992,8 +1992,8 @@
       if (newPosition !== toggleSwitchPosition) {
         toggleSwitchPosition = newPosition;
         toggleDragStartX = touchX; // Reset para evitar múltiplas alternâncias
-        // Redesenhar mapa quando toggle mudar
-        toggleHeatmapMode();
+        // Redesenhar mapa quando toggle mudar (sem await para não bloquear)
+        toggleHeatmapMode().catch(err => console.error('Erro ao alternar modo:', err));
       }
     }
   }
@@ -2258,7 +2258,7 @@
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     toggleSwitchPosition = !toggleSwitchPosition;
-                    toggleHeatmapMode();
+                    toggleHeatmapMode().catch(err => console.error('Erro ao alternar modo:', err));
                   }
                 }}
               >
