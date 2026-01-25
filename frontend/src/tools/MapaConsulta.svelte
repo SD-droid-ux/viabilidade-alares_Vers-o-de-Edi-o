@@ -1873,6 +1873,17 @@
         <div class="map-container" style="height: 100%; min-height: 0;">
           <div class="map-header">
             <h3>Mapa de Cobertura</h3>
+            <div style="display: flex; gap: 0.5rem;">
+              <button 
+                class="minimize-button drag-handle-button" 
+                aria-label="Arrastar mapa"
+                title="Arrastar"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M9 5h6M9 12h6M9 19h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
           </div>
           <div id="map-consulta" class="map" bind:this={mapElement}></div>
         </div>
@@ -1984,6 +1995,27 @@
     opacity: 0.5;
     cursor: not-allowed;
     pointer-events: none;
+  }
+
+  .drag-handle-button {
+    color: #7B68EE;
+    transition: all 0.25s ease;
+    cursor: grab;
+  }
+
+  .drag-handle-button:hover {
+    background-color: rgba(123, 104, 238, 0.1);
+    color: #7B68EE;
+  }
+
+  .drag-handle-button:active {
+    cursor: grabbing;
+    background-color: rgba(123, 104, 238, 0.2);
+    transform: scale(0.95);
+  }
+
+  .drag-handle-button svg {
+    display: block;
   }
 
   .vertical-title {
