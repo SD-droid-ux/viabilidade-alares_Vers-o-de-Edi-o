@@ -87,18 +87,65 @@
   let broadcastChannel = null; // Canal de comunicação entre abas
   let isToolInNewTab = false; // Flag para indicar se a ferramenta está em nova aba
 
-  // Atualizar título da aba do navegador dinamicamente
+  // Função para criar favicon a partir de um emoji
+  function createFaviconFromEmoji(emoji) {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return;
+    
+    // Fundo branco
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 32, 32);
+    
+    // Usar uma fonte que suporta emojis melhor
+    ctx.font = '24px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "EmojiOne Color", "Android Emoji", Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(emoji, 16, 16);
+    
+    // Converter para data URL e atualizar favicon
+    const dataUrl = canvas.toDataURL('image/png');
+    updateFavicon(dataUrl);
+  }
+
+  // Função para atualizar o favicon
+  function updateFavicon(href) {
+    if (typeof document === 'undefined') return;
+    
+    // Remover favicon existente
+    let link = document.querySelector("link[rel*='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = href;
+  }
+
+  // Atualizar título e favicon da aba do navegador dinamicamente
   $: if (typeof document !== 'undefined') {
     if (currentView === 'tool' && currentTool) {
       const tool = getToolById(currentTool);
       if (tool) {
         document.title = tool.title;
+        // Criar favicon a partir do emoji da ferramenta
+        if (tool.icon) {
+          createFaviconFromEmoji(tool.icon);
+        }
       } else {
         document.title = 'Viabilidade Alares - Engenharia';
+        // Restaurar favicon padrão (globo)
+        createFaviconFromEmoji('🌐');
       }
     } else {
-      // Dashboard, Login ou Loading: manter título padrão
+      // Dashboard, Login ou Loading: manter título e favicon padrão (globo)
       document.title = 'Viabilidade Alares - Engenharia';
+      createFaviconFromEmoji('🌐');
     }
   }
 
