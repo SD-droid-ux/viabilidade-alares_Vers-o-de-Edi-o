@@ -936,104 +936,103 @@
     console.log(`🗺️ Desenhando polígono de cobertura (${coverageData?.total_ctos || 0} CTOs)...`);
     console.log(`📐 Dimensões do mapa: ${mapRect.width}x${mapRect.height}`);
 
-      // Aguardar um pouco para garantir que o mapa está totalmente renderizado
-      await new Promise(resolve => setTimeout(resolve, 200));
+    // Aguardar um pouco para garantir que o mapa está totalmente renderizado
+    await new Promise(resolve => setTimeout(resolve, 200));
 
-      const bounds = new google.maps.LatLngBounds();
+    const bounds = new google.maps.LatLngBounds();
 
-      // Converter GeoJSON para formato do Google Maps
-      try {
-        // GeoJSON pode ter múltiplos polígonos (MultiPolygon) ou um único Polygon
-        let polygonsToRender = [];
-        
-        if (coveragePolygonGeoJSON.type === 'Polygon') {
-          // Polígono simples
-          polygonsToRender = [coveragePolygonGeoJSON];
-        } else if (coveragePolygonGeoJSON.type === 'MultiPolygon') {
-          // Múltiplos polígonos - converter para array de polígonos
-          polygonsToRender = coveragePolygonGeoJSON.coordinates.map(coords => ({
-            type: 'Polygon',
-            coordinates: coords
-          }));
-        } else {
-          console.error('❌ Formato GeoJSON não suportado:', coveragePolygonGeoJSON.type);
-          return;
-        }
-        
-        console.log(`🎨 Renderizando ${polygonsToRender.length} polígono(s) de cobertura...`);
-        
-        // Renderizar cada polígono
-        for (const geoJsonPolygon of polygonsToRender) {
-          // Converter coordenadas GeoJSON para formato do Google Maps
-          const paths = geoJsonPolygon.coordinates[0].map(coord => ({
-            lat: coord[1], // GeoJSON usa [lng, lat], Google Maps usa {lat, lng}
-            lng: coord[0]
-          }));
-          
-          // Criar polígono no Google Maps
-          const polygon = new google.maps.Polygon({
-            paths: paths,
-            strokeColor: '#8B7AE8',
-            strokeOpacity: 0.8,
-            strokeWeight: 1.2,
-            fillColor: '#6B8DD6',
-            fillOpacity: coverageOpacity,
-            map: map,
-            zIndex: 1,
-            geodesic: true
-          });
-          
-          coveragePolygons.push(polygon);
-          
-          // Adicionar ao bounds para ajustar zoom
-          for (const path of paths) {
-            bounds.extend(path);
-          }
-        }
-        
-        console.log(`✅ ${coveragePolygons.length} polígono(s) renderizado(s) com sucesso!`);
-        
-      } catch (err) {
-        console.error('❌ Erro ao renderizar polígono:', err);
+    // Converter GeoJSON para formato do Google Maps
+    try {
+      // GeoJSON pode ter múltiplos polígonos (MultiPolygon) ou um único Polygon
+      let polygonsToRender = [];
+      
+      if (coveragePolygonGeoJSON.type === 'Polygon') {
+        // Polígono simples
+        polygonsToRender = [coveragePolygonGeoJSON];
+      } else if (coveragePolygonGeoJSON.type === 'MultiPolygon') {
+        // Múltiplos polígonos - converter para array de polígonos
+        polygonsToRender = coveragePolygonGeoJSON.coordinates.map(coords => ({
+          type: 'Polygon',
+          coordinates: coords
+        }));
+      } else {
+        console.error('❌ Formato GeoJSON não suportado:', coveragePolygonGeoJSON.type);
         return;
       }
-
-      // Ajustar zoom para mostrar toda a área coberta
-      if (coveragePolygons.length > 0) {
-        try {
-          // Forçar redimensionamento do mapa
-          google.maps.event.trigger(map, 'resize');
-          
-          await new Promise(resolve => setTimeout(resolve, 300));
-          
-          if (map && bounds && !bounds.isEmpty()) {
-            // Ajustar zoom para mostrar TODA a área coberta por todas as CTOs
-            map.fitBounds(bounds, {
-              top: 50,
-              right: 50,
-              bottom: 50,
-              left: 50
-            });
-            console.log(`✅ Zoom ajustado para mostrar toda a área de cobertura`);
-          } else {
-            // Fallback: centralizar no Brasil se bounds estiver vazio
-            map.setCenter({ lat: -14.2350, lng: -51.9253 }); // Centro geográfico do Brasil
-            map.setZoom(5);
-            console.log('✅ Zoom ajustado para centro do Brasil (fallback)');
-          }
-        } catch (err) {
-          console.error('❌ Erro ao ajustar zoom:', err);
-          // Fallback: centralizar no Brasil
-          try {
-            map.setCenter({ lat: -14.2350, lng: -51.9253 });
-            map.setZoom(5);
-          } catch (fallbackErr) {
-            console.error('❌ Erro no fallback de zoom:', fallbackErr);
-          }
+      
+      console.log(`🎨 Renderizando ${polygonsToRender.length} polígono(s) de cobertura...`);
+      
+      // Renderizar cada polígono
+      for (const geoJsonPolygon of polygonsToRender) {
+        // Converter coordenadas GeoJSON para formato do Google Maps
+        const paths = geoJsonPolygon.coordinates[0].map(coord => ({
+          lat: coord[1], // GeoJSON usa [lng, lat], Google Maps usa {lat, lng}
+          lng: coord[0]
+        }));
+        
+        // Criar polígono no Google Maps
+        const polygon = new google.maps.Polygon({
+          paths: paths,
+          strokeColor: '#8B7AE8',
+          strokeOpacity: 0.8,
+          strokeWeight: 1.2,
+          fillColor: '#6B8DD6',
+          fillOpacity: coverageOpacity,
+          map: map,
+          zIndex: 1,
+          geodesic: true
+        });
+        
+        coveragePolygons.push(polygon);
+        
+        // Adicionar ao bounds para ajustar zoom
+        for (const path of paths) {
+          bounds.extend(path);
         }
-      } else {
-        console.warn('⚠️ Nenhum polígono foi renderizado!');
       }
+      
+      console.log(`✅ ${coveragePolygons.length} polígono(s) renderizado(s) com sucesso!`);
+      
+    } catch (err) {
+      console.error('❌ Erro ao renderizar polígono:', err);
+      return;
+    }
+
+    // Ajustar zoom para mostrar toda a área coberta
+    if (coveragePolygons.length > 0) {
+      try {
+        // Forçar redimensionamento do mapa
+        google.maps.event.trigger(map, 'resize');
+        
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        if (map && bounds && !bounds.isEmpty()) {
+          // Ajustar zoom para mostrar TODA a área coberta por todas as CTOs
+          map.fitBounds(bounds, {
+            top: 50,
+            right: 50,
+            bottom: 50,
+            left: 50
+          });
+          console.log(`✅ Zoom ajustado para mostrar toda a área de cobertura`);
+        } else {
+          // Fallback: centralizar no Brasil se bounds estiver vazio
+          map.setCenter({ lat: -14.2350, lng: -51.9253 }); // Centro geográfico do Brasil
+          map.setZoom(5);
+          console.log('✅ Zoom ajustado para centro do Brasil (fallback)');
+        }
+      } catch (err) {
+        console.error('❌ Erro ao ajustar zoom:', err);
+        // Fallback: centralizar no Brasil
+        try {
+          map.setCenter({ lat: -14.2350, lng: -51.9253 });
+          map.setZoom(5);
+        } catch (fallbackErr) {
+          console.error('❌ Erro no fallback de zoom:', fallbackErr);
+        }
+      }
+    } else {
+      console.warn('⚠️ Nenhum polígono foi renderizado!');
     }
   }
 
