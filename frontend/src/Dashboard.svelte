@@ -757,19 +757,21 @@
 
   .modal-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     padding: 1.5rem;
     border-bottom: 2px solid #7B68EE;
     background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
     color: white;
     border-radius: 12px 12px 0 0;
+    position: relative;
   }
 
   .modal-header h2 {
     margin: 0;
     font-size: 1.5rem;
     font-weight: 600;
+    text-align: center;
   }
 
   .modal-close {
@@ -786,6 +788,10 @@
     justify-content: center;
     border-radius: 50%;
     transition: background 0.3s;
+    position: absolute;
+    right: 1.5rem;
+    top: 50%;
+    transform: translateY(-50%);
   }
 
   .modal-close:hover {
@@ -811,7 +817,7 @@
   .modal-actions {
     display: flex;
     gap: 1rem;
-    justify-content: flex-end;
+    justify-content: center;
     margin-top: 2rem;
     padding-top: 1.5rem;
     border-top: 1px solid #ddd;
