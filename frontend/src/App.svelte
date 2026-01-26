@@ -230,7 +230,11 @@
       }
     } else {
       // Dashboard, Login ou Loading: usar imagem alares.png como favicon
-      document.title = 'Viabilidade Alares - Engenharia';
+      if (currentView === 'dashboard' || isLoading) {
+        document.title = 'Porta de Ferramentas - Engenharia';
+      } else {
+        document.title = 'Viabilidade Alares - Engenharia';
+      }
       // Adicionar pequeno delay para garantir que o DOM esteja pronto
       setTimeout(() => {
         createFaviconFromImage('/favicons/alares.png');
