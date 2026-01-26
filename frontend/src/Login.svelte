@@ -15,10 +15,34 @@
   };
   let showPassword = false;
   let loginError = '';
-  
+  let rememberMe = false;
 
   // Exportar função para o componente pai poder chamar
   export let onLoginSuccess = () => {};
+
+  // Carregar credenciais salvas ao montar o componente
+  onMount(() => {
+    console.log('✅ Login.svelte montado no DOM');
+    loadSavedCredentials();
+  });
+
+  // Função para carregar credenciais salvas
+  function loadSavedCredentials() {
+    if (typeof localStorage !== 'undefined') {
+      const savedRememberMe = localStorage.getItem('rememberMe');
+      if (savedRememberMe === 'true') {
+        rememberMe = true;
+        const savedUsuario = localStorage.getItem('savedUsuario');
+        const savedSenha = localStorage.getItem('savedSenha');
+        if (savedUsuario) {
+          loginForm.usuario = savedUsuario;
+        }
+        if (savedSenha) {
+          loginForm.senha = savedSenha;
+        }
+      }
+    }
+  }
 
   // Função de login
   async function handleLogin() {
@@ -79,6 +103,18 @@
           localStorage.setItem('userTipo', data.tipo);
         } else {
           localStorage.setItem('userTipo', 'user'); // Default
+        }
+
+        // Salvar credenciais se "Lembre de mim" estiver marcado
+        if (rememberMe) {
+          localStorage.setItem('rememberMe', 'true');
+          localStorage.setItem('savedUsuario', loginForm.usuario.trim());
+          localStorage.setItem('savedSenha', loginForm.senha.trim());
+        } else {
+          // Remover credenciais salvas se não quiser lembrar
+          localStorage.removeItem('rememberMe');
+          localStorage.removeItem('savedUsuario');
+          localStorage.removeItem('savedSenha');
         }
       }
 
@@ -189,6 +225,17 @@
           <span>{loginError}</span>
         </div>
       {/if}
+
+      <div class="remember-me-container">
+        <label class="remember-me-label">
+          <input 
+            type="checkbox" 
+            bind:checked={rememberMe}
+            class="remember-me-checkbox"
+          />
+          <span class="remember-me-text">Lembre de mim</span>
+        </label>
+      </div>
 
       <button type="submit" class="btn-login">
         Entrar
@@ -432,6 +479,50 @@
       0 4px 14px rgba(0, 0, 0, 0.15);
   }
 
+  .remember-me-container {
+    margin-top: -0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .remember-me-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .remember-me-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #7B68EE;
+    border-radius: 4px;
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+  }
+
+  .remember-me-checkbox:hover {
+    border-color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .remember-me-checkbox:checked {
+    background: #7B68EE;
+    border-color: #7B68EE;
+  }
+
+  .remember-me-text {
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+  }
+
+  .remember-me-label:hover .remember-me-text {
+    color: rgba(255, 255, 255, 0.95);
+  }
 
   /* Responsividade */
   @media (max-width: 768px) {
