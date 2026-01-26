@@ -227,11 +227,13 @@
       {/if}
 
       <div class="remember-me-container">
-        <label class="remember-me-label">
+        <label class="remember-me-label" for="remember-me-checkbox">
           <input 
             type="checkbox" 
+            id="remember-me-checkbox"
             bind:checked={rememberMe}
             class="remember-me-checkbox"
+            on:click|stopPropagation
           />
           <span class="remember-me-text">Lembre de mim</span>
         </label>
@@ -490,17 +492,28 @@
     gap: 0.75rem;
     cursor: pointer;
     user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
   }
 
   .remember-me-checkbox {
     width: 18px;
     height: 18px;
+    min-width: 18px;
+    min-height: 18px;
     cursor: pointer;
-    accent-color: #7B68EE;
-    border-radius: 4px;
+    margin: 0;
+    padding: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
     border: 2px solid rgba(255, 255, 255, 0.4);
+    border-radius: 4px;
     background: rgba(255, 255, 255, 0.1);
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
+    position: relative;
+    flex-shrink: 0;
   }
 
   .remember-me-checkbox:hover {
@@ -513,11 +526,33 @@
     border-color: #7B68EE;
   }
 
+  .remember-me-checkbox:checked::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+    width: 4px;
+    height: 8px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+  }
+
+  .remember-me-checkbox:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
+  }
+
+  .remember-me-checkbox:active {
+    transform: scale(0.95);
+  }
+
   .remember-me-text {
     color: white;
     font-size: 0.875rem;
     font-weight: 500;
     letter-spacing: 0.2px;
+    pointer-events: none;
   }
 
   .remember-me-label:hover .remember-me-text {
