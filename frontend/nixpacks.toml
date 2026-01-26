@@ -12,9 +12,9 @@ cmds = [
   "npm config set fetch-retry-maxtimeout 120000",
   "npm config set progress false",
   "npm config set loglevel error",
-  # Instalar dependências - usar npm install se package-lock.json não estiver sincronizado
-  # Isso garante que novas dependências sejam instaladas mesmo se o lockfile estiver desatualizado
-  "npm install --no-audit --legacy-peer-deps || npm ci --no-audit --legacy-peer-deps"
+  # Instalar dependências - usar npm ci primeiro (mais rápido e determinístico)
+  # Se falhar, tenta npm install como fallback
+  "npm ci --no-audit --legacy-peer-deps || npm install --no-audit --legacy-peer-deps"
 ]
 
 [phases.build]
