@@ -222,12 +222,8 @@
       const tool = getToolById(currentTool);
       if (tool) {
         document.title = tool.title;
-        // Priorizar imagem PNG se disponível, senão usar emoji
-        if (tool.faviconImage) {
-          createFaviconFromImage(tool.faviconImage);
-        } else if (tool.icon) {
-          createFaviconFromEmoji(tool.icon);
-        }
+        // Sempre usar imagem alares.png como favicon para todas as ferramentas
+        createFaviconFromImage('/favicons/alares.png');
       } else {
         document.title = 'Viabilidade Alares - Engenharia';
         // Restaurar favicon padrão (imagem alares.png)
