@@ -12,6 +12,9 @@
   // Lista de ferramentas disponíveis (vem do registry)
   $: tools = getAvailableTools();
 
+  // Estado do modal de confirmação de logout
+  let showLogoutModal = false;
+
   function handleToolClick(tool) {
     if (tool.available) {
       // Abrir ferramenta em nova aba com URL específica
@@ -22,9 +25,16 @@
   }
 
   function handleLogoutClick() {
-    if (confirm('Deseja realmente sair?')) {
-      onLogout();
-    }
+    showLogoutModal = true;
+  }
+
+  function closeLogoutModal() {
+    showLogoutModal = false;
+  }
+
+  function confirmLogout() {
+    showLogoutModal = false;
+    onLogout();
   }
 </script>
 
@@ -86,6 +96,46 @@
     </div>
   </main>
 </div>
+
+<!-- Modal de Confirmação de Logout -->
+{#if showLogoutModal}
+  <div 
+    class="modal-overlay confirm-overlay" 
+    on:click={closeLogoutModal}
+    on:keydown={(e) => e.key === 'Escape' && closeLogoutModal()}
+    role="button"
+    tabindex="-1"
+    aria-label="Fechar modal"
+  >
+    <div 
+      class="modal-content confirm-modal" 
+      on:click|stopPropagation
+      on:keydown={(e) => e.stopPropagation()}
+      role="dialog"
+      tabindex="0"
+      aria-modal="true"
+      aria-labelledby="confirm-logout-title"
+    >
+      <div class="modal-header">
+        <h2 id="confirm-logout-title">Confirmar Saída</h2>
+        <button class="modal-close" on:click={closeLogoutModal} aria-label="Fechar modal">×</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="confirm-message">
+          <p>Deseja realmente sair?</p>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn-cancel" on:click={closeLogoutModal}>Cancelar</button>
+          <button type="button" class="btn-logout-confirm" on:click={confirmLogout}>
+            Sair
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   :global(body) {
@@ -657,6 +707,154 @@
       font-size: 0.875rem;
       padding: 0.375rem 0.75rem;
     }
+  }
+
+  /* Modal de Confirmação de Logout */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10003;
+    padding: 20px;
+  }
+
+  .confirm-overlay {
+    z-index: 10003 !important;
+    background: rgba(0, 0, 0, 0.7);
+  }
+
+  .modal-content {
+    background: white;
+    border-radius: 12px;
+    max-width: 600px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    animation: modalFadeIn 0.3s ease-out;
+  }
+
+  @keyframes modalFadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.9) translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  .confirm-modal {
+    max-width: 450px;
+  }
+
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 2px solid #7B68EE;
+    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
+    color: white;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .modal-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 2rem;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.3s;
+  }
+
+  .modal-close:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .modal-body {
+    padding: 1.5rem;
+  }
+
+  .confirm-message {
+    text-align: center;
+    padding: 1rem 0;
+  }
+
+  .confirm-message p {
+    margin: 0.75rem 0;
+    font-size: 1rem;
+    color: #333;
+    line-height: 1.6;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #ddd;
+  }
+
+  .btn-cancel {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-family: 'Inter', sans-serif;
+    background: #e0e0e0;
+    color: #333;
+  }
+
+  .btn-cancel:hover {
+    background: #d0d0d0;
+  }
+
+  .btn-logout-confirm {
+    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.75rem 1.5rem;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 6px rgba(123, 104, 238, 0.3);
+  }
+
+  .btn-logout-confirm:hover:not(:disabled) {
+    background: linear-gradient(135deg, #8B78FE 0%, #7495FD 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(123, 104, 238, 0.4);
+  }
+
+  .btn-logout-confirm:active:not(:disabled) {
+    transform: translateY(0);
   }
 </style>
 
