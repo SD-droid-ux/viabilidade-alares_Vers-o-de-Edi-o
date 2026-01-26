@@ -142,17 +142,16 @@
       };
       
       img.onerror = function(error) {
-        // Se a imagem não carregar, usar fallback do emoji
+        // Se a imagem não carregar, tentar novamente com a imagem alares.png
         console.warn('Erro ao carregar imagem do favicon:', imagePath, error);
-        // Tentar usar o emoji como fallback se disponível
-        const tool = getToolById(currentTool);
-        if (tool && tool.icon) {
-          console.log('Usando emoji como fallback:', tool.icon);
-          createFaviconFromEmoji(tool.icon);
+        // Se não for a imagem alares.png, tentar carregá-la
+        if (imagePath !== '/favicons/alares.png') {
+          console.log('Tentando carregar imagem alares.png como fallback');
+          createFaviconFromImage('/favicons/alares.png');
         } else {
-          // Se não houver tool (Dashboard), usar emoji de globo como fallback
-          console.log('Usando emoji de globo como fallback para Dashboard');
-          createFaviconFromEmoji('🌐');
+          // Se já estiver tentando carregar alares.png e falhar, não fazer nada
+          // (manter o favicon padrão do HTML ou o que já estava)
+          console.warn('Não foi possível carregar a imagem alares.png');
         }
       };
       
