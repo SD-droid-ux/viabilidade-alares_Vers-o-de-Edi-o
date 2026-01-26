@@ -506,6 +506,9 @@
       // Mostrar tela de loading com mensagens
       isLoading = true;
       
+      // Aguardar tick para garantir que o Svelte atualize o DOM
+      await tick();
+      
       // Animar "Saindo do Portal" com três pontinhos
       dotsInterval = animateDots('Saindo do Portal', (message) => {
         loadingMessage = message;
@@ -554,15 +557,21 @@
         localStorage.removeItem('isLoggedIn');
         localStorage.removeItem('usuario');
         localStorage.removeItem('userTipo');
+        // Limpar também credenciais salvas se existirem
+        localStorage.removeItem('rememberMe');
+        localStorage.removeItem('savedUsuario');
+        localStorage.removeItem('savedSenha');
       }
+      
       // Parar heartbeat
       stopHeartbeat();
       
-      // Resetar estado
+      // Resetar estado - IMPORTANTE: resetar tudo antes de mudar a view
       isLoggedIn = false;
       currentUser = '';
-      currentView = 'dashboard';
       currentTool = null;
+      toolSettingsHandler = null;
+      toolSettingsHoverHandler = null;
       userTipo = 'user';
       
       // Limpar hash da URL se existir
@@ -570,12 +579,29 @@
         window.location.hash = '';
       }
       
-      // Mostrar tela de login após logout
+      // Aguardar um pouco antes de mostrar login
       await new Promise(resolve => setTimeout(resolve, 500));
-      isLoading = false;
+      
+      // Aguardar tick para garantir que o Svelte atualize o DOM
+      await tick();
+      
+      // Definir view como login e ocultar loading
       currentView = 'login';
+      isLoading = false;
+      
+      // Aguardar mais um tick para garantir renderização
+      await tick();
+      
+      console.log('✅ Logout concluído:', {
+        isLoggedIn,
+        isLoading,
+        currentView
+      });
     } catch (err) {
-      console.error('Erro ao fazer logout:', err);
+      console.error('❌ Erro ao fazer logout:', err);
+      // Em caso de erro, garantir que volte para login
+      isLoggedIn = false;
+      currentView = 'login';
       isLoading = false;
       // Limpar intervalo em caso de erro
       if (dotsInterval) {
