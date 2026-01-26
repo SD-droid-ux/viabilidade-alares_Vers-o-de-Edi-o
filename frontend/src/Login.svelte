@@ -16,6 +16,7 @@
   let showPassword = false;
   let loginError = '';
   let rememberMe = false;
+  let isLoggingIn = false;
 
   // Exportar função para o componente pai poder chamar
   export let onLoginSuccess = () => {};
@@ -59,6 +60,9 @@
       return;
     }
     
+    // Ativar estado de loading
+    isLoggingIn = true;
+    
     // Validar credenciais com o backend
     try {
       const apiUrl = getApiUrl('/api/auth/login');
@@ -77,6 +81,7 @@
       if (!response.ok) {
         const text = await response.text();
         loginError = `Erro ao conectar: ${response.status} ${response.statusText}`;
+        isLoggingIn = false;
         return;
       }
 
@@ -84,6 +89,7 @@
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         loginError = 'O servidor retornou uma resposta inválida. Verifique se o backend está configurado corretamente.';
+        isLoggingIn = false;
         return;
       }
 
@@ -91,6 +97,7 @@
 
       if (!data.success) {
         loginError = data.error || 'Usuário ou senha incorretos';
+        isLoggingIn = false;
         return;
       }
       
@@ -118,17 +125,22 @@
         }
       }
 
-      // Chamar callback de sucesso imediatamente após salvar dados
-      // Não usar await para não bloquear - deixar o callback executar em paralelo
+      // Chamar callback de sucesso - o App.svelte vai gerenciar a tela de loading
       if (typeof onLoginSuccess === 'function') {
+        // Não resetar isLoggingIn aqui - deixar o App.svelte gerenciar
         onLoginSuccess().catch(err => {
           console.error('Erro ao processar login:', err);
+          isLoggingIn = false;
         });
+      } else {
+        isLoggingIn = false;
       }
     } catch (err) {
       console.error('❌ [Login] Erro ao validar login:', err);
       console.error('❌ [Login] Tipo do erro:', err.name);
       console.error('❌ [Login] Mensagem:', err.message);
+      
+      isLoggingIn = false;
       
       if (err.name === 'TypeError' && err.message.includes('Failed to fetch')) {
         loginError = 'Não foi possível conectar ao servidor. Verifique se o backend está online.';
@@ -239,8 +251,12 @@
         </label>
       </div>
 
-      <button type="submit" class="btn-login">
-        Entrar
+      <button type="submit" class="btn-login" disabled={isLoggingIn}>
+        {#if isLoggingIn}
+          <div class="btn-spinner"></div>
+        {:else}
+          Entrar
+        {/if}
       </button>
     </form>
 
@@ -479,6 +495,32 @@
     box-shadow: 
       0 0 0 3px rgba(255, 255, 255, 0.3),
       0 4px 14px rgba(0, 0, 0, 0.15);
+  }
+
+  .btn-login:disabled {
+    cursor: not-allowed;
+    opacity: 0.8;
+  }
+
+  .btn-login:disabled:hover {
+    transform: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
+  }
+
+  .btn-spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(123, 104, 238, 0.3);
+    border-top-color: #7B68EE;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .remember-me-container {
