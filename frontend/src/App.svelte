@@ -426,6 +426,17 @@
   // Função de logout
   async function handleLogout() {
     try {
+      // Mostrar tela de loading com mensagens
+      isLoading = true;
+      loadingMessage = 'Saindo do Portal...';
+      
+      // Aguardar um pouco antes de mostrar a segunda mensagem
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      loadingMessage = 'Volte Sempre';
+      
+      // Aguardar mais um pouco antes de fazer o logout
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
       // Notificar backend sobre logout
       if (currentUser) {
         try {
@@ -461,8 +472,14 @@
       if (typeof window !== 'undefined') {
         window.location.hash = '';
       }
+      
+      // Mostrar tela de login após logout
+      await new Promise(resolve => setTimeout(resolve, 500));
+      isLoading = false;
+      currentView = 'login';
     } catch (err) {
       console.error('Erro ao fazer logout:', err);
+      isLoading = false;
     }
   }
 
