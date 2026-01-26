@@ -503,10 +503,14 @@
     let dotsInterval = null;
     
     try {
-      // Mostrar tela de loading com mensagens
+      // IMPORTANTE: Mostrar tela de loading IMEDIATAMENTE
+      // Resetar currentView e definir isLoading antes de qualquer coisa
+      currentView = null;
       isLoading = true;
+      loadingMessage = 'Saindo do Portal.';
       
-      // Aguardar tick para garantir que o Svelte atualize o DOM
+      // Aguardar tick para garantir que o Svelte atualize o DOM e mostre a tela de loading
+      // Isso garante que o modal desapareça e a tela de loading apareça
       await tick();
       
       // Animar "Saindo do Portal" com três pontinhos
