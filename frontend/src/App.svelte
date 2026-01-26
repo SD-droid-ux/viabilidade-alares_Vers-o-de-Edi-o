@@ -87,6 +87,61 @@
   let broadcastChannel = null; // Canal de comunicação entre abas
   let isToolInNewTab = false; // Flag para indicar se a ferramenta está em nova aba
 
+  // Função para criar favicon a partir de uma imagem PNG
+  function createFaviconFromImage(imagePath) {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+    
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    
+    img.onload = function() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) return;
+      
+      // Criar retângulo arredondado
+      const radius = 6;
+      const x = 0;
+      const y = 0;
+      const width = 32;
+      const height = 32;
+      
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+      ctx.clip();
+      
+      // Fundo branco
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 32, 32);
+      
+      // Desenhar a imagem redimensionada e centralizada
+      ctx.drawImage(img, 4, 4, 24, 24);
+      
+      // Converter para data URL e atualizar favicon
+      const dataUrl = canvas.toDataURL('image/png');
+      updateFavicon(dataUrl);
+    };
+    
+    img.onerror = function() {
+      // Se a imagem não carregar, não fazer nada (ou usar fallback)
+      console.warn('Erro ao carregar imagem do favicon:', imagePath);
+    };
+    
+    img.src = imagePath;
+  }
+
   // Função para criar favicon a partir de um emoji
   function createFaviconFromEmoji(emoji) {
     if (typeof document === 'undefined' || typeof window === 'undefined') return;
@@ -153,8 +208,10 @@
       const tool = getToolById(currentTool);
       if (tool) {
         document.title = tool.title;
-        // Criar favicon a partir do emoji da ferramenta
-        if (tool.icon) {
+        // Priorizar imagem PNG se disponível, senão usar emoji
+        if (tool.faviconImage) {
+          createFaviconFromImage(tool.faviconImage);
+        } else if (tool.icon) {
           createFaviconFromEmoji(tool.icon);
         }
       } else {
