@@ -284,11 +284,7 @@
     let dotsInterval = null;
     
     try {
-      // Mostrar tela de loading
-      isLoading = true;
-      isLoggedIn = true;
-      
-      // Carregar nome do usuário e tipo do localStorage
+      // Carregar nome do usuário e tipo do localStorage primeiro
       try {
         if (typeof localStorage !== 'undefined') {
           currentUser = localStorage.getItem('usuario') || '';
@@ -297,6 +293,13 @@
       } catch (err) {
         console.error('Erro ao carregar usuário:', err);
       }
+      
+      // Mostrar tela de loading
+      isLoading = true;
+      isLoggedIn = true;
+      
+      // Aguardar um tick para garantir que o Svelte atualize o DOM
+      await tick();
       
       // Animar "Carregando Dashboard" com três pontinhos
       dotsInterval = animateDots('Carregando Dashboard', (message) => {
@@ -338,6 +341,8 @@
             currentView = 'tool';
             isToolInNewTab = true; // Marcar que está em nova aba (tem hash na URL)
             startHeartbeat();
+            // Aguardar tick antes de ocultar loading
+            await tick();
             isLoading = false;
             return;
           }
@@ -345,6 +350,7 @@
       }
       
       // Se não há hash ou ferramenta inválida, mostrar Dashboard
+      // Definir currentView ANTES de ocultar o loading
       currentView = 'dashboard';
       currentTool = null;
       isToolInNewTab = false; // Dashboard não está em nova aba
@@ -355,10 +361,32 @@
       // Aguardar um pouco mais para garantir que tudo está carregado
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      // Aguardar tick para garantir que o Svelte atualize o DOM
+      await tick();
+      
+      // Garantir que currentView está definido
+      if (!currentView || currentView === null) {
+        currentView = 'dashboard';
+      }
+      
       // Ocultar loading e mostrar Dashboard
       isLoading = false;
+      
+      // Aguardar mais um tick após ocultar loading para garantir renderização
+      await tick();
+      
+      // Log para debug
+      console.log('✅ Login bem-sucedido:', {
+        isLoggedIn,
+        isLoading,
+        currentView,
+        currentUser
+      });
     } catch (err) {
-      console.error('Erro ao processar login:', err);
+      console.error('❌ Erro ao processar login:', err);
+      // Em caso de erro, garantir que o Dashboard seja exibido
+      isLoggedIn = true;
+      currentView = 'dashboard';
       isLoading = false;
       if (dotsInterval) {
         clearInterval(dotsInterval);
@@ -686,14 +714,14 @@
 {:else if isLoading}
   <!-- Tela de Loading -->
   <Loading currentMessage={loadingMessage} />
-{:else if currentView === 'dashboard'}
+{:else if isLoggedIn && currentView === 'dashboard'}
   <!-- Dashboard -->
   <Dashboard 
     currentUser={currentUser}
     onToolSelect={handleToolSelect}
     onLogout={handleLogout}
   />
-{:else}
+{:else if isLoggedIn && currentView === 'tool'}
   <!-- Conteúdo Principal (Ferramenta) - Renderização Dinâmica -->
   {#if currentTool}
     {@const tool = getToolById(currentTool)}
