@@ -281,42 +281,89 @@
 
   // Função chamada quando o login é bem-sucedido
   async function handleLoginSuccess() {
-    // Carregar nome do usuário e tipo do localStorage
+    let dotsInterval = null;
+    
     try {
-      if (typeof localStorage !== 'undefined') {
-        currentUser = localStorage.getItem('usuario') || '';
-        userTipo = localStorage.getItem('userTipo') || 'user'; // Default para 'user'
+      // Mostrar tela de loading
+      isLoading = true;
+      isLoggedIn = true;
+      
+      // Carregar nome do usuário e tipo do localStorage
+      try {
+        if (typeof localStorage !== 'undefined') {
+          currentUser = localStorage.getItem('usuario') || '';
+          userTipo = localStorage.getItem('userTipo') || 'user'; // Default para 'user'
+        }
+      } catch (err) {
+        console.error('Erro ao carregar usuário:', err);
       }
-    } catch (err) {
-      console.error('Erro ao carregar usuário:', err);
-    }
-    
-    isLoggedIn = true;
-    
-    // Verificar se há hash na URL para carregar ferramenta específica
-    if (typeof window !== 'undefined') {
-      const hash = window.location.hash;
-      if (hash && hash.startsWith('#/')) {
-        const toolId = hash.substring(2);
-        const tool = getToolById(toolId);
-        if (tool && tool.available) {
-          // Carregar ferramenta específica
-          currentTool = toolId;
-          currentView = 'tool';
-          isToolInNewTab = true; // Marcar que está em nova aba (tem hash na URL)
-          startHeartbeat();
-          return;
+      
+      // Animar "Carregando Dashboard" com três pontinhos
+      dotsInterval = animateDots('Carregando Dashboard', (message) => {
+        loadingMessage = message;
+      });
+      
+      // Aguardar um pouco para mostrar a animação
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Limpar intervalo anterior
+      if (dotsInterval) {
+        clearInterval(dotsInterval);
+        dotsInterval = null;
+      }
+      
+      // Animar "Preparando ambiente" com três pontinhos
+      dotsInterval = animateDots('Preparando ambiente', (message) => {
+        loadingMessage = message;
+      });
+      
+      // Aguardar mais um pouco
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Limpar intervalo
+      if (dotsInterval) {
+        clearInterval(dotsInterval);
+        dotsInterval = null;
+      }
+      
+      // Verificar se há hash na URL para carregar ferramenta específica
+      if (typeof window !== 'undefined') {
+        const hash = window.location.hash;
+        if (hash && hash.startsWith('#/')) {
+          const toolId = hash.substring(2);
+          const tool = getToolById(toolId);
+          if (tool && tool.available) {
+            // Carregar ferramenta específica
+            currentTool = toolId;
+            currentView = 'tool';
+            isToolInNewTab = true; // Marcar que está em nova aba (tem hash na URL)
+            startHeartbeat();
+            isLoading = false;
+            return;
+          }
         }
       }
+      
+      // Se não há hash ou ferramenta inválida, mostrar Dashboard
+      currentView = 'dashboard';
+      currentTool = null;
+      isToolInNewTab = false; // Dashboard não está em nova aba
+      
+      // Iniciar heartbeat em background (não bloquear)
+      startHeartbeat();
+      
+      // Aguardar um pouco mais para garantir que tudo está carregado
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Ocultar loading e mostrar Dashboard
+      isLoading = false;
+    } catch (err) {
+      console.error('Erro ao processar login:', err);
+      isLoading = false;
+      if (dotsInterval) {
+        clearInterval(dotsInterval);
+      }
     }
-    
-    // Se não há hash ou ferramenta inválida, mostrar Dashboard
-    currentView = 'dashboard';
-    currentTool = null;
-    isToolInNewTab = false; // Dashboard não está em nova aba
-    
-    // Iniciar heartbeat em background (não bloquear)
-    startHeartbeat();
   }
 
   // Função para selecionar uma ferramenta do Dashboard
@@ -421,18 +468,6 @@
     if (toolSettingsHoverHandler && typeof toolSettingsHoverHandler === 'function') {
       toolSettingsHoverHandler();
     }
-  }
-
-  // Função auxiliar para animar três pontinhos
-  function animateDots(baseMessage, callback) {
-    let dotCount = 0;
-    const interval = setInterval(() => {
-      dotCount = (dotCount % 3) + 1;
-      const dots = '.'.repeat(dotCount);
-      callback(baseMessage + dots);
-    }, 500); // Alterna a cada 500ms
-    
-    return interval;
   }
 
   // Função de logout
