@@ -32,7 +32,7 @@
   <header class="dashboard-header">
     <div class="header-content">
       <div class="header-left">
-        <h1 class="dashboard-title">Dashboard</h1>
+        <h1 class="dashboard-title">Porta de Ferramentas - Engenharia</h1>
         <p class="dashboard-subtitle">Setor de Planejamento e Projetos - Engenharia Alares</p>
       </div>
       <div class="header-right">
@@ -152,10 +152,11 @@
 
   .dashboard-title {
     color: white;
-    font-size: 1.75rem;
-    font-weight: 700;
+    font-size: 1.5rem;
+    font-weight: 600;
     margin: 0;
     letter-spacing: -0.5px;
+    font-family: 'Inter', sans-serif;
   }
 
   .dashboard-subtitle {
@@ -163,6 +164,7 @@
     font-size: 0.875rem;
     margin: 0;
     font-weight: 400;
+    font-family: 'Inter', sans-serif;
   }
 
   .header-right {
