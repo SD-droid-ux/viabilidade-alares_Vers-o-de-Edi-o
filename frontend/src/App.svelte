@@ -423,19 +423,53 @@
     }
   }
 
+  // Função auxiliar para animar três pontinhos
+  function animateDots(baseMessage, callback) {
+    let dotCount = 0;
+    const interval = setInterval(() => {
+      dotCount = (dotCount % 3) + 1;
+      const dots = '.'.repeat(dotCount);
+      callback(baseMessage + dots);
+    }, 500); // Alterna a cada 500ms
+    
+    return interval;
+  }
+
   // Função de logout
   async function handleLogout() {
+    let dotsInterval = null;
+    
     try {
       // Mostrar tela de loading com mensagens
       isLoading = true;
-      loadingMessage = 'Saindo do Portal...';
+      
+      // Animar "Saindo do Portal" com três pontinhos
+      dotsInterval = animateDots('Saindo do Portal', (message) => {
+        loadingMessage = message;
+      });
       
       // Aguardar um pouco antes de mostrar a segunda mensagem
       await new Promise(resolve => setTimeout(resolve, 1500));
-      loadingMessage = 'Volte Sempre';
+      
+      // Limpar intervalo anterior
+      if (dotsInterval) {
+        clearInterval(dotsInterval);
+        dotsInterval = null;
+      }
+      
+      // Animar "Volte Sempre" com três pontinhos
+      dotsInterval = animateDots('Volte Sempre', (message) => {
+        loadingMessage = message;
+      });
       
       // Aguardar mais um pouco antes de fazer o logout
       await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Limpar intervalo
+      if (dotsInterval) {
+        clearInterval(dotsInterval);
+        dotsInterval = null;
+      }
       
       // Notificar backend sobre logout
       if (currentUser) {
@@ -480,6 +514,10 @@
     } catch (err) {
       console.error('Erro ao fazer logout:', err);
       isLoading = false;
+      // Limpar intervalo em caso de erro
+      if (dotsInterval) {
+        clearInterval(dotsInterval);
+      }
     }
   }
 
