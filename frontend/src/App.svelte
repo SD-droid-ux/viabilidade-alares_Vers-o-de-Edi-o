@@ -90,9 +90,13 @@
   // Função para criar favicon a partir de uma imagem PNG
   function createFaviconFromImage(imagePath) {
     try {
-      if (typeof document === 'undefined' || typeof window === 'undefined') return;
+      if (typeof document === 'undefined' || typeof window === 'undefined') {
+        console.warn('Document ou window não disponível');
+        return;
+      }
       
       console.log('Tentando carregar favicon de:', imagePath);
+      console.log('URL completa seria:', window.location.origin + imagePath);
       
       const img = new Image();
       // Remover crossOrigin para imagens locais
@@ -155,6 +159,10 @@
         if (tool && tool.icon) {
           console.log('Usando emoji como fallback:', tool.icon);
           createFaviconFromEmoji(tool.icon);
+        } else {
+          // Se não houver tool (Dashboard), usar emoji de globo como fallback
+          console.log('Usando emoji de globo como fallback para Dashboard');
+          createFaviconFromEmoji('🌐');
         }
       };
       
@@ -214,14 +222,18 @@
   function updateFavicon(href) {
     if (typeof document === 'undefined') return;
     
-    // Remover favicon existente
-    let link = document.querySelector("link[rel*='icon']");
-    if (!link) {
-      link = document.createElement('link');
-      link.rel = 'icon';
-      document.head.appendChild(link);
-    }
+    // Remover todos os favicons existentes
+    const existingLinks = document.querySelectorAll("link[rel*='icon']");
+    existingLinks.forEach(link => link.remove());
+    
+    // Criar novo link de favicon
+    const link = document.createElement('link');
+    link.rel = 'icon';
+    link.type = 'image/png';
     link.href = href;
+    document.head.appendChild(link);
+    
+    console.log('Favicon atualizado para:', href);
   }
 
   // Atualizar título e favicon da aba do navegador dinamicamente
@@ -244,7 +256,10 @@
     } else {
       // Dashboard, Login ou Loading: usar imagem alares.png como favicon
       document.title = 'Viabilidade Alares - Engenharia';
-      createFaviconFromImage('/favicons/alares.png');
+      // Adicionar pequeno delay para garantir que o DOM esteja pronto
+      setTimeout(() => {
+        createFaviconFromImage('/favicons/alares.png');
+      }, 100);
     }
   }
 
