@@ -238,13 +238,13 @@
         }
       } else {
         document.title = 'Viabilidade Alares - Engenharia';
-        // Restaurar favicon padrão (globo)
-        createFaviconFromEmoji('🌐');
+        // Restaurar favicon padrão (imagem alares.png)
+        createFaviconFromImage('/favicons/alares.png');
       }
     } else {
-      // Dashboard, Login ou Loading: manter título e favicon padrão (globo)
+      // Dashboard, Login ou Loading: usar imagem alares.png como favicon
       document.title = 'Viabilidade Alares - Engenharia';
-      createFaviconFromEmoji('🌐');
+      createFaviconFromImage('/favicons/alares.png');
     }
   }
 
