@@ -92,17 +92,24 @@
     try {
       if (typeof document === 'undefined' || typeof window === 'undefined') return;
       
+      console.log('Tentando carregar favicon de:', imagePath);
+      
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      // Remover crossOrigin para imagens locais
+      // img.crossOrigin = 'anonymous';
       
       img.onload = function() {
         try {
+          console.log('Imagem do favicon carregada com sucesso');
           const canvas = document.createElement('canvas');
           canvas.width = 32;
           canvas.height = 32;
           const ctx = canvas.getContext('2d');
           
-          if (!ctx) return;
+          if (!ctx) {
+            console.warn('Não foi possível obter contexto 2D do canvas');
+            return;
+          }
           
           // Criar retângulo arredondado
           const radius = 6;
@@ -134,14 +141,21 @@
           // Converter para data URL e atualizar favicon
           const dataUrl = canvas.toDataURL('image/png');
           updateFavicon(dataUrl);
+          console.log('Favicon atualizado com sucesso');
         } catch (error) {
           console.warn('Erro ao processar imagem do favicon:', error);
         }
       };
       
-      img.onerror = function() {
-        // Se a imagem não carregar, não fazer nada (ou usar fallback)
-        console.warn('Erro ao carregar imagem do favicon:', imagePath);
+      img.onerror = function(error) {
+        // Se a imagem não carregar, usar fallback do emoji
+        console.warn('Erro ao carregar imagem do favicon:', imagePath, error);
+        // Tentar usar o emoji como fallback se disponível
+        const tool = getToolById(currentTool);
+        if (tool && tool.icon) {
+          console.log('Usando emoji como fallback:', tool.icon);
+          createFaviconFromEmoji(tool.icon);
+        }
       };
       
       img.src = imagePath;
