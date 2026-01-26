@@ -18,7 +18,8 @@ import MapaConsulta from './MapaConsulta.svelte';
  * - id: identificador único
  * - title: nome da ferramenta
  * - description: descrição curta
- * - icon: emoji ou ícone
+ * - icon: emoji ou ícone (usado como fallback se faviconImage não estiver definido)
+ * - faviconImage: (opcional) caminho para imagem PNG que será usada como favicon (ex: '/favicons/ferramenta.png')
  * - color: cor principal (hex)
  * - component: componente Svelte
  * - available: se está disponível
@@ -29,6 +30,7 @@ export const toolsRegistry = [
     title: 'Viabilidade Alares - Engenharia',
     description: 'Análise de viabilidade técnica para identificação de CTOs próximas a endereços de clientes',
     icon: '🔍',
+    faviconImage: '/favicons/alares.png',
     color: '#7B68EE',
     component: ViabilidadeAlares,
     available: true
