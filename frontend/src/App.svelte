@@ -284,7 +284,11 @@
     let dotsInterval = null;
     
     try {
-      // Carregar nome do usuário e tipo do localStorage primeiro
+      // IMPORTANTE: Definir isLoading PRIMEIRO para mostrar a tela de loading imediatamente
+      isLoading = true;
+      loadingMessage = 'Carregando Dashboard.';
+      
+      // Carregar nome do usuário e tipo do localStorage
       try {
         if (typeof localStorage !== 'undefined') {
           currentUser = localStorage.getItem('usuario') || '';
@@ -294,11 +298,10 @@
         console.error('Erro ao carregar usuário:', err);
       }
       
-      // Mostrar tela de loading
-      isLoading = true;
+      // Definir isLoggedIn após carregar dados
       isLoggedIn = true;
       
-      // Aguardar um tick para garantir que o Svelte atualize o DOM
+      // Aguardar tick para garantir que o Svelte atualize o DOM e mostre a tela de loading
       await tick();
       
       // Animar "Carregando Dashboard" com três pontinhos
@@ -504,10 +507,12 @@
     
     try {
       // IMPORTANTE: Mostrar tela de loading IMEDIATAMENTE
-      // Resetar currentView e definir isLoading antes de qualquer coisa
-      currentView = null;
+      // Definir isLoading PRIMEIRO, antes de qualquer outra coisa
       isLoading = true;
       loadingMessage = 'Saindo do Portal.';
+      
+      // Resetar currentView para garantir que o modal desapareça
+      currentView = null;
       
       // Aguardar tick para garantir que o Svelte atualize o DOM e mostre a tela de loading
       // Isso garante que o modal desapareça e a tela de loading apareça
@@ -738,19 +743,20 @@
 
 </script>
 
-<!-- Tela de Login -->
-{#if !isLoggedIn && !isLoading}
-  <Login onLoginSuccess={handleLoginSuccess} />
-{:else if isLoading}
-  <!-- Tela de Loading -->
+<!-- Tela de Loading (prioridade máxima - sempre aparece quando isLoading é true) -->
+{#if isLoading}
   <Loading currentMessage={loadingMessage} />
+<!-- Tela de Login -->
+{:else if !isLoggedIn}
+  <Login onLoginSuccess={handleLoginSuccess} />
+<!-- Dashboard -->
 {:else if isLoggedIn && currentView === 'dashboard'}
-  <!-- Dashboard -->
   <Dashboard 
     currentUser={currentUser}
     onToolSelect={handleToolSelect}
     onLogout={handleLogout}
   />
+<!-- Ferramenta -->
 {:else if isLoggedIn && currentView === 'tool'}
   <!-- Conteúdo Principal (Ferramenta) - Renderização Dinâmica -->
   {#if currentTool}
