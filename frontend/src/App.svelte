@@ -324,8 +324,8 @@
         loadingMessage = message;
       });
       
-      // Aguardar um pouco para mostrar a animação
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Aguardar mais tempo para o usuário conseguir ler a mensagem
+      await new Promise(resolve => setTimeout(resolve, 2500));
       
       // Limpar intervalo anterior
       if (dotsInterval) {
@@ -338,8 +338,8 @@
         loadingMessage = message;
       });
       
-      // Aguardar mais um pouco
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Aguardar mais tempo para o usuário conseguir ler a mensagem
+      await new Promise(resolve => setTimeout(resolve, 2500));
       
       // Limpar intervalo
       if (dotsInterval) {
@@ -375,8 +375,8 @@
       // Iniciar heartbeat em background (não bloquear)
       startHeartbeat();
       
-      // Aguardar um pouco mais para garantir que tudo está carregado
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Aguardar um pouco mais para garantir que tudo está carregado (aumentado para dar mais tempo)
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       // AGORA definir currentView como 'dashboard' ANTES de ocultar o loading
       currentView = 'dashboard';
