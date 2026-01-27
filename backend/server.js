@@ -100,12 +100,42 @@ async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
   const nomeLimpo = nomeProjetista.trim();
   
   try {
+    // Usar timezone do Brasil (America/Sao_Paulo) para garantir hora correta
     const dataAtual = new Date();
-    const data = dataAtual.toISOString().split('T')[0]; // YYYY-MM-DD
-    const hora = dataAtual.toTimeString().split(' ')[0]; // HH:MM:SS
+    
+    // Obter componentes da data no timezone do Brasil
+    const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const timeFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    
+    // Formatar data: YYYY-MM-DD
+    const dataParts = dateFormatter.formatToParts(dataAtual);
+    const ano = dataParts.find(p => p.type === 'year').value;
+    const mes = dataParts.find(p => p.type === 'month').value;
+    const dia = dataParts.find(p => p.type === 'day').value;
+    const data = `${ano}-${mes}-${dia}`;
+    
+    // Formatar hora: HH:MM:SS
+    const timeParts = timeFormatter.formatToParts(dataAtual);
+    const horas = timeParts.find(p => p.type === 'hour').value;
+    const minutos = timeParts.find(p => p.type === 'minute').value;
+    const segundos = timeParts.find(p => p.type === 'second').value;
+    const hora = `${horas}:${minutos}:${segundos}`;
     
     console.log(`🔍 [Supabase] inserirEntradaSaida chamada: ${nomeLimpo}, tipo: ${tipo}`);
     console.log(`🔍 [Supabase] Data: ${data}, Hora: ${hora}`);
+    console.log(`🔍 [Supabase] Data/Hora UTC original: ${dataAtual.toISOString()}`);
+    console.log(`🔍 [Supabase] Data/Hora Brasil: ${dataAtual.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`);
     console.log(`🔍 [Supabase] Supabase disponível: ${isSupabaseAvailable()}`);
     
     // Nome da tabela exato conforme criado no SQL
