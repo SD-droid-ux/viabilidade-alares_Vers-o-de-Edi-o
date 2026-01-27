@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { getApiUrl } from './config';
+  import { toolsRegistry } from './tools/toolsRegistry.js';
 
   // Props
   export let onClose = () => {};
@@ -58,6 +59,7 @@
   let projetistaToChangeRole = '';
   let newRole = 'user';
   let changeRoleError = '';
+  let toolPermissions = {}; // Permissões de ferramentas: { 'tool-id': true/false }
 
   // Carregar dados do localStorage primeiro (instantâneo)
   function loadFromLocalStorage() {
@@ -1056,11 +1058,51 @@
   }
 
   // Função para abrir modal de alterar tipo de usuário
-  function openChangeRoleModal(nome) {
+  async function openChangeRoleModal(nome) {
     projetistaToChangeRole = nome;
     newRole = 'user'; // Default
     changeRoleError = '';
+    
+    // Inicializar permissões de ferramentas (todas marcadas por padrão)
+    toolPermissions = {};
+    toolsRegistry.forEach(tool => {
+      toolPermissions[tool.id] = true; // Por padrão, todas as ferramentas estão disponíveis
+    });
+    
+    // Carregar permissões existentes do backend
+    await loadToolPermissions(nome);
+    
     showChangeRoleModal = true;
+  }
+  
+  // Função para carregar permissões de ferramentas do backend
+  async function loadToolPermissions(nomeProjetista) {
+    try {
+      const response = await fetch(getApiUrl(`/api/projetistas/${encodeURIComponent(nomeProjetista)}/permissions`), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Usuario': currentUser || '',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.permissions) {
+          // Atualizar permissões com dados do backend
+          toolsRegistry.forEach(tool => {
+            // Se a ferramenta está nas permissões do backend, usar esse valor
+            // Caso contrário, manter true (padrão)
+            toolPermissions[tool.id] = data.permissions[tool.id] !== undefined 
+              ? data.permissions[tool.id] 
+              : true;
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar permissões de ferramentas:', err);
+      // Em caso de erro, manter todas as ferramentas habilitadas por padrão
+    }
   }
 
   // Função para fechar modal de alterar tipo
@@ -1069,6 +1111,14 @@
     projetistaToChangeRole = '';
     newRole = 'user';
     changeRoleError = '';
+    toolPermissions = {};
+  }
+  
+  // Função para alternar permissão de uma ferramenta
+  function toggleToolPermission(toolId) {
+    toolPermissions[toolId] = !toolPermissions[toolId];
+    // Forçar atualização reativa
+    toolPermissions = { ...toolPermissions };
   }
 
   // Função para alterar tipo de usuário
@@ -1083,7 +1133,8 @@
     }
     
     try {
-      const response = await fetch(getApiUrl(`/api/projetistas/${encodeURIComponent(projetistaToChangeRole)}/role`), {
+      // 1. Alterar tipo de usuário
+      const roleResponse = await fetch(getApiUrl(`/api/projetistas/${encodeURIComponent(projetistaToChangeRole)}/role`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1095,15 +1146,36 @@
         }),
       });
 
-      const data = await response.json();
+      const roleData = await roleResponse.json();
 
-      if (data.success) {
-        closeChangeRoleModal();
-        // Recarregar lista de projetistas
-        await loadProjetistas();
-      } else {
-        changeRoleError = data.error || 'Erro ao alterar tipo de usuário';
+      if (!roleData.success) {
+        changeRoleError = roleData.error || 'Erro ao alterar tipo de usuário';
+        return;
       }
+      
+      // 2. Salvar permissões de ferramentas
+      const permissionsResponse = await fetch(getApiUrl(`/api/projetistas/${encodeURIComponent(projetistaToChangeRole)}/permissions`), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Usuario': currentUser || '',
+        },
+        body: JSON.stringify({
+          permissions: toolPermissions,
+          usuario: currentUser || ''
+        }),
+      });
+      
+      const permissionsData = await permissionsResponse.json();
+      
+      if (!permissionsData.success) {
+        console.warn('Erro ao salvar permissões de ferramentas:', permissionsData.error);
+        // Não bloquear o fluxo se apenas as permissões falharem
+      }
+
+      closeChangeRoleModal();
+      // Recarregar lista de projetistas
+      await loadProjetistas();
     } catch (err) {
       console.error('Erro ao alterar tipo de usuário:', err);
       changeRoleError = 'Erro ao alterar tipo de usuário. Tente novamente.';
@@ -1972,6 +2044,25 @@
             </select>
           </div>
 
+          <div class="form-group">
+            <label>Permissões de Ferramentas</label>
+            <div class="tools-permissions-list">
+              {#each toolsRegistry as tool}
+                <div class="tool-permission-item">
+                  <label class="checkbox-label">
+                    <input 
+                      type="checkbox" 
+                      checked={toolPermissions[tool.id] || false}
+                      on:change={() => toggleToolPermission(tool.id)}
+                      class="tool-checkbox"
+                    />
+                    <span class="tool-name">{tool.icon} {tool.title}</span>
+                  </label>
+                </div>
+              {/each}
+            </div>
+          </div>
+
           {#if changeRoleError}
             <div class="error-message-modal">
               {changeRoleError}
@@ -2647,6 +2738,54 @@
     outline: none;
     border-color: #7B68EE;
     box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.1);
+  }
+
+  /* Estilos para permissões de ferramentas */
+  .tools-permissions-list {
+    margin-top: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid rgba(123, 104, 238, 0.2);
+    border-radius: 8px;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.5);
+  }
+
+  .tool-permission-item {
+    margin-bottom: 0.75rem;
+  }
+
+  .tool-permission-item:last-child {
+    margin-bottom: 0;
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    padding: 0.5rem;
+    border-radius: 6px;
+    transition: background-color 0.2s ease;
+  }
+
+  .checkbox-label:hover {
+    background-color: rgba(123, 104, 238, 0.1);
+  }
+
+  .tool-checkbox {
+    width: 18px;
+    height: 18px;
+    margin-right: 0.75rem;
+    cursor: pointer;
+    accent-color: #7B68EE;
+    flex-shrink: 0;
+  }
+
+  .tool-name {
+    font-size: 0.95rem;
+    color: #333;
+    font-weight: 500;
   }
 
   .form-group input.error {
