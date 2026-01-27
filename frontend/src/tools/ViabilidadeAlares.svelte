@@ -4927,24 +4927,6 @@
           </div>
         {/if}
       </div>
-      
-      <!-- Área de usuário e logout - Fora do conteúdo scrollável -->
-      <div class="user-section">
-        <div class="user-info">
-          <span class="user-icon">👤</span>
-          <span 
-            class="user-name clickable" 
-            on:click={openChangePasswordModal}
-            title="Clique para trocar a senha"
-            role="button"
-            tabindex="0"
-            on:keydown={(e) => e.key === 'Enter' && openChangePasswordModal()}
-          >
-            {currentUser || 'Usuário'}
-          </span>
-        </div>
-        <!-- Logout é gerenciado pelo App.svelte através do ToolWrapper -->
-      </div>
     </aside>
 
     <main class="map-container">
@@ -6197,67 +6179,6 @@
     border-radius: 8px;
     padding: 1rem;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-
-  .user-section {
-    flex-shrink: 0;
-    padding: 0.875rem 1.5rem;
-    background: rgba(255, 255, 255, 0.98);
-    border-top: 2px solid #e8e8e8;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.08);
-    z-index: 100;
-    backdrop-filter: blur(10px);
-    box-sizing: border-box;
-  }
-
-  .user-info {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .user-icon {
-    font-size: 1.1rem;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
-    border-radius: 50%;
-    color: white;
-    flex-shrink: 0;
-    box-shadow: 0 2px 6px rgba(123, 104, 238, 0.3);
-  }
-
-  .user-name {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: #555;
-  }
-
-  .user-name.clickable {
-    cursor: pointer;
-    transition: all 0.2s ease;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    user-select: none;
-    display: inline-block;
-  }
-
-  .user-name.clickable:hover {
-    background: rgba(123, 104, 238, 0.1);
-    color: #7B68EE;
-  }
-
-  .user-name.clickable:active {
-    background: rgba(123, 104, 238, 0.2);
   }
 
   .logout-button {
