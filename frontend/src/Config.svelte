@@ -2772,10 +2772,17 @@
     border-radius: 12px;
     background: #FFFFFF;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
+    overflow: visible;
     cursor: pointer;
     width: 100%;
     min-width: 0;
+    display: block;
+  }
+  
+  .tool-permission-card > * {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
   }
 
   .tool-permission-card::before {
@@ -2807,10 +2814,10 @@
   }
 
   .tool-permission-label {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    align-items: center;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
     gap: 1rem;
     padding: 1.25rem;
     cursor: pointer;
@@ -2829,20 +2836,21 @@
   }
 
   .tool-checkbox-custom {
-    width: 24px;
-    height: 24px;
-    min-width: 24px;
-    max-width: 24px;
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    max-width: 24px !important;
     border: 2px solid #CBD5E0;
     border-radius: 6px;
     background: #FFFFFF;
-    display: flex;
+    display: inline-flex !important;
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
-    flex-shrink: 0;
-    flex-grow: 0;
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
     position: relative;
+    vertical-align: middle;
   }
 
   .tool-permission-card.active .tool-checkbox-custom {
@@ -2875,10 +2883,12 @@
     flex: 1;
     margin: 0;
     padding: 0;
-    white-space: nowrap;
+    white-space: nowrap !important;
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
+    display: inline-block !important;
+    vertical-align: middle;
   }
 
   .tool-permission-card.active .tool-title {
