@@ -85,75 +85,90 @@ app.use((req, res, next) => {
 // Função auxiliar para inserir entrada/saída no Supabase
 // Lida com nomes de tabelas que têm caracteres especiais
 async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
+  // Verificar se Supabase está disponível
   if (!supabase || !isSupabaseAvailable()) {
-    console.warn('⚠️ [Supabase] Supabase não disponível');
+    console.error('❌ [Supabase] Supabase não disponível - não é possível salvar entrada/saída');
     return { success: false, error: 'Supabase não disponível' };
   }
+  
+  // Validar nome do projetista
+  if (!nomeProjetista || !nomeProjetista.trim()) {
+    console.error('❌ [Supabase] Nome do projetista inválido');
+    return { success: false, error: 'Nome do projetista inválido' };
+  }
+  
+  const nomeLimpo = nomeProjetista.trim();
   
   try {
     const dataAtual = new Date();
     const data = dataAtual.toISOString().split('T')[0]; // YYYY-MM-DD
     const hora = dataAtual.toTimeString().split(' ')[0]; // HH:MM:SS
     
-    console.log(`🔍 [Supabase] inserirEntradaSaida chamada: ${nomeProjetista}, tipo: ${tipo}`);
+    console.log(`🔍 [Supabase] inserirEntradaSaida chamada: ${nomeLimpo}, tipo: ${tipo}`);
     console.log(`🔍 [Supabase] Data: ${data}, Hora: ${hora}`);
+    console.log(`🔍 [Supabase] Supabase disponível: ${isSupabaseAvailable()}`);
+    
+    // Nome da tabela exato conforme criado no SQL
+    const nomeTabela = 'Entrada/Saída_Projetistas';
     
     if (tipo === 'entrada') {
       // IMPORTANTE: Antes de inserir nova entrada, fechar qualquer registro anterior sem data_saida
       // Isso garante que não haja múltiplos registros abertos para o mesmo usuário
-      console.log(`🔍 [Supabase] Verificando registros abertos para ${nomeProjetista}...`);
-      const { data: registrosAbertos, error: selectAbertosError } = await supabase
-        .from('Entrada/Saída_Projetistas')
-        .select('id')
-        .eq('nome_projetista', nomeProjetista)
-        .is('data_saida', null);
+      console.log(`🔍 [Supabase] Verificando registros abertos para ${nomeLimpo}...`);
       
-      if (selectAbertosError) {
-        console.error('❌ [Supabase] Erro ao verificar registros abertos:', selectAbertosError);
-        console.error('❌ [Supabase] Código:', selectAbertosError.code);
-        console.error('❌ [Supabase] Mensagem:', selectAbertosError.message);
-        console.error('❌ [Supabase] Detalhes:', selectAbertosError.details);
-        // Continuar mesmo com erro, tentar inserir mesmo assim
-      } else if (registrosAbertos && registrosAbertos.length > 0) {
-        console.log(`⚠️ [Supabase] Encontrados ${registrosAbertos.length} registro(s) aberto(s), fechando...`);
-        // Fechar todos os registros abertos com a data/hora atual
-        for (const registro of registrosAbertos) {
-          const { error: closeError } = await supabase
-            .from('Entrada/Saída_Projetistas')
-            .update({
-              data_saida: data,
-              hora_saida: hora,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', registro.id);
-          
-          if (closeError) {
-            console.error(`❌ [Supabase] Erro ao fechar registro ${registro.id}:`, closeError);
-          } else {
-            console.log(`✅ [Supabase] Registro ${registro.id} fechado`);
+      try {
+        const { data: registrosAbertos, error: selectAbertosError } = await supabase
+          .from(nomeTabela)
+          .select('id')
+          .eq('nome_projetista', nomeLimpo)
+          .is('data_saida', null);
+        
+        if (selectAbertosError) {
+          console.error('❌ [Supabase] Erro ao verificar registros abertos:', selectAbertosError);
+          console.error('❌ [Supabase] Código:', selectAbertosError.code);
+          console.error('❌ [Supabase] Mensagem:', selectAbertosError.message);
+          console.error('❌ [Supabase] Detalhes:', selectAbertosError.details);
+          // Continuar mesmo com erro, tentar inserir mesmo assim
+        } else if (registrosAbertos && registrosAbertos.length > 0) {
+          console.log(`⚠️ [Supabase] Encontrados ${registrosAbertos.length} registro(s) aberto(s), fechando...`);
+          // Fechar todos os registros abertos com a data/hora atual
+          for (const registro of registrosAbertos) {
+            const { error: closeError } = await supabase
+              .from(nomeTabela)
+              .update({
+                data_saida: data,
+                hora_saida: hora,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', registro.id);
+            
+            if (closeError) {
+              console.error(`❌ [Supabase] Erro ao fechar registro ${registro.id}:`, closeError);
+            } else {
+              console.log(`✅ [Supabase] Registro ${registro.id} fechado`);
+            }
           }
         }
+      } catch (err) {
+        console.error('❌ [Supabase] Exceção ao verificar registros abertos:', err);
+        // Continuar mesmo com erro
       }
       
       // Agora inserir nova entrada
-      console.log(`🔍 [Supabase] Inserindo nova entrada para ${nomeProjetista}...`);
+      console.log(`🔍 [Supabase] Inserindo nova entrada para ${nomeLimpo} na tabela "${nomeTabela}"...`);
       console.log(`🔍 [Supabase] Dados a inserir:`, {
-        nome_projetista: nomeProjetista,
+        nome_projetista: nomeLimpo,
         data_entrada: data,
         hora_entrada: hora,
         data_saida: null,
         hora_saida: null
       });
       
-      // Tentar inserir usando o nome da tabela exato (com caracteres especiais)
-      let insertData = null;
-      let insertError = null;
-      
-      // Tentativa 1: Nome exato da tabela
-      const result1 = await supabase
-        .from('Entrada/Saída_Projetistas')
+      // Tentar inserir usando o nome exato da tabela
+      const { data: insertData, error: insertError } = await supabase
+        .from(nomeTabela)
         .insert({
-          nome_projetista: nomeProjetista,
+          nome_projetista: nomeLimpo,
           data_entrada: data,
           hora_entrada: hora,
           data_saida: null,
@@ -161,54 +176,42 @@ async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
         })
         .select();
       
-      insertData = result1.data;
-      insertError = result1.error;
-      
-      // Se falhou, tentar com nome sem caracteres especiais (caso a tabela tenha sido criada diferente)
       if (insertError) {
-        console.warn('⚠️ [Supabase] Erro com nome da tabela original, tentando alternativas...');
-        
-        // Tentativa 2: Tentar com nome sem barra (caso tenha sido criada diferente)
-        const result2 = await supabase
-          .from('Entrada_Saida_Projetistas')
-          .insert({
-            nome_projetista: nomeProjetista,
-            data_entrada: data,
-            hora_entrada: hora,
-            data_saida: null,
-            hora_saida: null
-          })
-          .select();
-        
-        if (!result2.error) {
-          console.log('✅ [Supabase] Sucesso com nome alternativo da tabela!');
-          insertData = result2.data;
-          insertError = null;
-        }
-      }
-      
-      if (insertError) {
-        console.error('❌ [Supabase] Erro ao inserir entrada após todas as tentativas:', insertError);
+        console.error('❌ [Supabase] Erro ao inserir entrada:', insertError);
         console.error('❌ [Supabase] Código do erro:', insertError.code);
         console.error('❌ [Supabase] Mensagem:', insertError.message);
         console.error('❌ [Supabase] Detalhes:', insertError.details);
         console.error('❌ [Supabase] Hint:', insertError.hint);
+        console.error('❌ [Supabase] Nome da tabela usado:', nomeTabela);
         console.error('❌ [Supabase] Erro completo:', JSON.stringify(insertError, null, 2));
         
-        // Tentar uma última vez com SQL direto através de RPC (se disponível)
-        // Por enquanto, retornar erro para que seja logado
+        // Se o erro for sobre tabela não encontrada, tentar verificar se existe
+        if (insertError.code === 'PGRST116' || insertError.message?.includes('does not exist')) {
+          console.error('❌ [Supabase] TABELA NÃO ENCONTRADA! Verifique se a tabela foi criada corretamente no Supabase.');
+          console.error('❌ [Supabase] Execute o SQL em backend/sql/create_entrada_saida_projetistas_table.sql');
+        }
+        
         return { success: false, error: insertError };
       }
       
-      console.log(`✅ [Supabase] Entrada inserida com sucesso! ID: ${insertData?.[0]?.id || 'N/A'}`);
+      if (!insertData || insertData.length === 0) {
+        console.error('❌ [Supabase] Inserção retornou sem dados');
+        return { success: false, error: 'Inserção retornou sem dados' };
+      }
+      
+      console.log(`✅ [Supabase] Entrada inserida com sucesso! ID: ${insertData[0].id}`);
+      console.log(`✅ [Supabase] Registro completo:`, JSON.stringify(insertData[0], null, 2));
       return { success: true, data: insertData };
     } else {
       // Atualizar saída
-      console.log(`🔍 [Supabase] Buscando registro aberto para ${nomeProjetista}...`);
+      const nomeTabela = 'Entrada/Saída_Projetistas';
+      const nomeLimpo = nomeProjetista.trim();
+      
+      console.log(`🔍 [Supabase] Buscando registro aberto para ${nomeLimpo} na tabela "${nomeTabela}"...`);
       const { data: registros, error: selectError } = await supabase
-        .from('Entrada/Saída_Projetistas')
+        .from(nomeTabela)
         .select('id')
-        .eq('nome_projetista', nomeProjetista)
+        .eq('nome_projetista', nomeLimpo)
         .is('data_saida', null)
         .order('created_at', { ascending: false })
         .limit(1);
@@ -218,17 +221,23 @@ async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
         console.error('❌ [Supabase] Código:', selectError.code);
         console.error('❌ [Supabase] Mensagem:', selectError.message);
         console.error('❌ [Supabase] Detalhes:', selectError.details);
+        console.error('❌ [Supabase] Nome da tabela usado:', nomeTabela);
         return { success: false, error: selectError };
       }
       
       if (!registros || registros.length === 0) {
-        console.warn(`⚠️ [Supabase] Nenhum registro de entrada encontrado para ${nomeProjetista}`);
+        console.warn(`⚠️ [Supabase] Nenhum registro de entrada encontrado para ${nomeLimpo}`);
         return { success: false, error: 'Nenhum registro de entrada encontrado' };
       }
       
       console.log(`🔍 [Supabase] Atualizando registro ${registros[0].id} com data/hora de saída...`);
+      console.log(`🔍 [Supabase] Dados a atualizar:`, {
+        data_saida: data,
+        hora_saida: hora
+      });
+      
       const { data: updateData, error: updateError } = await supabase
-        .from('Entrada/Saída_Projetistas')
+        .from(nomeTabela)
         .update({
           data_saida: data,
           hora_saida: hora,
@@ -242,10 +251,17 @@ async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
         console.error('❌ [Supabase] Código:', updateError.code);
         console.error('❌ [Supabase] Mensagem:', updateError.message);
         console.error('❌ [Supabase] Detalhes:', updateError.details);
+        console.error('❌ [Supabase] Nome da tabela usado:', nomeTabela);
         return { success: false, error: updateError };
       }
       
-      console.log(`✅ [Supabase] Saída atualizada com sucesso! ID: ${updateData?.[0]?.id || 'N/A'}`);
+      if (!updateData || updateData.length === 0) {
+        console.error('❌ [Supabase] Atualização retornou sem dados');
+        return { success: false, error: 'Atualização retornou sem dados' };
+      }
+      
+      console.log(`✅ [Supabase] Saída atualizada com sucesso! ID: ${updateData[0].id}`);
+      console.log(`✅ [Supabase] Registro completo:`, JSON.stringify(updateData[0], null, 2));
       return { success: true, data: updateData };
     }
   } catch (err) {
@@ -5629,8 +5645,11 @@ app.get('/api/projetistas/entrada-saida', async (req, res) => {
     // Tentar buscar no Supabase primeiro
     if (supabase && isSupabaseAvailable()) {
       try {
+        const nomeTabela = 'Entrada/Saída_Projetistas';
+        console.log(`🔍 [API] Buscando dados de entrada/saída na tabela "${nomeTabela}"...`);
+        
         const { data, error } = await supabase
-          .from('Entrada/Saída_Projetistas')
+          .from(nomeTabela)
           .select('*')
           .order('created_at', { ascending: false })
           .limit(1000); // Limitar a 1000 registros mais recentes
@@ -5640,16 +5659,29 @@ app.get('/api/projetistas/entrada-saida', async (req, res) => {
           console.error('❌ [Supabase] Código do erro:', error.code);
           console.error('❌ [Supabase] Mensagem:', error.message);
           console.error('❌ [Supabase] Detalhes:', error.details);
+          console.error('❌ [Supabase] Nome da tabela usado:', nomeTabela);
+          
+          // Se o erro for sobre tabela não encontrada
+          if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
+            console.error('❌ [Supabase] TABELA NÃO ENCONTRADA! Verifique se a tabela foi criada corretamente.');
+            console.error('❌ [Supabase] Execute o SQL em backend/sql/create_entrada_saida_projetistas_table.sql');
+          }
+          
           throw error;
         }
         
         if (data && data.length > 0) {
           entradaSaidaData = data;
+          console.log(`✅ [API] ${data.length} registro(s) de entrada/saída encontrado(s)`);
+        } else {
+          console.log(`⚠️ [API] Nenhum registro encontrado na tabela "${nomeTabela}"`);
         }
       } catch (supabaseErr) {
         console.error('❌ [Supabase] Erro ao buscar entrada/saída:', supabaseErr);
         // Continuar com array vazio se houver erro
       }
+    } else {
+      console.warn('⚠️ [API] Supabase não disponível, retornando array vazio');
     }
     
     res.json({ 
