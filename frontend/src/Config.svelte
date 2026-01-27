@@ -205,27 +205,17 @@
     }
   }
 
-  // Carregar usuários online
+  // Carregar usuários online - NOVA VERSÃO usando tabela do Supabase como fonte principal
   async function loadOnlineUsers() {
     try {
-      // Buscar dados de usuários online e entrada/saída em paralelo
-      const [onlineResponse, entradaSaidaResponse] = await Promise.all([
-        fetch(getApiUrl('/api/users/online')),
-        fetch(getApiUrl('/api/projetistas/entrada-saida'))
-      ]);
+      // Buscar dados de entrada/saída do Supabase (fonte principal)
+      const entradaSaidaResponse = await fetch(getApiUrl('/api/projetistas/entrada-saida'));
       
-      if (onlineResponse.ok) {
-        const data = await onlineResponse.json();
-        if (data.success) {
-          onlineUsers = data.onlineUsers || [];
-          // Atualizar usersInfo, mantendo informações existentes se não houver novas
-          const newUsersInfo = data.usersInfo || {};
-          // Mesclar com informações existentes para não perder dados
-          usersInfo = { ...usersInfo, ...newUsersInfo };
-        }
-      }
+      // Resetar listas
+      onlineUsers = [];
+      usersInfo = {};
       
-      // Processar dados de entrada/saída do Supabase
+      // Processar dados de entrada/saída do Supabase como fonte principal
       if (entradaSaidaResponse.ok) {
         const entradaSaidaData = await entradaSaidaResponse.json();
         if (entradaSaidaData.success && entradaSaidaData.entradaSaida) {
@@ -240,15 +230,19 @@
             }
           });
           
-          // Atualizar usersInfo com dados do Supabase
+          // Construir lista de usuários online e usersInfo baseado na tabela do Supabase
           Object.keys(registrosPorProjetista).forEach(nome => {
             const registro = registrosPorProjetista[nome];
             
-            // Se não tem data_saida, o usuário está online
+            // Se não tem data_saida, o usuário está online (fonte principal)
             const estaOnline = !registro.data_saida;
             
-            // Se está na lista de online, manter como online
-            if (onlineUsers.includes(nome)) {
+            if (estaOnline) {
+              // Usuário está online - adicionar à lista de online
+              if (!onlineUsers.includes(nome)) {
+                onlineUsers.push(nome);
+              }
+              
               // Criar timestamp de login a partir de data_entrada e hora_entrada
               if (registro.data_entrada && registro.hora_entrada) {
                 const loginTimestamp = new Date(`${registro.data_entrada}T${registro.hora_entrada}`).getTime();
@@ -258,29 +252,30 @@
                   dataEntrada: registro.data_entrada,
                   horaEntrada: registro.hora_entrada
                 };
-              }
-            } else if (!estaOnline && registro.data_saida && registro.hora_saida) {
-              // Usuário está offline, usar dados de saída
-              const logoutTimestamp = new Date(`${registro.data_saida}T${registro.hora_saida}`).getTime();
-              usersInfo[nome] = {
-                status: 'offline',
-                logoutTime: logoutTimestamp,
-                dataEntrada: registro.data_entrada,
-                horaEntrada: registro.hora_entrada,
-                dataSaida: registro.data_saida,
-                horaSaida: registro.hora_saida
-              };
-            } else if (estaOnline) {
-              // Usuário está online segundo Supabase mas não está na lista de online
-              // Pode ser que a sessão expirou mas o registro ainda não foi atualizado
-              // Usar dados de entrada
-              if (registro.data_entrada && registro.hora_entrada) {
-                const loginTimestamp = new Date(`${registro.data_entrada}T${registro.hora_entrada}`).getTime();
+              } else {
+                // Fallback se não tiver data/hora
                 usersInfo[nome] = {
                   status: 'online',
-                  loginTime: loginTimestamp,
+                  loginTime: Date.now()
+                };
+              }
+            } else {
+              // Usuário está offline - usar dados de saída
+              if (registro.data_saida && registro.hora_saida) {
+                const logoutTimestamp = new Date(`${registro.data_saida}T${registro.hora_saida}`).getTime();
+                usersInfo[nome] = {
+                  status: 'offline',
+                  logoutTime: logoutTimestamp,
                   dataEntrada: registro.data_entrada,
-                  horaEntrada: registro.hora_entrada
+                  horaEntrada: registro.hora_entrada,
+                  dataSaida: registro.data_saida,
+                  horaSaida: registro.hora_saida
+                };
+              } else {
+                // Fallback se não tiver data/hora de saída
+                usersInfo[nome] = {
+                  status: 'offline',
+                  logoutTime: Date.now()
                 };
               }
             }
@@ -288,19 +283,42 @@
         }
       }
       
+      // Fallback: Se não houver dados da tabela, usar API antiga como backup
+      if (onlineUsers.length === 0) {
+        try {
+          const onlineResponse = await fetch(getApiUrl('/api/users/online'));
+          if (onlineResponse.ok) {
+            const data = await onlineResponse.json();
+            if (data.success && data.onlineUsers && data.onlineUsers.length > 0) {
+              onlineUsers = data.onlineUsers || [];
+              const newUsersInfo = data.usersInfo || {};
+              usersInfo = { ...usersInfo, ...newUsersInfo };
+            }
+          }
+        } catch (fallbackErr) {
+          console.warn('Erro ao usar fallback da API antiga:', fallbackErr);
+        }
+      }
+      
       // Garantir que todos os projetistas na lista tenham informação de status
       projetistasList.forEach(projetista => {
         if (!usersInfo[projetista]) {
-          // Se não tem informação, verificar se está online
+          // Se não tem informação na tabela, verificar se está na lista de online
           if (onlineUsers.includes(projetista)) {
-            // Se está na lista de online mas não tem info, criar info básica
             usersInfo[projetista] = {
               status: 'online',
-              loginTime: Date.now() // Usar timestamp atual como fallback
+              loginTime: Date.now()
+            };
+          } else {
+            // Se não está online e não tem registro, considerar offline
+            usersInfo[projetista] = {
+              status: 'offline'
             };
           }
         }
       });
+      
+      console.log(`✅ [Config] Usuários online carregados: ${onlineUsers.length} online, ${Object.keys(usersInfo).length} com informações`);
     } catch (err) {
       console.error('Erro ao carregar usuários online:', err);
     }
