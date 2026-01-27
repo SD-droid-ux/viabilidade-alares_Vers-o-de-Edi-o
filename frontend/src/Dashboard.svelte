@@ -1,9 +1,11 @@
 <script>
   import { getAvailableTools } from './tools/toolsRegistry.js';
+  import { getApiUrl } from './config.js';
   
   export let onToolSelect = (toolId) => {};
   export let currentUser = '';
   export let onLogout = () => {};
+  export let onUserUpdate = (newUserName) => {}; // Callback para atualizar nome do usuário no componente pai
 
   // Imagem de fundo do Dashboard
   // Altere aqui o nome do arquivo quando adicionar a nova imagem em /public
@@ -14,6 +16,18 @@
 
   // Estado do modal de confirmação de logout
   let showLogoutModal = false;
+
+  // Estados para modal de alterar senha e nome
+  let showChangePasswordModal = false;
+  let newPassword = '';
+  let confirmPassword = '';
+  let showChangePassword = false;
+  let showConfirmPassword = false;
+  let changePasswordError = '';
+  let changePasswordSuccess = false;
+  let newUserName = '';
+  let changeUserNameError = '';
+  let changeUserNameSuccess = false;
 
   function handleToolClick(tool) {
     if (tool.available) {
@@ -36,6 +50,149 @@
     showLogoutModal = false;
     onLogout();
   }
+
+  // Função para abrir modal de trocar senha
+  function openChangePasswordModal() {
+    showChangePasswordModal = true;
+    newPassword = '';
+    confirmPassword = '';
+    changePasswordError = '';
+    changePasswordSuccess = false;
+    showChangePassword = false;
+    showConfirmPassword = false;
+    newUserName = currentUser || '';
+    changeUserNameError = '';
+    changeUserNameSuccess = false;
+  }
+
+  // Função para fechar modal de trocar senha
+  function closeChangePasswordModal() {
+    showChangePasswordModal = false;
+    newPassword = '';
+    confirmPassword = '';
+    changePasswordError = '';
+    changePasswordSuccess = false;
+    showChangePassword = false;
+    showConfirmPassword = false;
+    newUserName = '';
+    changeUserNameError = '';
+    changeUserNameSuccess = false;
+  }
+
+  // Função para trocar senha do usuário atual
+  async function changeUserPassword() {
+    changePasswordError = '';
+    changePasswordSuccess = false;
+    
+    if (!newPassword || !newPassword.trim()) {
+      changePasswordError = 'Nova senha é obrigatória';
+      return;
+    }
+    
+    if (newPassword.trim().length < 4) {
+      changePasswordError = 'A senha deve ter pelo menos 4 caracteres';
+      return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+      changePasswordError = 'As senhas não coincidem';
+      return;
+    }
+    
+    try {
+      const response = await fetch(getApiUrl(`/api/projetistas/${encodeURIComponent(currentUser)}/password`), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          senha: newPassword.trim()
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        changePasswordSuccess = true;
+        changePasswordError = '';
+        // Fechar modal após sucesso
+        setTimeout(() => {
+          closeChangePasswordModal();
+        }, 2000);
+      } else {
+        changePasswordError = data.error || 'Erro ao alterar senha';
+      }
+    } catch (err) {
+      console.error('Erro ao alterar senha:', err);
+      changePasswordError = 'Erro ao conectar com o servidor. Tente novamente.';
+    }
+  }
+
+  // Função para alterar nome do usuário atual
+  async function changeUserName() {
+    changeUserNameError = '';
+    changeUserNameSuccess = false;
+    
+    if (!newUserName || !newUserName.trim()) {
+      changeUserNameError = 'Novo nome é obrigatório';
+      return;
+    }
+    
+    if (newUserName.trim().length < 2) {
+      changeUserNameError = 'O nome deve ter pelo menos 2 caracteres';
+      return;
+    }
+    
+    if (newUserName.trim().toLowerCase() === currentUser.toLowerCase()) {
+      changeUserNameError = 'O novo nome deve ser diferente do nome atual';
+      return;
+    }
+    
+    try {
+      const response = await fetch(getApiUrl(`/api/projetistas/${encodeURIComponent(currentUser)}/name`), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          novoNome: newUserName.trim()
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        changeUserNameSuccess = true;
+        changeUserNameError = '';
+        
+        // Atualizar localStorage
+        if (typeof localStorage !== 'undefined') {
+          const storedUsuario = localStorage.getItem('usuario');
+          if (storedUsuario) {
+            localStorage.setItem('usuario', data.novoNome);
+          }
+        }
+        
+        // Atualizar currentUser localmente
+        currentUser = data.novoNome;
+        
+        // Notificar componente pai sobre a mudança
+        if (onUserUpdate && typeof onUserUpdate === 'function') {
+          onUserUpdate(data.novoNome);
+        }
+        
+        // Fechar modal após sucesso
+        setTimeout(() => {
+          closeChangePasswordModal();
+        }, 2000);
+      } else {
+        changeUserNameError = data.error || 'Erro ao alterar nome';
+      }
+    } catch (err) {
+      console.error('Erro ao alterar nome:', err);
+      changeUserNameError = 'Erro ao conectar com o servidor. Tente novamente.';
+    }
+  }
 </script>
 
 <div class="dashboard-container" style="background-image: url('{backgroundImage}');">
@@ -46,7 +203,16 @@
         <p class="dashboard-subtitle">Setor de Planejamento e Projetos - Engenharia Alares</p>
       </div>
       <div class="header-right">
-        <span class="user-name">{currentUser}</span>
+        <span 
+          class="user-name clickable" 
+          on:click={openChangePasswordModal}
+          title="Clique para alterar dados"
+          role="button"
+          tabindex="0"
+          on:keydown={(e) => e.key === 'Enter' && openChangePasswordModal()}
+        >
+          {currentUser}
+        </span>
         <button class="logout-button" on:click={handleLogoutClick} title="Sair">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -96,6 +262,184 @@
     </div>
   </main>
 </div>
+
+<!-- Modal de Alterar Dados do Usuário -->
+{#if showChangePasswordModal}
+  <div 
+    class="modal-overlay change-password-overlay" 
+    on:click={closeChangePasswordModal}
+    on:keydown={(e) => e.key === 'Escape' && closeChangePasswordModal()}
+    role="button"
+    tabindex="-1"
+    aria-label="Fechar modal"
+  >
+    <div 
+      class="modal-content change-password-modal" 
+      on:click|stopPropagation
+      on:keydown={(e) => e.stopPropagation()}
+      role="dialog"
+      tabindex="0"
+      aria-modal="true"
+      aria-labelledby="change-password-title"
+    >
+      <div class="modal-header">
+        <h2 id="change-password-title">Alterar Dados - {currentUser}</h2>
+        <button class="modal-close" on:click={closeChangePasswordModal} aria-label="Fechar modal">×</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Seção de Alterar Nome -->
+        <div style="margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid #e0e0e0;">
+          <h3 class="settings-section-title">Alterar Nome do Usuário</h3>
+          <form on:submit|preventDefault={changeUserName}>
+            <div class="form-group">
+              <label for="newUserName">Novo Nome <span class="required">*</span></label>
+              <input 
+                type="text" 
+                id="newUserName"
+                bind:value={newUserName}
+                placeholder="Digite o novo nome"
+                required
+                class:error={changeUserNameError && !newUserName.trim()}
+              />
+            </div>
+
+            {#if changeUserNameError}
+              <div class="error-message-modal">
+                {changeUserNameError}
+              </div>
+            {/if}
+
+            {#if changeUserNameSuccess}
+              <div class="success-message-modal">
+                ✅ Nome alterado com sucesso!
+              </div>
+            {/if}
+
+            <div class="modal-actions" style="margin-top: 1rem;">
+              <button type="submit" class="btn-add-confirm">
+                Alterar Nome
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Seção de Alterar Senha -->
+        <div>
+          <h3 class="settings-section-title">Alterar Senha</h3>
+          <form on:submit|preventDefault={changeUserPassword}>
+            <div class="form-group">
+              <label for="newPasswordUser">Nova Senha <span class="required">*</span></label>
+              <div class="password-input-wrapper">
+                {#if showChangePassword}
+                  <input 
+                    type="text"
+                    id="newPasswordUser"
+                    bind:value={newPassword}
+                    placeholder="Digite a nova senha"
+                    required
+                    class:error={changePasswordError && !newPassword.trim()}
+                  />
+                {:else}
+                  <input 
+                    type="password"
+                    id="newPasswordUser"
+                    bind:value={newPassword}
+                    placeholder="Digite a nova senha"
+                    required
+                    class:error={changePasswordError && !newPassword.trim()}
+                  />
+                {/if}
+                <button 
+                  type="button"
+                  class="password-toggle"
+                  on:click={() => showChangePassword = !showChangePassword}
+                  aria-label={showChangePassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  title={showChangePassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {#if showChangePassword}
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  {:else}
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  {/if}
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="confirmPasswordUser">Confirmar Nova Senha <span class="required">*</span></label>
+              <div class="password-input-wrapper">
+                {#if showConfirmPassword}
+                  <input 
+                    type="text"
+                    id="confirmPasswordUser"
+                    bind:value={confirmPassword}
+                    placeholder="Digite a senha novamente"
+                    required
+                    class:error={changePasswordError && newPassword !== confirmPassword}
+                  />
+                {:else}
+                  <input 
+                    type="password"
+                    id="confirmPasswordUser"
+                    bind:value={confirmPassword}
+                    placeholder="Digite a senha novamente"
+                    required
+                    class:error={changePasswordError && newPassword !== confirmPassword}
+                  />
+                {/if}
+                <button 
+                  type="button"
+                  class="password-toggle"
+                  on:click={() => showConfirmPassword = !showConfirmPassword}
+                  aria-label={showConfirmPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  title={showConfirmPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                >
+                  {#if showConfirmPassword}
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  {:else}
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  {/if}
+                </button>
+              </div>
+            </div>
+
+            {#if changePasswordError}
+              <div class="error-message-modal">
+                {changePasswordError}
+              </div>
+            {/if}
+
+            {#if changePasswordSuccess}
+              <div class="success-message-modal">
+                ✅ Senha alterada com sucesso!
+              </div>
+            {/if}
+
+            <div class="modal-actions" style="margin-top: 1rem;">
+              <button type="button" class="btn-cancel" on:click={closeChangePasswordModal}>Fechar</button>
+              <button type="submit" class="btn-add-confirm">
+                Alterar Senha
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <!-- Modal de Confirmação de Logout -->
 {#if showLogoutModal}
@@ -235,6 +579,22 @@
     backdrop-filter: blur(10px);
     white-space: nowrap;
     flex-shrink: 0;
+  }
+
+  .user-name.clickable {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+  }
+
+  .user-name.clickable:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: translateY(-1px);
+  }
+
+  .user-name.clickable:active {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(0);
   }
 
   .logout-button {
@@ -860,6 +1220,142 @@
   }
 
   .btn-logout-confirm:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  /* Modal de Alterar Dados */
+  .change-password-overlay {
+    z-index: 10004 !important;
+    background: rgba(0, 0, 0, 0.7);
+  }
+
+  .change-password-modal {
+    max-width: 500px;
+  }
+
+  .form-group {
+    margin-bottom: 1.5rem;
+  }
+
+  .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: #333;
+    font-size: 0.95rem;
+  }
+
+  .required {
+    color: #F44336;
+  }
+
+  .form-group input,
+  .form-group select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-family: 'Inter', sans-serif;
+    transition: border-color 0.3s;
+    box-sizing: border-box;
+  }
+
+  .form-group input:focus,
+  .form-group select:focus {
+    outline: none;
+    border-color: #7B68EE;
+    box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.1);
+  }
+
+  .form-group input.error,
+  .form-group select.error {
+    border-color: #F44336;
+  }
+
+  .password-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .password-input-wrapper input {
+    padding-right: 3rem;
+  }
+
+  .password-toggle {
+    position: absolute;
+    right: 0.75rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #718096;
+    transition: all 0.2s ease;
+  }
+
+  .password-toggle:hover {
+    color: #7B68EE;
+  }
+
+  .password-toggle svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .error-message-modal {
+    background: #ffebee;
+    border: 1px solid #F44336;
+    color: #C53030;
+    padding: 0.75rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+  }
+
+  .success-message-modal {
+    background: #e8f5e9;
+    border: 1px solid #4caf50;
+    color: #2e7d32;
+    padding: 0.75rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+    font-weight: 500;
+  }
+
+  .settings-section-title {
+    color: #7B68EE;
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin: 0 0 1.5rem 0;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid #7B68EE;
+  }
+
+  .btn-add-confirm {
+    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .btn-add-confirm:hover {
+    background: linear-gradient(135deg, #8B7AE8 0%, #7499F0 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(123, 104, 238, 0.3);
+  }
+
+  .btn-add-confirm:active {
     transform: translateY(0);
   }
 </style>
