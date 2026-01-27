@@ -1,6 +1,7 @@
 <script>
   import Login from './Login.svelte';
   import Loading from './Loading.svelte';
+  import LogoutLoading from './LogoutLoading.svelte';
   import Dashboard from './Dashboard.svelte';
   import ToolWrapper from './components/ToolWrapper.svelte';
   import { getToolById } from './tools/toolsRegistry.js';
@@ -79,6 +80,8 @@
   let userTipo = 'user'; // Tipo de usuário: 'admin' ou 'user'
   let isLoading = true; // Iniciar com loading ativo
   let loadingMessage = 'Carregando...';
+  let isLoggingOut = false; // Flag para indicar se está fazendo logout
+  let logoutMessage = 'Saindo do Portal.'; // Mensagem de logout
   let heartbeatInterval = null;
   let currentView = null; // 'dashboard', 'tool', 'login' ou null (será definido pelo processUrl)
   let currentTool = null; // ID da ferramenta atual
@@ -277,6 +280,18 @@
       clearInterval(heartbeatInterval);
       heartbeatInterval = null;
     }
+  }
+
+  // Função auxiliar para animar três pontinhos
+  function animateDots(baseMessage, callback) {
+    let dotCount = 0;
+    const interval = setInterval(() => {
+      dotCount = (dotCount % 3) + 1;
+      const dots = '.'.repeat(dotCount);
+      callback(baseMessage + dots);
+    }, 500); // Alterna a cada 500ms
+    
+    return interval;
   }
 
   // Função chamada quando o login é bem-sucedido
@@ -525,25 +540,25 @@
     let dotsInterval = null;
     
     try {
-      // IMPORTANTE: Mostrar tela de loading IMEDIATAMENTE
-      // Definir isLoading PRIMEIRO, antes de qualquer outra coisa
-      isLoading = true;
-      loadingMessage = 'Saindo do Portal.';
+      // IMPORTANTE: Mostrar tela de logout loading IMEDIATAMENTE
+      // Definir isLoggingOut PRIMEIRO, antes de qualquer outra coisa
+      isLoggingOut = true;
+      logoutMessage = 'Saindo do Portal.';
       
       // Resetar currentView para garantir que o modal desapareça
       currentView = null;
       
-      // Aguardar tick para garantir que o Svelte atualize o DOM e mostre a tela de loading
-      // Isso garante que o modal desapareça e a tela de loading apareça
+      // Aguardar tick para garantir que o Svelte atualize o DOM e mostre a tela de logout loading
+      // Isso garante que o modal desapareça e a tela de logout loading apareça
       await tick();
       
       // Animar "Saindo do Portal" com três pontinhos
       dotsInterval = animateDots('Saindo do Portal', (message) => {
-        loadingMessage = message;
+        logoutMessage = message;
       });
       
       // Aguardar um pouco antes de mostrar a segunda mensagem
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 2500));
       
       // Limpar intervalo anterior
       if (dotsInterval) {
@@ -553,11 +568,11 @@
       
       // Animar "Volte Sempre" com três pontinhos
       dotsInterval = animateDots('Volte Sempre', (message) => {
-        loadingMessage = message;
+        logoutMessage = message;
       });
       
       // Aguardar mais um pouco antes de fazer o logout
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 2500));
       
       // Limpar intervalo
       if (dotsInterval) {
@@ -613,16 +628,16 @@
       // Aguardar tick para garantir que o Svelte atualize o DOM
       await tick();
       
-      // Definir view como login e ocultar loading
+      // Definir view como login e ocultar logout loading
       currentView = 'login';
-      isLoading = false;
+      isLoggingOut = false;
       
       // Aguardar mais um tick para garantir renderização
       await tick();
       
       console.log('✅ Logout concluído:', {
         isLoggedIn,
-        isLoading,
+        isLoggingOut,
         currentView
       });
     } catch (err) {
@@ -630,7 +645,7 @@
       // Em caso de erro, garantir que volte para login
       isLoggedIn = false;
       currentView = 'login';
-      isLoading = false;
+      isLoggingOut = false;
       // Limpar intervalo em caso de erro
       if (dotsInterval) {
         clearInterval(dotsInterval);
@@ -762,8 +777,11 @@
 
 </script>
 
+<!-- Tela de Logout Loading (prioridade máxima - sempre aparece quando isLoggingOut é true) -->
+{#if isLoggingOut}
+  <LogoutLoading currentMessage={logoutMessage} />
 <!-- Tela de Loading (prioridade máxima - sempre aparece quando isLoading é true) -->
-{#if isLoading}
+{:else if isLoading}
   <Loading currentMessage={loadingMessage} />
 <!-- Tela de Login -->
 {:else if !isLoggedIn}
