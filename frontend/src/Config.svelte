@@ -378,26 +378,46 @@
     }
   }
   
+  // Função auxiliar para verificar se um projetista está online (com correspondência case-insensitive)
+  function isProjetistaOnline(projetista) {
+    if (!projetista || !Array.isArray(onlineUsers)) return false;
+    
+    // Verificação exata primeiro
+    if (onlineUsers.includes(projetista)) return true;
+    
+    // Verificação case-insensitive
+    return onlineUsers.some(u => u.toLowerCase().trim() === projetista.toLowerCase().trim());
+  }
+  
   // Função para obter texto do tooltip baseado no status do usuário
   function getProjetistaTooltip(projetista) {
     if (!projetista) return 'Status desconhecido';
     
     // Verificar primeiro se está na lista de online (MESMA LÓGICA EXATA da bolinha verde)
     // Isso garante que o tooltip sempre corresponda à cor da bolinha
-    const isOnline = Array.isArray(onlineUsers) && onlineUsers.includes(projetista);
-    const info = usersInfo && typeof usersInfo === 'object' ? usersInfo[projetista] : null;
+    const isOnline = isProjetistaOnline(projetista);
+    
+    // Tentar encontrar o usersInfo correspondente (case-insensitive)
+    let info = usersInfo && typeof usersInfo === 'object' ? usersInfo[projetista] : null;
+    if (!info && usersInfo && typeof usersInfo === 'object') {
+      // Tentar encontrar correspondência case-insensitive
+      const matchingKey = Object.keys(usersInfo).find(k => 
+        k.toLowerCase().trim() === projetista.toLowerCase().trim()
+      );
+      if (matchingKey) {
+        info = usersInfo[matchingKey];
+      }
+    }
     
     // Se está online (mesma verificação da bolinha verde), SEMPRE mostrar "Ativo"
     if (isOnline) {
       // Prioridade 1: Usar data_entrada e hora_entrada do Supabase se disponível
       if (info && info.dataEntrada && info.horaEntrada) {
         try {
-          // Formatar data e hora do Supabase
-          const formattedDate = new Date(info.dataEntrada).toLocaleDateString('pt-BR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-          });
+          // Formatar data corretamente: dataEntrada vem como "YYYY-MM-DD"
+          const [ano, mes, dia] = info.dataEntrada.split('-');
+          const formattedDate = `${dia}/${mes}/${ano}`;
+          
           // horaEntrada vem como HH:MM:SS, pegar apenas HH:MM
           const horaFormatada = info.horaEntrada.substring(0, 5);
           return `Ativo desde ${formattedDate} - ${horaFormatada}h`;
@@ -436,12 +456,10 @@
     // Prioridade 1: Usar data_saida e hora_saida do Supabase se disponível
     if (info && info.dataSaida && info.horaSaida) {
       try {
-        // Formatar data e hora do Supabase
-        const formattedDate = new Date(info.dataSaida).toLocaleDateString('pt-BR', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric'
-        });
+        // Formatar data corretamente: dataSaida vem como "YYYY-MM-DD"
+        const [ano, mes, dia] = info.dataSaida.split('-');
+        const formattedDate = `${dia}/${mes}/${ano}`;
+        
         // horaSaida vem como HH:MM:SS, pegar apenas HH:MM
         const horaFormatada = info.horaSaida.substring(0, 5);
         return `Inativo desde ${formattedDate} - ${horaFormatada}h`;
@@ -1305,7 +1323,7 @@
                   >
                     {projetista}
                   </span>
-                  {#if onlineUsers && onlineUsers.includes(projetista)}
+                  {#if isProjetistaOnline(projetista)}
                     <span class="online-indicator" title="Online">🟢</span>
                   {:else}
                     <span class="offline-indicator" title="Offline">🔴</span>
