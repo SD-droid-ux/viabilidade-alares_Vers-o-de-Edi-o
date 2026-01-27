@@ -61,6 +61,7 @@
   let newRole = 'user';
   let changeRoleError = '';
   let toolPermissions = {}; // Permissões de ferramentas: { 'tool-id': true/false }
+  let loadingChangeRole = false; // Estado de carregamento do modal
 
   // Carregar dados do localStorage primeiro (instantâneo)
   function loadFromLocalStorage() {
@@ -1064,6 +1065,7 @@
     projetistaSenha = ''; // Resetar senha
     newRole = 'user'; // Default
     changeRoleError = '';
+    loadingChangeRole = true; // Iniciar carregamento
     
     // Inicializar permissões de ferramentas (todas marcadas por padrão)
     toolPermissions = {};
@@ -1074,12 +1076,15 @@
     // Abrir modal imediatamente para melhorar a experiência do usuário
     showChangeRoleModal = true;
     
-    // Carregar dados em paralelo após abrir o modal (não bloqueia a abertura)
+    // Carregar dados em paralelo após abrir o modal
     Promise.all([
       loadProjetistaData(nome),
       loadToolPermissions(nome)
-    ]).catch(err => {
+    ]).then(() => {
+      loadingChangeRole = false; // Finalizar carregamento quando dados chegarem
+    }).catch(err => {
       console.warn('Erro ao carregar dados do projetista:', err);
+      loadingChangeRole = false; // Finalizar carregamento mesmo em caso de erro
     });
   }
   
@@ -1145,6 +1150,7 @@
     newRole = 'user';
     changeRoleError = '';
     toolPermissions = {};
+    loadingChangeRole = false; // Resetar estado de carregamento
   }
   
   // Função para alternar permissão de uma ferramenta
@@ -2053,75 +2059,81 @@
       </div>
 
       <div class="modal-body">
-        <form on:submit|preventDefault={changeUserRole}>
-          <div class="form-group">
-            <label for="projetistaNomeRole">Usuário</label>
-            <input 
-              type="text" 
-              id="projetistaNomeRole"
-              value={projetistaToChangeRole}
-              disabled
-              readonly
-            />
+        {#if loadingChangeRole}
+          <div class="change-role-loading">
+            <div class="spinner"></div>
           </div>
-
-          <div class="form-group">
-            <label for="projetistaSenhaRole">Senha</label>
-            <input 
-              type="text" 
-              id="projetistaSenhaRole"
-              value={projetistaSenha}
-              disabled
-              readonly
-            />
-          </div>
-
-          <div class="form-group">
-            <label for="userRole">Tipo de Usuário</label>
-            <select 
-              id="userRole"
-              bind:value={newRole}
-              required
-            >
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="toolsPermissions">Permissões de Ferramentas</label>
-            <div class="tools-permissions-grid">
-              {#each toolsRegistry as tool}
-                <div class="tool-permission-card" class:active={toolPermissions[tool.id] === true}>
-                  <label class="tool-permission-label">
-                    <input 
-                      type="checkbox" 
-                      id="tool-{tool.id}"
-                      checked={toolPermissions[tool.id] || false}
-                      on:change={() => toggleToolPermission(tool.id)}
-                      class="tool-checkbox-hidden"
-                    />
-                    <div class="tool-checkbox-custom"></div>
-                    <span class="tool-title">{tool.title}</span>
-                  </label>
-                </div>
-              {/each}
+        {:else}
+          <form on:submit|preventDefault={changeUserRole}>
+            <div class="form-group">
+              <label for="projetistaNomeRole">Usuário</label>
+              <input 
+                type="text" 
+                id="projetistaNomeRole"
+                value={projetistaToChangeRole}
+                disabled
+                readonly
+              />
             </div>
-          </div>
 
-          {#if changeRoleError}
-            <div class="error-message-modal">
-              {changeRoleError}
+            <div class="form-group">
+              <label for="projetistaSenhaRole">Senha</label>
+              <input 
+                type="text" 
+                id="projetistaSenhaRole"
+                value={projetistaSenha}
+                disabled
+                readonly
+              />
             </div>
-          {/if}
 
-          <div class="modal-actions">
-            <button type="button" class="btn-cancel" on:click={closeChangeRoleModal}>Cancelar</button>
-            <button type="submit" class="btn-add-confirm">
-              Alterar Tipo
-            </button>
-          </div>
-        </form>
+            <div class="form-group">
+              <label for="userRole">Tipo de Usuário</label>
+              <select 
+                id="userRole"
+                bind:value={newRole}
+                required
+              >
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="toolsPermissions">Permissões de Ferramentas</label>
+              <div class="tools-permissions-grid">
+                {#each toolsRegistry as tool}
+                  <div class="tool-permission-card" class:active={toolPermissions[tool.id] === true}>
+                    <label class="tool-permission-label">
+                      <input 
+                        type="checkbox" 
+                        id="tool-{tool.id}"
+                        checked={toolPermissions[tool.id] || false}
+                        on:change={() => toggleToolPermission(tool.id)}
+                        class="tool-checkbox-hidden"
+                      />
+                      <div class="tool-checkbox-custom"></div>
+                      <span class="tool-title">{tool.title}</span>
+                    </label>
+                  </div>
+                {/each}
+              </div>
+            </div>
+
+            {#if changeRoleError}
+              <div class="error-message-modal">
+                {changeRoleError}
+              </div>
+            {/if}
+
+            <div class="modal-actions">
+              <button type="button" class="btn-cancel" on:click={closeChangeRoleModal}>Cancelar</button>
+              <button type="submit" class="btn-add-confirm">
+                Alterar Tipo
+              </button>
+            </div>
+          </form>
+        {/if}
       </div>
     </div>
   </div>
@@ -2641,6 +2653,31 @@
 
   .modal-body {
     padding: 1.5rem;
+    position: relative;
+    min-height: 200px;
+  }
+
+  .change-role-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    width: 100%;
+  }
+
+  .change-role-loading .spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(123, 104, 238, 0.2);
+    border-top-color: #7B68EE;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .modal-actions {
