@@ -57,6 +57,7 @@
   let deletingBase = false; // Flag para indicar que está deletando base
   let showChangeRoleModal = false; // Modal para alterar tipo de usuário
   let projetistaToChangeRole = '';
+  let projetistaSenha = ''; // Senha do projetista selecionado
   let newRole = 'user';
   let changeRoleError = '';
   let toolPermissions = {}; // Permissões de ferramentas: { 'tool-id': true/false }
@@ -1060,6 +1061,7 @@
   // Função para abrir modal de alterar tipo de usuário
   async function openChangeRoleModal(nome) {
     projetistaToChangeRole = nome;
+    projetistaSenha = ''; // Resetar senha
     newRole = 'user'; // Default
     changeRoleError = '';
     
@@ -1069,10 +1071,37 @@
       toolPermissions[tool.id] = true; // Por padrão, todas as ferramentas estão disponíveis
     });
     
+    // Carregar dados completos do projetista (incluindo senha e tipo)
+    await loadProjetistaData(nome);
+    
     // Carregar permissões existentes do backend
     await loadToolPermissions(nome);
     
     showChangeRoleModal = true;
+  }
+  
+  // Função para carregar dados completos do projetista (nome, senha, tipo)
+  async function loadProjetistaData(nomeProjetista) {
+    try {
+      const response = await fetch(getApiUrl(`/api/projetistas/${encodeURIComponent(nomeProjetista)}`), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Usuario': currentUser || '',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.projetista) {
+          projetistaSenha = data.projetista.senha || '';
+          newRole = data.projetista.tipo || 'user';
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar dados do projetista:', err);
+      // Em caso de erro, manter valores padrão
+    }
   }
   
   // Função para carregar permissões de ferramentas do backend
@@ -1109,6 +1138,7 @@
   function closeChangeRoleModal() {
     showChangeRoleModal = false;
     projetistaToChangeRole = '';
+    projetistaSenha = '';
     newRole = 'user';
     changeRoleError = '';
     toolPermissions = {};
@@ -2027,6 +2057,17 @@
               type="text" 
               id="projetistaNomeRole"
               value={projetistaToChangeRole}
+              disabled
+              readonly
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="projetistaSenhaRole">Senha</label>
+            <input 
+              type="text" 
+              id="projetistaSenhaRole"
+              value={projetistaSenha}
               disabled
               readonly
             />
