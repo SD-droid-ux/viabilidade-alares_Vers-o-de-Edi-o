@@ -19,6 +19,13 @@
   let lastOnlineUsersHash = ''; // Hash para detectar mudanças e ajustar polling
   let pollingInterval = 15000; // Intervalo inicial: 15 segundos (otimizado)
   let forceUpdate = 0; // Forçar atualização do componente quando necessário
+  
+  // Lista filtrada de projetistas (excluindo o usuário atual)
+  $: projetistasListFiltrada = projetistasList.filter(projetista => {
+    if (!currentUser) return true; // Se não há usuário logado, mostrar todos
+    // Comparação case-insensitive para filtrar o usuário atual
+    return projetista.toLowerCase().trim() !== currentUser.toLowerCase().trim();
+  });
   let tabulacoesList = [
     'Aprovado Com Portas',
     'Aprovado Com Alívio de Rede/Cleanup',
@@ -1474,11 +1481,11 @@
     <div class="settings-body">
       <div class="settings-section">
         <h3>Projetistas</h3>
-        {#if projetistasList.length === 0}
+        {#if projetistasListFiltrada.length === 0}
           <p class="empty-message">Nenhum projetista cadastrado.</p>
         {:else}
           <div class="projetistas-list">
-            {#each projetistasList as projetista}
+            {#each projetistasListFiltrada as projetista}
               <div class="projetista-item">
                 <div class="projetista-name-wrapper">
                   <span 
