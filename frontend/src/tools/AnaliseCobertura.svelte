@@ -41,6 +41,7 @@
   // Resultados
   let ctos = [];
   let error = null;
+  let duplicatedCTOs = []; // Array para armazenar informações sobre CTOs duplicadas (mesmo nome, diferentes caminhos)
   
   // Mapa para controlar quais CTOs estão visíveis no mapa (key: identificador único da CTO)
   let ctoVisibility = new Map(); // Map<ctoKey, boolean>
@@ -1599,6 +1600,7 @@
       let foundCount = 0;
       let notFoundCount = 0;
       let skippedCoordinatesCount = 0;
+      duplicatedCTOs = []; // Limpar duplicatas anteriores
       
       for (const { ctoName, searchData } of searchResults) {
         if (!searchData?.success || !searchData.ctos || searchData.ctos.length === 0) {
@@ -1608,6 +1610,41 @@
         }
 
         console.log(`✅ CTO "${ctoName}" encontrada: ${searchData.ctos.length} resultado(s)`);
+
+        // Detectar se há múltiplas CTOs com o mesmo nome (duplicatas)
+        if (searchData.ctos.length > 1) {
+          // Agrupar CTOs por caminho de rede para identificar duplicatas
+          const caminhosMap = new Map();
+          for (const foundCTO of searchData.ctos) {
+            const caminhoKey = getCaminhoRedeKey(foundCTO);
+            if (!caminhosMap.has(caminhoKey)) {
+              caminhosMap.set(caminhoKey, []);
+            }
+            caminhosMap.get(caminhoKey).push(foundCTO);
+          }
+          
+          // Se houver múltiplos caminhos diferentes, são duplicatas
+          if (caminhosMap.size > 1) {
+            const duplicatasInfo = {
+              nome: ctoName,
+              quantidade: searchData.ctos.length,
+              caminhos: Array.from(caminhosMap.keys()).map(caminho => {
+                const [cidade, pop, chasse, placa, olt] = caminho.split('|');
+                return {
+                  caminho: caminho,
+                  cidade: cidade,
+                  pop: pop,
+                  chasse: chasse,
+                  placa: placa,
+                  olt: olt,
+                  ctos: caminhosMap.get(caminho)
+                };
+              })
+            };
+            duplicatedCTOs.push(duplicatasInfo);
+            console.log(`⚠️ CTOs duplicadas encontradas: "${ctoName}" com ${caminhosMap.size} caminhos diferentes`);
+          }
+        }
 
         // Para cada CTO encontrada com esse nome - adicionar TODAS, mesmo com coordenadas duplicadas
         for (const foundCTO of searchData.ctos) {
@@ -1631,11 +1668,29 @@
       console.log(`   - CTOs encontradas e adicionadas: ${foundCount}`);
       console.log(`   - CTOs não encontradas: ${notFoundCount}`);
       console.log(`   - CTOs ignoradas (sem coordenadas): ${skippedCoordinatesCount}`);
+      console.log(`   - CTOs com duplicatas: ${duplicatedCTOs.length}`);
 
       if (searchedCTOsList.length === 0) {
         error = 'Nenhuma CTO encontrada. Verifique os nomes digitados.';
         loadingCTOs = false;
         return;
+      }
+
+      // Se houver CTOs duplicadas, mostrar mensagem informativa
+      if (duplicatedCTOs.length > 0) {
+        // Construir mensagem detalhada sobre as duplicatas
+        let duplicatasMessage = 'CTOs duplicadas na base de dados:\n\n';
+        for (const dup of duplicatedCTOs) {
+          duplicatasMessage += `• ${dup.nome} (${dup.quantidade} ocorrências):\n`;
+          for (const caminho of dup.caminhos) {
+            duplicatasMessage += `  - ${caminho.cidade} | ${caminho.pop} | ${caminho.chasse} | ${caminho.placa} | ${caminho.olt}\n`;
+          }
+        }
+        error = duplicatasMessage.trim();
+        console.log(`ℹ️ ${duplicatasMessage}`);
+      } else {
+        // Limpar erro se não houver duplicatas
+        error = null;
       }
 
       console.log(`✅ ${searchedCTOsList.length} CTO(s) pesquisada(s) encontrada(s)`);
@@ -3094,8 +3149,26 @@
           </button>
 
           {#if error}
-            <div class="error-message">
-              ⚠️ {error}
+            <div class="error-message" class:duplicated-ctos={duplicatedCTOs.length > 0}>
+              {#if duplicatedCTOs.length > 0}
+                <div style="font-weight: bold; margin-bottom: 0.5rem;">
+                  ⚠️ CTOs duplicadas na base de dados:
+                </div>
+                {#each duplicatedCTOs as dup}
+                  <div style="margin-bottom: 1rem; padding-left: 1rem; border-left: 2px solid #ff9800;">
+                    <div style="font-weight: 600; margin-bottom: 0.25rem;">
+                      • {dup.nome} ({dup.quantidade} ocorrências)
+                    </div>
+                    {#each dup.caminhos as caminho}
+                      <div style="font-size: 0.9em; color: #666; margin-left: 0.5rem; margin-bottom: 0.15rem;">
+                        - {caminho.cidade} | {caminho.pop} | {caminho.chasse} | {caminho.placa} | {caminho.olt}
+                      </div>
+                    {/each}
+                  </div>
+                {/each}
+              {:else}
+                ⚠️ {error}
+              {/if}
             </div>
           {/if}
 
