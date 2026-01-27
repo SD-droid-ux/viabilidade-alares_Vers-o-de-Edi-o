@@ -641,32 +641,33 @@
   }
 
   .settings-button {
-    background: rgba(255, 255, 255, 0.15);
-    border: 1.5px solid rgba(255, 255, 255, 0.25);
-    border-radius: 10px;
-    padding: 0.625rem;
-    cursor: pointer;
+    background: none;
+    border: none;
     color: white;
+    font-size: 1.5rem;
+    padding: 0;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    backdrop-filter: blur(10px);
-    flex-shrink: 0;
-    font-size: 1.25rem;
-    width: 40px;
-    height: 40px;
+    transition: transform 0.3s ease;
+    position: relative;
+    z-index: 1001;
   }
 
-  .settings-button:hover {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.4);
-    transform: translateY(-2px) rotate(45deg);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  }
-
+  /* Gira quando o usuário passar o mouse ou clicar */
+  .settings-button:hover,
   .settings-button:active {
-    transform: translateY(0) rotate(45deg);
+    animation: rotateOnce 0.5s ease-in-out;
+  }
+
+  @keyframes rotateOnce {
+    0% {
+      transform: rotate(0deg);
+    }
+    100% {
+      transform: rotate(45deg);
+    }
   }
 
   .logout-button {
