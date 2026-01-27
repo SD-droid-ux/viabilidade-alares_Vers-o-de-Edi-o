@@ -255,7 +255,8 @@
               // Usuário está online - adicionar à lista de online
               console.log(`✅ [Config] Adicionando "${nome}" à lista de online`);
               if (!onlineUsers.includes(nome)) {
-                onlineUsers.push(nome);
+                // Usar reatribuição para garantir que o Svelte detecte a mudança
+                onlineUsers = [...onlineUsers, nome];
                 console.log(`✅ [Config] "${nome}" adicionado à lista onlineUsers`);
               } else {
                 console.log(`⚠️ [Config] "${nome}" já estava na lista onlineUsers`);
@@ -264,18 +265,25 @@
               // Criar timestamp de login a partir de data_entrada e hora_entrada
               if (registro.data_entrada && registro.hora_entrada) {
                 const loginTimestamp = new Date(`${registro.data_entrada}T${registro.hora_entrada}`).getTime();
-                usersInfo[nome] = {
-                  status: 'online',
-                  loginTime: loginTimestamp,
-                  dataEntrada: registro.data_entrada,
-                  horaEntrada: registro.hora_entrada
+                // Usar reatribuição para garantir que o Svelte detecte a mudança
+                usersInfo = {
+                  ...usersInfo,
+                  [nome]: {
+                    status: 'online',
+                    loginTime: loginTimestamp,
+                    dataEntrada: registro.data_entrada,
+                    horaEntrada: registro.hora_entrada
+                  }
                 };
                 console.log(`✅ [Config] usersInfo criado para "${nome}":`, usersInfo[nome]);
               } else {
                 // Fallback se não tiver data/hora
-                usersInfo[nome] = {
-                  status: 'online',
-                  loginTime: Date.now()
+                usersInfo = {
+                  ...usersInfo,
+                  [nome]: {
+                    status: 'online',
+                    loginTime: Date.now()
+                  }
                 };
                 console.log(`⚠️ [Config] usersInfo criado sem data/hora para "${nome}"`);
               }
@@ -283,19 +291,26 @@
               // Usuário está offline - usar dados de saída
               if (registro.data_saida && registro.hora_saida) {
                 const logoutTimestamp = new Date(`${registro.data_saida}T${registro.hora_saida}`).getTime();
-                usersInfo[nome] = {
-                  status: 'offline',
-                  logoutTime: logoutTimestamp,
-                  dataEntrada: registro.data_entrada,
-                  horaEntrada: registro.hora_entrada,
-                  dataSaida: registro.data_saida,
-                  horaSaida: registro.hora_saida
+                // Usar reatribuição para garantir que o Svelte detecte a mudança
+                usersInfo = {
+                  ...usersInfo,
+                  [nome]: {
+                    status: 'offline',
+                    logoutTime: logoutTimestamp,
+                    dataEntrada: registro.data_entrada,
+                    horaEntrada: registro.hora_entrada,
+                    dataSaida: registro.data_saida,
+                    horaSaida: registro.hora_saida
+                  }
                 };
               } else {
                 // Fallback se não tiver data/hora de saída
-                usersInfo[nome] = {
-                  status: 'offline',
-                  logoutTime: Date.now()
+                usersInfo = {
+                  ...usersInfo,
+                  [nome]: {
+                    status: 'offline',
+                    logoutTime: Date.now()
+                  }
                 };
               }
             }
@@ -313,7 +328,8 @@
           if (onlineResponse.ok) {
             const data = await onlineResponse.json();
             if (data.success && data.onlineUsers && data.onlineUsers.length > 0) {
-              onlineUsers = data.onlineUsers || [];
+              // Usar reatribuição para garantir que o Svelte detecte a mudança
+              onlineUsers = [...(data.onlineUsers || [])];
               const newUsersInfo = data.usersInfo || {};
               usersInfo = { ...usersInfo, ...newUsersInfo };
             }
@@ -340,12 +356,16 @@
           console.log(`✅ [Config] Encontrada correspondência: "${projetista}" <-> "${matchingOnlineUser}"`);
           // Se encontrou correspondência mas não tem usersInfo, criar
           if (!usersInfo[projetista] && usersInfo[matchingOnlineUser]) {
-            usersInfo[projetista] = usersInfo[matchingOnlineUser];
+            usersInfo = {
+              ...usersInfo,
+              [projetista]: usersInfo[matchingOnlineUser]
+            };
             console.log(`✅ [Config] Copiado usersInfo de "${matchingOnlineUser}" para "${projetista}"`);
           }
           // Garantir que está na lista de online
           if (!onlineUsers.includes(projetista)) {
-            onlineUsers.push(projetista);
+            // Usar reatribuição para garantir que o Svelte detecte a mudança
+            onlineUsers = [...onlineUsers, projetista];
             console.log(`✅ [Config] Adicionado "${projetista}" à lista onlineUsers`);
           }
         }
@@ -353,15 +373,21 @@
         if (!usersInfo[projetista]) {
           // Se não tem informação na tabela, verificar se está na lista de online
           if (onlineUsers.includes(projetista) || matchingOnlineUser) {
-            usersInfo[projetista] = {
-              status: 'online',
-              loginTime: Date.now()
+            usersInfo = {
+              ...usersInfo,
+              [projetista]: {
+                status: 'online',
+                loginTime: Date.now()
+              }
             };
             console.log(`✅ [Config] Criado usersInfo online para "${projetista}"`);
           } else {
             // Se não está online e não tem registro, considerar offline
-            usersInfo[projetista] = {
-              status: 'offline'
+            usersInfo = {
+              ...usersInfo,
+              [projetista]: {
+                status: 'offline'
+              }
             };
             console.log(`⚠️ [Config] Criado usersInfo offline para "${projetista}"`);
           }
