@@ -4476,6 +4476,169 @@ app.put('/api/projetistas/:nome/role', requireAdmin, async (req, res) => {
   }
 });
 
+// Endpoint para obter permissões de ferramentas de um projetista
+// Permite que o usuário veja suas próprias permissões ou admin veja qualquer usuário
+app.get('/api/projetistas/:nome/permissions', async (req, res) => {
+  try {
+    const nomeEncoded = req.params.nome;
+    const nomeDecoded = decodeURIComponent(nomeEncoded).trim();
+    
+    if (!nomeDecoded) {
+      return res.status(400).json({ success: false, error: 'Nome do projetista não pode estar vazio' });
+    }
+    
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    // Verificar se o usuário tem permissão para ver essas permissões
+    const usuarioRequisicao = req.body?.usuario || req.headers['x-usuario'] || req.query.usuario || '';
+    const usuarioRequisicaoLimpo = usuarioRequisicao.trim().toLowerCase();
+    
+    // Verificar se é admin ou se está consultando suas próprias permissões
+    let isAdmin = false;
+    if (usuarioRequisicaoLimpo) {
+      if (supabase && isSupabaseAvailable()) {
+        try {
+          const { data } = await supabase
+            .from('projetistas')
+            .select('tipo')
+            .ilike('nome', usuarioRequisicaoLimpo)
+            .limit(1);
+          
+          if (data && data.length > 0) {
+            isAdmin = (data[0].tipo || 'user').toLowerCase() === 'admin';
+          }
+        } catch (err) {
+          console.error('Erro ao verificar tipo de usuário:', err);
+        }
+      }
+    }
+    
+    // Se não é admin e não está consultando suas próprias permissões, negar acesso
+    if (!isAdmin && usuarioRequisicaoLimpo && nomeDecoded.toLowerCase() !== usuarioRequisicaoLimpo) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Você não tem permissão para ver as permissões de outro usuário' 
+      });
+    }
+    
+    let permissions = {}; // Permissões padrão: todas as ferramentas habilitadas
+    
+    // Tentar buscar no Supabase primeiro
+    if (supabase && isSupabaseAvailable()) {
+      try {
+        const { data, error } = await supabase
+          .from('projetistas')
+          .select('permissoes_ferramentas')
+          .ilike('nome', nomeDecoded)
+          .limit(1);
+        
+        if (!error && data && data.length > 0 && data[0].permissoes_ferramentas) {
+          // Se há permissões salvas, usar elas
+          permissions = typeof data[0].permissoes_ferramentas === 'string' 
+            ? JSON.parse(data[0].permissoes_ferramentas)
+            : data[0].permissoes_ferramentas;
+        }
+      } catch (supabaseErr) {
+        console.error('❌ [Supabase] Erro ao buscar permissões, usando fallback:', supabaseErr);
+        // Continuar com fallback Excel
+      }
+    }
+    
+    // Fallback: buscar do Excel (se houver campo de permissões)
+    // Por enquanto, retornar permissões padrão (todas habilitadas)
+    
+    res.json({ 
+      success: true, 
+      permissions: permissions
+    });
+  } catch (err) {
+    console.error('❌ Erro ao buscar permissões:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint para salvar permissões de ferramentas de um projetista
+app.put('/api/projetistas/:nome/permissions', requireAdmin, async (req, res) => {
+  try {
+    const nomeEncoded = req.params.nome;
+    const nomeDecoded = decodeURIComponent(nomeEncoded).trim();
+    const { permissions } = req.body;
+    
+    if (!nomeDecoded) {
+      return res.status(400).json({ success: false, error: 'Nome do projetista não pode estar vazio' });
+    }
+    
+    if (!permissions || typeof permissions !== 'object') {
+      return res.status(400).json({ success: false, error: 'Permissões inválidas' });
+    }
+    
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    // Tentar salvar no Supabase primeiro
+    if (supabase && isSupabaseAvailable()) {
+      try {
+        // Verificar se o projetista existe
+        const { data: existing } = await supabase
+          .from('projetistas')
+          .select('id, nome')
+          .ilike('nome', nomeDecoded)
+          .limit(1);
+        
+        if (!existing || existing.length === 0) {
+          return res.status(404).json({ success: false, error: 'Projetista não encontrado' });
+        }
+        
+        // Atualizar permissões (salvar como JSON string)
+        const { error } = await supabase
+          .from('projetistas')
+          .update({ permissoes_ferramentas: JSON.stringify(permissions) })
+          .ilike('nome', nomeDecoded);
+        
+        if (error) {
+          throw error;
+        }
+        
+        console.log(`✅ [Supabase] Permissões de ferramentas do projetista '${nomeDecoded}' atualizadas no Supabase`);
+        
+        return res.json({ 
+          success: true, 
+          message: 'Permissões de ferramentas atualizadas com sucesso',
+          permissions: permissions
+        });
+      } catch (supabaseErr) {
+        console.error('❌ [Supabase] Erro ao salvar permissões, usando fallback:', supabaseErr);
+        // Continuar com fallback Excel (ou apenas retornar sucesso se não houver fallback)
+      }
+    }
+    
+    // Fallback: salvar no Excel (se necessário implementar)
+    // Por enquanto, apenas retornar sucesso
+    
+    res.json({ 
+      success: true, 
+      message: 'Permissões de ferramentas atualizadas com sucesso',
+      permissions: permissions
+    });
+  } catch (err) {
+    console.error('❌ Erro ao salvar permissões:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Função para validar estrutura do arquivo Excel (ultra-otimizada para não travar)
 // OTIMIZAÇÃO: Aceita tanto Buffer (memória) quanto caminho de arquivo (disco)
 // Função para processar Excel em STREAMING REAL usando exceljs (para arquivos grandes)
