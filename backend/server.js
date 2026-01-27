@@ -4093,26 +4093,55 @@ app.post('/api/auth/login', async (req, res) => {
     
     // Salvar entrada no Supabase usando função auxiliar
     // IMPORTANTE: Sempre tentar salvar, mesmo que haja erro anterior
-    console.log(`🔍 [Login] Iniciando salvamento de entrada no Supabase para ${usuarioLimpo}...`);
+    console.log(`🔍 [Login] ==========================================`);
+    console.log(`🔍 [Login] INICIANDO SALVAMENTO NO SUPABASE`);
+    console.log(`🔍 [Login] Usuário: ${usuarioLimpo}`);
+    console.log(`🔍 [Login] Supabase disponível: ${isSupabaseAvailable()}`);
+    console.log(`🔍 [Login] Cliente Supabase: ${supabase ? 'OK' : 'NULL'}`);
+    console.log(`🔍 [Login] ==========================================`);
+    
     try {
       const resultadoEntrada = await inserirEntradaSaida(usuarioLimpo, 'entrada');
+      
+      console.log(`🔍 [Login] Resultado do salvamento:`, {
+        success: resultadoEntrada.success,
+        hasError: !!resultadoEntrada.error,
+        hasData: !!(resultadoEntrada.data && resultadoEntrada.data.length > 0)
+      });
+      
       if (resultadoEntrada.success) {
         const dataEntrada = new Date().toISOString().split('T')[0];
         const horaEntrada = new Date().toTimeString().split(' ')[0];
-        console.log(`✅ [Login] Entrada salva com sucesso para ${usuarioLimpo}: ${dataEntrada} ${horaEntrada}`);
+        console.log(`✅ [Login] ==========================================`);
+        console.log(`✅ [Login] ENTRADA SALVA COM SUCESSO!`);
+        console.log(`✅ [Login] Usuário: ${usuarioLimpo}`);
+        console.log(`✅ [Login] Data: ${dataEntrada} Hora: ${horaEntrada}`);
         if (resultadoEntrada.data && resultadoEntrada.data.length > 0) {
-          console.log(`✅ [Login] ID do registro criado: ${resultadoEntrada.data[0].id}`);
+          console.log(`✅ [Login] ID do registro: ${resultadoEntrada.data[0].id}`);
+          console.log(`✅ [Login] Registro completo:`, JSON.stringify(resultadoEntrada.data[0], null, 2));
         }
+        console.log(`✅ [Login] ==========================================`);
       } else {
-        console.error('❌ [Login] Erro ao salvar entrada:', resultadoEntrada.error);
+        console.error('❌ [Login] ==========================================');
+        console.error('❌ [Login] ERRO AO SALVAR ENTRADA!');
+        console.error('❌ [Login] Usuário:', usuarioLimpo);
+        console.error('❌ [Login] Erro:', resultadoEntrada.error);
         if (resultadoEntrada.error && typeof resultadoEntrada.error === 'object') {
-          console.error('❌ [Login] Detalhes do erro:', JSON.stringify(resultadoEntrada.error, null, 2));
+          console.error('❌ [Login] Código:', resultadoEntrada.error.code);
+          console.error('❌ [Login] Mensagem:', resultadoEntrada.error.message);
+          console.error('❌ [Login] Detalhes:', resultadoEntrada.error.details);
+          console.error('❌ [Login] Erro completo:', JSON.stringify(resultadoEntrada.error, null, 2));
         }
+        console.error('❌ [Login] ==========================================');
         // Não falhar o login se houver erro ao salvar entrada
       }
     } catch (err) {
-      console.error('❌ [Login] Exceção ao tentar salvar entrada:', err);
+      console.error('❌ [Login] ==========================================');
+      console.error('❌ [Login] EXCEÇÃO AO TENTAR SALVAR ENTRADA!');
+      console.error('❌ [Login] Tipo:', err.name);
+      console.error('❌ [Login] Mensagem:', err.message);
       console.error('❌ [Login] Stack:', err.stack);
+      console.error('❌ [Login] ==========================================');
       // Não falhar o login se houver erro ao salvar entrada
     }
     
