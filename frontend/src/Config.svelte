@@ -2060,13 +2060,7 @@
                       on:change={() => toggleToolPermission(tool.id)}
                       class="tool-checkbox-hidden"
                     />
-                    <div class="tool-checkbox-custom">
-                      {#if toolPermissions[tool.id] === true}
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                          <path d="M11.6667 3.5L5.25 9.91667L2.33333 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                      {/if}
-                    </div>
+                    <div class="tool-checkbox-custom"></div>
                     <span class="tool-title">{tool.title}</span>
                   </label>
                 </div>
@@ -2561,7 +2555,7 @@
   .modal-content {
     background: white;
     border-radius: 12px;
-    max-width: 600px;
+    max-width: 700px;
     width: 100%;
     max-height: 90vh;
     overflow-y: auto;
@@ -2766,9 +2760,9 @@
   }
 
   .tools-permissions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
     margin-top: 0.5rem;
   }
 
@@ -2780,6 +2774,8 @@
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
     cursor: pointer;
+    width: 100%;
+    min-width: 0;
   }
 
   .tool-permission-card::before {
@@ -2812,13 +2808,16 @@
 
   .tool-permission-label {
     display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 1rem;
     padding: 1.25rem;
     cursor: pointer;
     user-select: none;
     position: relative;
-    flex-direction: row;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .tool-checkbox-hidden {
@@ -2833,6 +2832,7 @@
     width: 24px;
     height: 24px;
     min-width: 24px;
+    max-width: 24px;
     border: 2px solid #CBD5E0;
     border-radius: 6px;
     background: #FFFFFF;
@@ -2841,6 +2841,8 @@
     justify-content: center;
     transition: all 0.2s ease;
     flex-shrink: 0;
+    flex-grow: 0;
+    position: relative;
   }
 
   .tool-permission-card.active .tool-checkbox-custom {
@@ -2849,26 +2851,34 @@
     box-shadow: 0 2px 8px rgba(123, 104, 238, 0.3);
   }
 
-  .tool-permission-card:hover .tool-checkbox-custom {
-    border-color: #7B68EE;
+  .tool-permission-card.active .tool-checkbox-custom::after {
+    content: '';
+    position: absolute;
+    width: 6px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    top: 4px;
+    left: 7px;
   }
 
-  .tool-checkbox-custom svg {
-    width: 14px;
-    height: 14px;
+  .tool-permission-card:hover .tool-checkbox-custom {
+    border-color: #7B68EE;
   }
 
   .tool-title {
     font-size: 0.9375rem;
     font-weight: 600;
     color: #2D3748;
-    line-height: 1.4;
+    line-height: 1.2;
     flex: 1;
+    margin: 0;
+    padding: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    display: flex;
-    align-items: center;
+    min-width: 0;
   }
 
   .tool-permission-card.active .tool-title {
