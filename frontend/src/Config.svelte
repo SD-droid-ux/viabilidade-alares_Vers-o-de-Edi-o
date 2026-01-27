@@ -2033,7 +2033,7 @@
           </div>
 
           <div class="form-group">
-            <label for="userRole">Tipo de Usuário <span class="required">*</span></label>
+            <label for="userRole">Tipo de Usuário</label>
             <select 
               id="userRole"
               bind:value={newRole}
@@ -2740,6 +2740,35 @@
     outline: none;
     border-color: #7B68EE;
     box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.1);
+  }
+
+  .form-group select {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #E2E8F0;
+    border-radius: 8px;
+    font-size: 0.9375rem;
+    font-family: 'Inter', sans-serif;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    background: #FFFFFF;
+    color: #333;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%237B68EE' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    padding-right: 2.5rem;
+  }
+
+  .form-group select:focus {
+    outline: none;
+    border-color: #7B68EE;
+    box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.1);
+  }
+
+  .form-group select:hover {
+    border-color: #7B68EE;
   }
 
   /* Estilos para permissões de ferramentas - Cards com checkbox à esquerda */
