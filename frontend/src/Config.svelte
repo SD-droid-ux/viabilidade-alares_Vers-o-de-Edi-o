@@ -2045,10 +2045,7 @@
           </div>
 
           <div class="form-group">
-            <label class="permissions-label">
-              <span>Permissões de Ferramentas</span>
-              <span class="permissions-hint">Marque as ferramentas que este usuário pode acessar</span>
-            </label>
+            <label for="toolsPermissions">Permissões de Ferramentas</label>
             <div class="tools-permissions-grid">
               {#each toolsRegistry as tool}
                 <div class="tool-permission-card" class:active={toolPermissions[tool.id] === true}>
@@ -2746,18 +2743,6 @@
   }
 
   /* Estilos para permissões de ferramentas - Cards com checkbox à esquerda */
-  .permissions-label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    margin-bottom: 1rem;
-  }
-
-  .permissions-hint {
-    font-size: 0.8125rem;
-    color: #718096;
-    font-weight: 400;
-  }
 
   .tools-permissions-grid {
     display: flex;
