@@ -1059,7 +1059,7 @@
   }
 
   // Função para abrir modal de alterar tipo de usuário
-  async function openChangeRoleModal(nome) {
+  function openChangeRoleModal(nome) {
     projetistaToChangeRole = nome;
     projetistaSenha = ''; // Resetar senha
     newRole = 'user'; // Default
@@ -1071,13 +1071,16 @@
       toolPermissions[tool.id] = true; // Por padrão, todas as ferramentas estão disponíveis
     });
     
-    // Carregar dados completos do projetista (incluindo senha e tipo)
-    await loadProjetistaData(nome);
-    
-    // Carregar permissões existentes do backend
-    await loadToolPermissions(nome);
-    
+    // Abrir modal imediatamente para melhorar a experiência do usuário
     showChangeRoleModal = true;
+    
+    // Carregar dados em paralelo após abrir o modal (não bloqueia a abertura)
+    Promise.all([
+      loadProjetistaData(nome),
+      loadToolPermissions(nome)
+    ]).catch(err => {
+      console.warn('Erro ao carregar dados do projetista:', err);
+    });
   }
   
   // Função para carregar dados completos do projetista (nome, senha, tipo)
