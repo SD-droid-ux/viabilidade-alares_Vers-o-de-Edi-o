@@ -792,6 +792,7 @@
     currentUser={currentUser}
     onToolSelect={handleToolSelect}
     onLogout={handleLogout}
+    onUserUpdate={(newUserName) => { currentUser = newUserName; }}
   />
 <!-- Ferramenta -->
 {:else if isLoggedIn && currentView === 'tool'}
