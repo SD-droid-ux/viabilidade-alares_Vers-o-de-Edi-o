@@ -2045,18 +2045,34 @@
           </div>
 
           <div class="form-group">
-            <label>Permissões de Ferramentas</label>
-            <div class="tools-permissions-list">
+            <label class="permissions-label">
+              <span>Permissões de Ferramentas</span>
+              <span class="permissions-hint">Marque as ferramentas que este usuário pode acessar</span>
+            </label>
+            <div class="tools-permissions-grid">
               {#each toolsRegistry as tool}
-                <div class="tool-permission-item">
-                  <label class="checkbox-label">
+                <div class="tool-permission-card" class:active={toolPermissions[tool.id] === true}>
+                  <label class="tool-permission-label">
                     <input 
                       type="checkbox" 
                       checked={toolPermissions[tool.id] || false}
                       on:change={() => toggleToolPermission(tool.id)}
-                      class="tool-checkbox"
+                      class="tool-checkbox-hidden"
                     />
-                    <span class="tool-name">{tool.icon} {tool.title}</span>
+                    <div class="tool-checkbox-custom">
+                      {#if toolPermissions[tool.id] || false}
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                          <path d="M11.6667 3.5L5.25 9.91667L2.33333 7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                      {/if}
+                    </div>
+                    <div class="tool-info">
+                      <div class="tool-icon">{tool.icon}</div>
+                      <div class="tool-details">
+                        <span class="tool-title">{tool.title}</span>
+                        <span class="tool-description">{tool.description}</span>
+                      </div>
+                    </div>
                   </label>
                 </div>
               {/each}
@@ -2740,52 +2756,161 @@
     box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.1);
   }
 
-  /* Estilos para permissões de ferramentas */
-  .tools-permissions-list {
-    margin-top: 0.75rem;
-    max-height: 300px;
-    overflow-y: auto;
-    border: 1px solid rgba(123, 104, 238, 0.2);
-    border-radius: 8px;
-    padding: 0.75rem;
-    background: rgba(255, 255, 255, 0.5);
-  }
-
-  .tool-permission-item {
-    margin-bottom: 0.75rem;
-  }
-
-  .tool-permission-item:last-child {
-    margin-bottom: 0;
-  }
-
-  .checkbox-label {
+  /* Estilos para permissões de ferramentas - Versão Profissional */
+  .permissions-label {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .permissions-hint {
+    font-size: 0.8125rem;
+    color: #718096;
+    font-weight: 400;
+  }
+
+  .tools-permissions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-top: 0.5rem;
+  }
+
+  .tool-permission-card {
+    position: relative;
+    border: 2px solid #E2E8F0;
+    border-radius: 12px;
+    background: #FFFFFF;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    cursor: pointer;
+  }
+
+  .tool-permission-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
+    transform: scaleX(0);
+    transition: transform 0.3s ease;
+  }
+
+  .tool-permission-card:hover {
+    border-color: #7B68EE;
+    box-shadow: 0 4px 12px rgba(123, 104, 238, 0.15);
+    transform: translateY(-2px);
+  }
+
+  .tool-permission-card.active {
+    border-color: #7B68EE;
+    background: linear-gradient(135deg, rgba(123, 104, 238, 0.05) 0%, rgba(100, 149, 237, 0.05) 100%);
+    box-shadow: 0 4px 12px rgba(123, 104, 238, 0.2);
+  }
+
+  .tool-permission-card.active::before {
+    transform: scaleX(1);
+  }
+
+  .tool-permission-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.25rem;
     cursor: pointer;
     user-select: none;
-    padding: 0.5rem;
+    position: relative;
+  }
+
+  .tool-checkbox-hidden {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .tool-checkbox-custom {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    border: 2px solid #CBD5E0;
     border-radius: 6px;
-    transition: background-color 0.2s ease;
-  }
-
-  .checkbox-label:hover {
-    background-color: rgba(123, 104, 238, 0.1);
-  }
-
-  .tool-checkbox {
-    width: 18px;
-    height: 18px;
-    margin-right: 0.75rem;
-    cursor: pointer;
-    accent-color: #7B68EE;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    margin-top: 0.125rem;
     flex-shrink: 0;
   }
 
-  .tool-name {
-    font-size: 0.95rem;
-    color: #333;
-    font-weight: 500;
+  .tool-permission-card.active .tool-checkbox-custom {
+    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
+    border-color: #7B68EE;
+    box-shadow: 0 2px 8px rgba(123, 104, 238, 0.3);
+  }
+
+  .tool-permission-card:hover .tool-checkbox-custom {
+    border-color: #7B68EE;
+  }
+
+  .tool-checkbox-custom svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .tool-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    flex: 1;
+  }
+
+  .tool-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+    flex-shrink: 0;
+    filter: grayscale(0.3);
+    transition: filter 0.2s ease;
+  }
+
+  .tool-permission-card.active .tool-icon {
+    filter: grayscale(0);
+  }
+
+  .tool-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+  }
+
+  .tool-title {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #2D3748;
+    line-height: 1.4;
+  }
+
+  .tool-permission-card.active .tool-title {
+    color: #7B68EE;
+  }
+
+  .tool-description {
+    font-size: 0.8125rem;
+    color: #718096;
+    line-height: 1.4;
+  }
+
+  /* Responsividade */
+  @media (max-width: 768px) {
+    .tools-permissions-grid {
+      grid-template-columns: 1fr;
+    }
   }
 
   .form-group input.error {
