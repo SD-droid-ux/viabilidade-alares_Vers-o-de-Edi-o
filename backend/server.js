@@ -3901,6 +3901,36 @@ app.post('/api/auth/login', async (req, res) => {
     if (logoutHistory[usuarioLimpo]) {
       delete logoutHistory[usuarioLimpo];
     }
+    
+    // Salvar entrada no Supabase
+    if (supabase && isSupabaseAvailable()) {
+      try {
+        const dataAtual = new Date();
+        const dataEntrada = dataAtual.toISOString().split('T')[0]; // YYYY-MM-DD
+        const horaEntrada = dataAtual.toTimeString().split(' ')[0]; // HH:MM:SS
+        
+        const { error: insertError } = await supabase
+          .from('Entrada/Saída_Projetistas')
+          .insert({
+            nome_projetista: usuarioLimpo,
+            data_entrada: dataEntrada,
+            hora_entrada: horaEntrada,
+            data_saida: null,
+            hora_saida: null
+          });
+        
+        if (insertError) {
+          console.error('❌ [Supabase] Erro ao salvar entrada:', insertError);
+          // Não falhar o login se houver erro ao salvar entrada
+        } else {
+          console.log(`✅ [Supabase] Entrada salva para ${usuarioLimpo}: ${dataEntrada} ${horaEntrada}`);
+        }
+      } catch (supabaseErr) {
+        console.error('❌ [Supabase] Erro ao salvar entrada no Supabase:', supabaseErr);
+        // Não falhar o login se houver erro ao salvar entrada
+      }
+    }
+    
     console.log(`🟢 Usuário ${usuarioLimpo} (${tipoUsuario}) fez login`);
     
     res.json({ 
@@ -5376,7 +5406,7 @@ app.delete('/api/tabulacoes/:nome', async (req, res) => {
 
 
 // Rota para logout
-app.post('/api/auth/logout', (req, res) => {
+app.post('/api/auth/logout', async (req, res) => {
   try {
     const { usuario } = req.body;
     
@@ -5385,6 +5415,48 @@ app.post('/api/auth/logout', (req, res) => {
       if (activeSessions[usuarioLimpo]) {
         // Salvar timestamp de logout antes de remover
         logoutHistory[usuarioLimpo] = { logoutTime: Date.now() };
+        
+        // Salvar saída no Supabase (atualizar o registro mais recente sem data_saida)
+        if (supabase && isSupabaseAvailable()) {
+          try {
+            const dataAtual = new Date();
+            const dataSaida = dataAtual.toISOString().split('T')[0]; // YYYY-MM-DD
+            const horaSaida = dataAtual.toTimeString().split(' ')[0]; // HH:MM:SS
+            
+            // Buscar o registro mais recente sem data_saida para este projetista
+            const { data: registros, error: selectError } = await supabase
+              .from('Entrada/Saída_Projetistas')
+              .select('id')
+              .eq('nome_projetista', usuarioLimpo)
+              .is('data_saida', null)
+              .order('created_at', { ascending: false })
+              .limit(1);
+            
+            if (!selectError && registros && registros.length > 0) {
+              // Atualizar o registro encontrado com data e hora de saída
+              const { error: updateError } = await supabase
+                .from('Entrada/Saída_Projetistas')
+                .update({
+                  data_saida: dataSaida,
+                  hora_saida: horaSaida,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', registros[0].id);
+              
+              if (updateError) {
+                console.error('❌ [Supabase] Erro ao salvar saída:', updateError);
+              } else {
+                console.log(`✅ [Supabase] Saída salva para ${usuarioLimpo}: ${dataSaida} ${horaSaida}`);
+              }
+            } else if (selectError) {
+              console.error('❌ [Supabase] Erro ao buscar registro de entrada:', selectError);
+            }
+          } catch (supabaseErr) {
+            console.error('❌ [Supabase] Erro ao salvar saída no Supabase:', supabaseErr);
+            // Não falhar o logout se houver erro ao salvar saída
+          }
+        }
+        
         delete activeSessions[usuarioLimpo];
         console.log(`🔴 Usuário ${usuarioLimpo} fez logout`);
       }
@@ -5397,6 +5469,51 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 // Rota para obter lista de usuários online com informações de timestamp
+// Rota para buscar histórico de entrada/saída dos projetistas
+app.get('/api/projetistas/entrada-saida', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    let entradaSaidaData = [];
+    
+    // Tentar buscar no Supabase primeiro
+    if (supabase && isSupabaseAvailable()) {
+      try {
+        const { data, error } = await supabase
+          .from('Entrada/Saída_Projetistas')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(1000); // Limitar a 1000 registros mais recentes
+        
+        if (error) {
+          throw error;
+        }
+        
+        if (data && data.length > 0) {
+          entradaSaidaData = data;
+        }
+      } catch (supabaseErr) {
+        console.error('❌ [Supabase] Erro ao buscar entrada/saída:', supabaseErr);
+        // Continuar com array vazio se houver erro
+      }
+    }
+    
+    res.json({ 
+      success: true, 
+      entradaSaida: entradaSaidaData 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/users/online', async (req, res) => {
   try {
     // Garantir headers CORS
