@@ -96,6 +96,7 @@
   let isLoading = false;
   let loadingMessage = '';
   let heartbeatInterval = null;
+  let dotsInterval = null; // Intervalo para animação dos três pontinhos
   
   // Estados para modal de trocar senha
   let showChangePasswordModal = false;
@@ -450,6 +451,18 @@
     }
   }
 
+  // Função auxiliar para animar três pontinhos
+  function animateDots(baseMessage, callback) {
+    let dotCount = 0;
+    const interval = setInterval(() => {
+      dotCount = (dotCount % 3) + 1;
+      const dots = '.'.repeat(dotCount);
+      callback(baseMessage + dots);
+    }, 500); // Alterna a cada 500ms
+    
+    return interval;
+  }
+
   // Função de inicialização da ferramenta (chamada quando o componente é montado)
   async function initializeTool() {
       // Carregar a ferramenta de Viabilidade
@@ -458,14 +471,29 @@
       
       try {
       // Etapa 1: Carregando Mapa
-    loadingMessage = 'Carregando Mapa';
+      // Limpar intervalo anterior se existir
+      if (dotsInterval) {
+        clearInterval(dotsInterval);
+        dotsInterval = null;
+      }
+      dotsInterval = animateDots('Carregando Mapa', (message) => {
+        loadingMessage = message;
+      });
     await loadGoogleMaps();
     
-    // Pequeno delay para visualização
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Aguardar mais tempo para o usuário conseguir ler a mensagem
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    
+    // Limpar intervalo anterior
+    if (dotsInterval) {
+      clearInterval(dotsInterval);
+      dotsInterval = null;
+    }
     
     // Etapa 2: Verificando Base de dados
-    loadingMessage = 'Verificando Base de dados';
+    dotsInterval = animateDots('Verificando Base de dados', (message) => {
+      loadingMessage = message;
+    });
     baseDataExists = true; // Resetar estado
     try {
       await checkBaseAvailable();
@@ -474,24 +502,54 @@
       baseDataExists = false;
     }
     
-    // Pequeno delay para visualização
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Aguardar mais tempo para o usuário conseguir ler a mensagem
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    
+    // Limpar intervalo anterior
+    if (dotsInterval) {
+      clearInterval(dotsInterval);
+      dotsInterval = null;
+    }
     
     // Etapa 3: Carregando ambiente Virtual
-    loadingMessage = 'Carregando ambiente Virtual';
+    dotsInterval = animateDots('Carregando ambiente Virtual', (message) => {
+      loadingMessage = message;
+    });
     loadProjetistas();
     await loadTabulacoes();
     
-    // Pequeno delay para visualização
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Aguardar mais tempo para o usuário conseguir ler a mensagem
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    
+    // Limpar intervalo anterior
+    if (dotsInterval) {
+      clearInterval(dotsInterval);
+      dotsInterval = null;
+    }
     
     // Etapa 4: Ajuste Finais
-    loadingMessage = 'Ajuste Finais';
-    await new Promise(resolve => setTimeout(resolve, 500));
+    dotsInterval = animateDots('Ajuste Finais', (message) => {
+      loadingMessage = message;
+    });
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    
+    // Limpar intervalo anterior
+    if (dotsInterval) {
+      clearInterval(dotsInterval);
+      dotsInterval = null;
+    }
     
     // Etapa 5: Abrindo Ferramenta Virtual
-    loadingMessage = 'Abrindo Ferramenta Virtual';
-    await new Promise(resolve => setTimeout(resolve, 500));
+    dotsInterval = animateDots('Abrindo Ferramenta Virtual', (message) => {
+      loadingMessage = message;
+    });
+    await new Promise(resolve => setTimeout(resolve, 2500));
+    
+    // Limpar intervalo antes de ocultar loading
+    if (dotsInterval) {
+      clearInterval(dotsInterval);
+      dotsInterval = null;
+    }
     
     // Tudo carregado
     isLoading = false;
@@ -510,6 +568,12 @@
         error = 'Erro ao inicializar ferramenta: ' + err.message;
         isLoading = false;
         
+        // Limpar intervalo em caso de erro
+        if (dotsInterval) {
+          clearInterval(dotsInterval);
+          dotsInterval = null;
+        }
+        
         // Tentar inicializar o mapa mesmo com erro
         await tick();
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -519,6 +583,12 @@
 
   // Função para limpar estado da ferramenta
   function cleanup() {
+    // Limpar intervalo de animação dos pontinhos
+    if (dotsInterval) {
+      clearInterval(dotsInterval);
+      dotsInterval = null;
+    }
+    
     if (map) {
       // Limpar mapa e marcadores
       markers.forEach(marker => marker.setMap(null));
@@ -4705,7 +4775,9 @@
 
 <!-- Tela de Loading -->
 {#if isLoading}
-  <Loading currentMessage={loadingMessage} />
+  <div class="loading-fullscreen">
+    <Loading currentMessage={loadingMessage} />
+  </div>
 {:else}
 <!-- Conteúdo da Ferramenta de Viabilidade -->
 <div class="viabilidade-content">
@@ -5534,6 +5606,17 @@
     margin: 0;
     padding: 0;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+
+  .loading-fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 10000;
   }
 
   .viabilidade-content {
