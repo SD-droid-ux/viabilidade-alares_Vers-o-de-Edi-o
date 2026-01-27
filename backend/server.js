@@ -82,6 +82,80 @@ app.use((req, res, next) => {
   next();
 });
 
+// Função auxiliar para inserir entrada/saída no Supabase
+// Lida com nomes de tabelas que têm caracteres especiais
+async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
+  if (!supabase || !isSupabaseAvailable()) {
+    console.warn('⚠️ [Supabase] Supabase não disponível');
+    return { success: false, error: 'Supabase não disponível' };
+  }
+  
+  try {
+    const dataAtual = new Date();
+    const data = dataAtual.toISOString().split('T')[0]; // YYYY-MM-DD
+    const hora = dataAtual.toTimeString().split(' ')[0]; // HH:MM:SS
+    
+    if (tipo === 'entrada') {
+      // Inserir nova entrada
+      const { data: insertData, error: insertError } = await supabase
+        .from('Entrada/Saída_Projetistas')
+        .insert({
+          nome_projetista: nomeProjetista,
+          data_entrada: data,
+          hora_entrada: hora,
+          data_saida: null,
+          hora_saida: null
+        })
+        .select();
+      
+      if (insertError) {
+        console.error('❌ [Supabase] Erro ao inserir entrada:', insertError);
+        return { success: false, error: insertError };
+      }
+      
+      return { success: true, data: insertData };
+    } else {
+      // Atualizar saída
+      const { data: registros, error: selectError } = await supabase
+        .from('Entrada/Saída_Projetistas')
+        .select('id')
+        .eq('nome_projetista', nomeProjetista)
+        .is('data_saida', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
+      if (selectError) {
+        console.error('❌ [Supabase] Erro ao buscar registro:', selectError);
+        return { success: false, error: selectError };
+      }
+      
+      if (!registros || registros.length === 0) {
+        return { success: false, error: 'Nenhum registro de entrada encontrado' };
+      }
+      
+      const { data: updateData, error: updateError } = await supabase
+        .from('Entrada/Saída_Projetistas')
+        .update({
+          data_saida: data,
+          hora_saida: hora,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', registros[0].id)
+        .select();
+      
+      if (updateError) {
+        console.error('❌ [Supabase] Erro ao atualizar saída:', updateError);
+        return { success: false, error: updateError };
+      }
+      
+      return { success: true, data: updateData };
+    }
+  } catch (err) {
+    console.error('❌ [Supabase] Erro na função inserirEntradaSaida:', err);
+    return { success: false, error: err };
+  }
+}
+
 // Criar pasta data se não existir
 // Permite configurar via variável de ambiente (útil para Railway volumes)
 // IMPORTANTE: Definir DATA_DIR ANTES de usar no multer
@@ -3902,33 +3976,18 @@ app.post('/api/auth/login', async (req, res) => {
       delete logoutHistory[usuarioLimpo];
     }
     
-    // Salvar entrada no Supabase
-    if (supabase && isSupabaseAvailable()) {
-      try {
-        const dataAtual = new Date();
-        const dataEntrada = dataAtual.toISOString().split('T')[0]; // YYYY-MM-DD
-        const horaEntrada = dataAtual.toTimeString().split(' ')[0]; // HH:MM:SS
-        
-        const { error: insertError } = await supabase
-          .from('Entrada/Saída_Projetistas')
-          .insert({
-            nome_projetista: usuarioLimpo,
-            data_entrada: dataEntrada,
-            hora_entrada: horaEntrada,
-            data_saida: null,
-            hora_saida: null
-          });
-        
-        if (insertError) {
-          console.error('❌ [Supabase] Erro ao salvar entrada:', insertError);
-          // Não falhar o login se houver erro ao salvar entrada
-        } else {
-          console.log(`✅ [Supabase] Entrada salva para ${usuarioLimpo}: ${dataEntrada} ${horaEntrada}`);
-        }
-      } catch (supabaseErr) {
-        console.error('❌ [Supabase] Erro ao salvar entrada no Supabase:', supabaseErr);
-        // Não falhar o login se houver erro ao salvar entrada
+    // Salvar entrada no Supabase usando função auxiliar
+    const resultadoEntrada = await inserirEntradaSaida(usuarioLimpo, 'entrada');
+    if (resultadoEntrada.success) {
+      const dataEntrada = new Date().toISOString().split('T')[0];
+      const horaEntrada = new Date().toTimeString().split(' ')[0];
+      console.log(`✅ [Supabase] Entrada salva para ${usuarioLimpo}: ${dataEntrada} ${horaEntrada}`);
+      if (resultadoEntrada.data && resultadoEntrada.data.length > 0) {
+        console.log(`✅ [Supabase] ID do registro criado: ${resultadoEntrada.data[0].id}`);
       }
+    } else {
+      console.error('❌ [Supabase] Erro ao salvar entrada:', resultadoEntrada.error);
+      // Não falhar o login se houver erro ao salvar entrada
     }
     
     console.log(`🟢 Usuário ${usuarioLimpo} (${tipoUsuario}) fez login`);
@@ -5417,44 +5476,18 @@ app.post('/api/auth/logout', async (req, res) => {
         logoutHistory[usuarioLimpo] = { logoutTime: Date.now() };
         
         // Salvar saída no Supabase (atualizar o registro mais recente sem data_saida)
-        if (supabase && isSupabaseAvailable()) {
-          try {
-            const dataAtual = new Date();
-            const dataSaida = dataAtual.toISOString().split('T')[0]; // YYYY-MM-DD
-            const horaSaida = dataAtual.toTimeString().split(' ')[0]; // HH:MM:SS
-            
-            // Buscar o registro mais recente sem data_saida para este projetista
-            const { data: registros, error: selectError } = await supabase
-              .from('Entrada/Saída_Projetistas')
-              .select('id')
-              .eq('nome_projetista', usuarioLimpo)
-              .is('data_saida', null)
-              .order('created_at', { ascending: false })
-              .limit(1);
-            
-            if (!selectError && registros && registros.length > 0) {
-              // Atualizar o registro encontrado com data e hora de saída
-              const { error: updateError } = await supabase
-                .from('Entrada/Saída_Projetistas')
-                .update({
-                  data_saida: dataSaida,
-                  hora_saida: horaSaida,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('id', registros[0].id);
-              
-              if (updateError) {
-                console.error('❌ [Supabase] Erro ao salvar saída:', updateError);
-              } else {
-                console.log(`✅ [Supabase] Saída salva para ${usuarioLimpo}: ${dataSaida} ${horaSaida}`);
-              }
-            } else if (selectError) {
-              console.error('❌ [Supabase] Erro ao buscar registro de entrada:', selectError);
-            }
-          } catch (supabaseErr) {
-            console.error('❌ [Supabase] Erro ao salvar saída no Supabase:', supabaseErr);
-            // Não falhar o logout se houver erro ao salvar saída
+        // Salvar saída no Supabase usando função auxiliar
+        const resultadoSaida = await inserirEntradaSaida(usuarioLimpo, 'saida');
+        if (resultadoSaida.success) {
+          const dataSaida = new Date().toISOString().split('T')[0];
+          const horaSaida = new Date().toTimeString().split(' ')[0];
+          console.log(`✅ [Supabase] Saída salva para ${usuarioLimpo}: ${dataSaida} ${horaSaida}`);
+          if (resultadoSaida.data && resultadoSaida.data.length > 0) {
+            console.log(`✅ [Supabase] Registro atualizado: ID ${resultadoSaida.data[0].id}`);
           }
+        } else {
+          console.error('❌ [Supabase] Erro ao salvar saída:', resultadoSaida.error);
+          // Não falhar o logout se houver erro ao salvar saída
         }
         
         delete activeSessions[usuarioLimpo];
@@ -5493,6 +5526,10 @@ app.get('/api/projetistas/entrada-saida', async (req, res) => {
           .limit(1000); // Limitar a 1000 registros mais recentes
         
         if (error) {
+          console.error('❌ [Supabase] Erro ao buscar entrada/saída:', error);
+          console.error('❌ [Supabase] Código do erro:', error.code);
+          console.error('❌ [Supabase] Mensagem:', error.message);
+          console.error('❌ [Supabase] Detalhes:', error.details);
           throw error;
         }
         
