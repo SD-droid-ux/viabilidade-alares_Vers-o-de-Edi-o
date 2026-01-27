@@ -2818,6 +2818,7 @@
     cursor: pointer;
     user-select: none;
     position: relative;
+    flex-direction: row;
   }
 
   .tool-checkbox-hidden {
@@ -2863,6 +2864,11 @@
     color: #2D3748;
     line-height: 1.4;
     flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
   }
 
   .tool-permission-card.active .tool-title {
