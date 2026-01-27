@@ -790,6 +790,7 @@
 {:else if isLoggedIn && currentView === 'dashboard'}
   <Dashboard 
     currentUser={currentUser}
+    userTipo={userTipo}
     onToolSelect={handleToolSelect}
     onLogout={handleLogout}
     onUserUpdate={(newUserName) => { currentUser = newUserName; }}
