@@ -95,9 +95,62 @@ async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
     const data = dataAtual.toISOString().split('T')[0]; // YYYY-MM-DD
     const hora = dataAtual.toTimeString().split(' ')[0]; // HH:MM:SS
     
+    console.log(`🔍 [Supabase] inserirEntradaSaida chamada: ${nomeProjetista}, tipo: ${tipo}`);
+    console.log(`🔍 [Supabase] Data: ${data}, Hora: ${hora}`);
+    
     if (tipo === 'entrada') {
-      // Inserir nova entrada
-      const { data: insertData, error: insertError } = await supabase
+      // IMPORTANTE: Antes de inserir nova entrada, fechar qualquer registro anterior sem data_saida
+      // Isso garante que não haja múltiplos registros abertos para o mesmo usuário
+      console.log(`🔍 [Supabase] Verificando registros abertos para ${nomeProjetista}...`);
+      const { data: registrosAbertos, error: selectAbertosError } = await supabase
+        .from('Entrada/Saída_Projetistas')
+        .select('id')
+        .eq('nome_projetista', nomeProjetista)
+        .is('data_saida', null);
+      
+      if (selectAbertosError) {
+        console.error('❌ [Supabase] Erro ao verificar registros abertos:', selectAbertosError);
+        console.error('❌ [Supabase] Código:', selectAbertosError.code);
+        console.error('❌ [Supabase] Mensagem:', selectAbertosError.message);
+        console.error('❌ [Supabase] Detalhes:', selectAbertosError.details);
+        // Continuar mesmo com erro, tentar inserir mesmo assim
+      } else if (registrosAbertos && registrosAbertos.length > 0) {
+        console.log(`⚠️ [Supabase] Encontrados ${registrosAbertos.length} registro(s) aberto(s), fechando...`);
+        // Fechar todos os registros abertos com a data/hora atual
+        for (const registro of registrosAbertos) {
+          const { error: closeError } = await supabase
+            .from('Entrada/Saída_Projetistas')
+            .update({
+              data_saida: data,
+              hora_saida: hora,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', registro.id);
+          
+          if (closeError) {
+            console.error(`❌ [Supabase] Erro ao fechar registro ${registro.id}:`, closeError);
+          } else {
+            console.log(`✅ [Supabase] Registro ${registro.id} fechado`);
+          }
+        }
+      }
+      
+      // Agora inserir nova entrada
+      console.log(`🔍 [Supabase] Inserindo nova entrada para ${nomeProjetista}...`);
+      console.log(`🔍 [Supabase] Dados a inserir:`, {
+        nome_projetista: nomeProjetista,
+        data_entrada: data,
+        hora_entrada: hora,
+        data_saida: null,
+        hora_saida: null
+      });
+      
+      // Tentar inserir usando o nome da tabela exato (com caracteres especiais)
+      let insertData = null;
+      let insertError = null;
+      
+      // Tentativa 1: Nome exato da tabela
+      const result1 = await supabase
         .from('Entrada/Saída_Projetistas')
         .insert({
           nome_projetista: nomeProjetista,
@@ -108,14 +161,50 @@ async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
         })
         .select();
       
+      insertData = result1.data;
+      insertError = result1.error;
+      
+      // Se falhou, tentar com nome sem caracteres especiais (caso a tabela tenha sido criada diferente)
       if (insertError) {
-        console.error('❌ [Supabase] Erro ao inserir entrada:', insertError);
+        console.warn('⚠️ [Supabase] Erro com nome da tabela original, tentando alternativas...');
+        
+        // Tentativa 2: Tentar com nome sem barra (caso tenha sido criada diferente)
+        const result2 = await supabase
+          .from('Entrada_Saida_Projetistas')
+          .insert({
+            nome_projetista: nomeProjetista,
+            data_entrada: data,
+            hora_entrada: hora,
+            data_saida: null,
+            hora_saida: null
+          })
+          .select();
+        
+        if (!result2.error) {
+          console.log('✅ [Supabase] Sucesso com nome alternativo da tabela!');
+          insertData = result2.data;
+          insertError = null;
+        }
+      }
+      
+      if (insertError) {
+        console.error('❌ [Supabase] Erro ao inserir entrada após todas as tentativas:', insertError);
+        console.error('❌ [Supabase] Código do erro:', insertError.code);
+        console.error('❌ [Supabase] Mensagem:', insertError.message);
+        console.error('❌ [Supabase] Detalhes:', insertError.details);
+        console.error('❌ [Supabase] Hint:', insertError.hint);
+        console.error('❌ [Supabase] Erro completo:', JSON.stringify(insertError, null, 2));
+        
+        // Tentar uma última vez com SQL direto através de RPC (se disponível)
+        // Por enquanto, retornar erro para que seja logado
         return { success: false, error: insertError };
       }
       
+      console.log(`✅ [Supabase] Entrada inserida com sucesso! ID: ${insertData?.[0]?.id || 'N/A'}`);
       return { success: true, data: insertData };
     } else {
       // Atualizar saída
+      console.log(`🔍 [Supabase] Buscando registro aberto para ${nomeProjetista}...`);
       const { data: registros, error: selectError } = await supabase
         .from('Entrada/Saída_Projetistas')
         .select('id')
@@ -126,13 +215,18 @@ async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
       
       if (selectError) {
         console.error('❌ [Supabase] Erro ao buscar registro:', selectError);
+        console.error('❌ [Supabase] Código:', selectError.code);
+        console.error('❌ [Supabase] Mensagem:', selectError.message);
+        console.error('❌ [Supabase] Detalhes:', selectError.details);
         return { success: false, error: selectError };
       }
       
       if (!registros || registros.length === 0) {
+        console.warn(`⚠️ [Supabase] Nenhum registro de entrada encontrado para ${nomeProjetista}`);
         return { success: false, error: 'Nenhum registro de entrada encontrado' };
       }
       
+      console.log(`🔍 [Supabase] Atualizando registro ${registros[0].id} com data/hora de saída...`);
       const { data: updateData, error: updateError } = await supabase
         .from('Entrada/Saída_Projetistas')
         .update({
@@ -145,13 +239,18 @@ async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
       
       if (updateError) {
         console.error('❌ [Supabase] Erro ao atualizar saída:', updateError);
+        console.error('❌ [Supabase] Código:', updateError.code);
+        console.error('❌ [Supabase] Mensagem:', updateError.message);
+        console.error('❌ [Supabase] Detalhes:', updateError.details);
         return { success: false, error: updateError };
       }
       
+      console.log(`✅ [Supabase] Saída atualizada com sucesso! ID: ${updateData?.[0]?.id || 'N/A'}`);
       return { success: true, data: updateData };
     }
   } catch (err) {
     console.error('❌ [Supabase] Erro na função inserirEntradaSaida:', err);
+    console.error('❌ [Supabase] Stack:', err.stack);
     return { success: false, error: err };
   }
 }
@@ -3977,16 +4076,27 @@ app.post('/api/auth/login', async (req, res) => {
     }
     
     // Salvar entrada no Supabase usando função auxiliar
-    const resultadoEntrada = await inserirEntradaSaida(usuarioLimpo, 'entrada');
-    if (resultadoEntrada.success) {
-      const dataEntrada = new Date().toISOString().split('T')[0];
-      const horaEntrada = new Date().toTimeString().split(' ')[0];
-      console.log(`✅ [Supabase] Entrada salva para ${usuarioLimpo}: ${dataEntrada} ${horaEntrada}`);
-      if (resultadoEntrada.data && resultadoEntrada.data.length > 0) {
-        console.log(`✅ [Supabase] ID do registro criado: ${resultadoEntrada.data[0].id}`);
+    // IMPORTANTE: Sempre tentar salvar, mesmo que haja erro anterior
+    console.log(`🔍 [Login] Iniciando salvamento de entrada no Supabase para ${usuarioLimpo}...`);
+    try {
+      const resultadoEntrada = await inserirEntradaSaida(usuarioLimpo, 'entrada');
+      if (resultadoEntrada.success) {
+        const dataEntrada = new Date().toISOString().split('T')[0];
+        const horaEntrada = new Date().toTimeString().split(' ')[0];
+        console.log(`✅ [Login] Entrada salva com sucesso para ${usuarioLimpo}: ${dataEntrada} ${horaEntrada}`);
+        if (resultadoEntrada.data && resultadoEntrada.data.length > 0) {
+          console.log(`✅ [Login] ID do registro criado: ${resultadoEntrada.data[0].id}`);
+        }
+      } else {
+        console.error('❌ [Login] Erro ao salvar entrada:', resultadoEntrada.error);
+        if (resultadoEntrada.error && typeof resultadoEntrada.error === 'object') {
+          console.error('❌ [Login] Detalhes do erro:', JSON.stringify(resultadoEntrada.error, null, 2));
+        }
+        // Não falhar o login se houver erro ao salvar entrada
       }
-    } else {
-      console.error('❌ [Supabase] Erro ao salvar entrada:', resultadoEntrada.error);
+    } catch (err) {
+      console.error('❌ [Login] Exceção ao tentar salvar entrada:', err);
+      console.error('❌ [Login] Stack:', err.stack);
       // Não falhar o login se houver erro ao salvar entrada
     }
     
