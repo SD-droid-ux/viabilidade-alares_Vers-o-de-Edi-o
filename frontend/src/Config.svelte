@@ -208,31 +208,99 @@
   // Carregar usuários online
   async function loadOnlineUsers() {
     try {
-      const response = await fetch(getApiUrl('/api/users/online'));
-      if (response.ok) {
-        const data = await response.json();
+      // Buscar dados de usuários online e entrada/saída em paralelo
+      const [onlineResponse, entradaSaidaResponse] = await Promise.all([
+        fetch(getApiUrl('/api/users/online')),
+        fetch(getApiUrl('/api/projetistas/entrada-saida'))
+      ]);
+      
+      if (onlineResponse.ok) {
+        const data = await onlineResponse.json();
         if (data.success) {
           onlineUsers = data.onlineUsers || [];
           // Atualizar usersInfo, mantendo informações existentes se não houver novas
           const newUsersInfo = data.usersInfo || {};
           // Mesclar com informações existentes para não perder dados
           usersInfo = { ...usersInfo, ...newUsersInfo };
+        }
+      }
+      
+      // Processar dados de entrada/saída do Supabase
+      if (entradaSaidaResponse.ok) {
+        const entradaSaidaData = await entradaSaidaResponse.json();
+        if (entradaSaidaData.success && entradaSaidaData.entradaSaida) {
+          // Agrupar por projetista e pegar o registro mais recente de cada um
+          const registrosPorProjetista = {};
           
-          // Garantir que todos os projetistas na lista tenham informação de status
-          projetistasList.forEach(projetista => {
-            if (!usersInfo[projetista]) {
-              // Se não tem informação, verificar se está online
-              if (onlineUsers.includes(projetista)) {
-                // Se está na lista de online mas não tem info, criar info básica
-                usersInfo[projetista] = {
+          entradaSaidaData.entradaSaida.forEach(registro => {
+            const nome = registro.nome_projetista;
+            if (!registrosPorProjetista[nome] || 
+                new Date(registro.created_at) > new Date(registrosPorProjetista[nome].created_at)) {
+              registrosPorProjetista[nome] = registro;
+            }
+          });
+          
+          // Atualizar usersInfo com dados do Supabase
+          Object.keys(registrosPorProjetista).forEach(nome => {
+            const registro = registrosPorProjetista[nome];
+            
+            // Se não tem data_saida, o usuário está online
+            const estaOnline = !registro.data_saida;
+            
+            // Se está na lista de online, manter como online
+            if (onlineUsers.includes(nome)) {
+              // Criar timestamp de login a partir de data_entrada e hora_entrada
+              if (registro.data_entrada && registro.hora_entrada) {
+                const loginTimestamp = new Date(`${registro.data_entrada}T${registro.hora_entrada}`).getTime();
+                usersInfo[nome] = {
                   status: 'online',
-                  loginTime: Date.now() // Usar timestamp atual como fallback
+                  loginTime: loginTimestamp,
+                  dataEntrada: registro.data_entrada,
+                  horaEntrada: registro.hora_entrada
+                };
+              }
+            } else if (!estaOnline && registro.data_saida && registro.hora_saida) {
+              // Usuário está offline, usar dados de saída
+              const logoutTimestamp = new Date(`${registro.data_saida}T${registro.hora_saida}`).getTime();
+              usersInfo[nome] = {
+                status: 'offline',
+                logoutTime: logoutTimestamp,
+                dataEntrada: registro.data_entrada,
+                horaEntrada: registro.hora_entrada,
+                dataSaida: registro.data_saida,
+                horaSaida: registro.hora_saida
+              };
+            } else if (estaOnline) {
+              // Usuário está online segundo Supabase mas não está na lista de online
+              // Pode ser que a sessão expirou mas o registro ainda não foi atualizado
+              // Usar dados de entrada
+              if (registro.data_entrada && registro.hora_entrada) {
+                const loginTimestamp = new Date(`${registro.data_entrada}T${registro.hora_entrada}`).getTime();
+                usersInfo[nome] = {
+                  status: 'online',
+                  loginTime: loginTimestamp,
+                  dataEntrada: registro.data_entrada,
+                  horaEntrada: registro.hora_entrada
                 };
               }
             }
           });
         }
       }
+      
+      // Garantir que todos os projetistas na lista tenham informação de status
+      projetistasList.forEach(projetista => {
+        if (!usersInfo[projetista]) {
+          // Se não tem informação, verificar se está online
+          if (onlineUsers.includes(projetista)) {
+            // Se está na lista de online mas não tem info, criar info básica
+            usersInfo[projetista] = {
+              status: 'online',
+              loginTime: Date.now() // Usar timestamp atual como fallback
+            };
+          }
+        }
+      });
     } catch (err) {
       console.error('Erro ao carregar usuários online:', err);
     }
@@ -249,24 +317,27 @@
     
     // Se está online (mesma verificação da bolinha verde), SEMPRE mostrar "Ativo"
     if (isOnline) {
-      // Tentar obter timestamp de login de qualquer forma possível
-      let loginTime = null;
-      
-      if (info) {
-        // Prioridade 1: loginTime direto
-        if (info.loginTime) {
-          loginTime = info.loginTime;
-        }
-        // Prioridade 2: se status é online e tem loginTime
-        else if (info.status === 'online' && info.loginTime) {
-          loginTime = info.loginTime;
+      // Prioridade 1: Usar data_entrada e hora_entrada do Supabase se disponível
+      if (info && info.dataEntrada && info.horaEntrada) {
+        try {
+          // Formatar data e hora do Supabase
+          const formattedDate = new Date(info.dataEntrada).toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+          });
+          // horaEntrada vem como HH:MM:SS, pegar apenas HH:MM
+          const horaFormatada = info.horaEntrada.substring(0, 5);
+          return `Ativo desde ${formattedDate} - ${horaFormatada}h`;
+        } catch (err) {
+          console.error('Erro ao formatar data de entrada do Supabase:', err);
         }
       }
       
-      // Se tem timestamp de login, formatar
-      if (loginTime) {
+      // Prioridade 2: Tentar obter timestamp de login
+      if (info && info.loginTime) {
         try {
-          const date = new Date(loginTime);
+          const date = new Date(info.loginTime);
           // Verificar se a data é válida
           if (!isNaN(date.getTime())) {
             const formattedDate = date.toLocaleDateString('pt-BR', {
@@ -290,7 +361,24 @@
     }
     
     // Se NÃO está online (mesma verificação da bolinha vermelha), mostrar "Inativo"
-    // Tentar obter timestamp de logout
+    // Prioridade 1: Usar data_saida e hora_saida do Supabase se disponível
+    if (info && info.dataSaida && info.horaSaida) {
+      try {
+        // Formatar data e hora do Supabase
+        const formattedDate = new Date(info.dataSaida).toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        });
+        // horaSaida vem como HH:MM:SS, pegar apenas HH:MM
+        const horaFormatada = info.horaSaida.substring(0, 5);
+        return `Inativo desde ${formattedDate} - ${horaFormatada}h`;
+      } catch (err) {
+        console.error('Erro ao formatar data de saída do Supabase:', err);
+      }
+    }
+    
+    // Prioridade 2: Tentar obter timestamp de logout
     if (info && info.logoutTime) {
       try {
         const date = new Date(info.logoutTime);
