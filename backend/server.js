@@ -5626,12 +5626,18 @@ app.get('/api/projetistas/entrada-saida', async (req, res) => {
           console.error('❌ [Supabase] Código do erro:', error.code);
           console.error('❌ [Supabase] Mensagem:', error.message);
           console.error('❌ [Supabase] Detalhes:', error.details);
-          console.error('❌ [Supabase] Nome da tabela usado:', nomeTabela);
           
           // Se a função RPC não existir, informar ao usuário
           if (error.code === 'PGRST116' || error.message?.includes('does not exist') || error.message?.includes('function')) {
             console.error('❌ [Supabase] FUNÇÃO RPC NÃO ENCONTRADA!');
             console.error('❌ [Supabase] Execute o SQL em backend/sql/create_rpc_functions.sql');
+          }
+          
+          // Se o erro for de tipo incompatível
+          if (error.code === '42804') {
+            console.error('❌ [Supabase] ERRO DE TIPO INCOMPATÍVEL!');
+            console.error('❌ [Supabase] A função RPC precisa ser recriada com os tipos corretos.');
+            console.error('❌ [Supabase] Execute o SQL atualizado em backend/sql/create_rpc_functions.sql');
           }
           
           throw error;
