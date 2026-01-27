@@ -1512,6 +1512,17 @@ app.get('/api/coverage/check-point', async (req, res) => {
 });
 
 // Rota para buscar CTOs por nome
+// Função auxiliar para escapar caracteres especiais do padrão LIKE do PostgreSQL
+// Escapa: %, _, \ (caracteres especiais do LIKE)
+function escapeLikePattern(pattern) {
+  if (!pattern) return pattern;
+  // Escapar backslash primeiro (para não escapar os escapes subsequentes)
+  return pattern
+    .replace(/\\/g, '\\\\')  // Escapar \ como \\
+    .replace(/%/g, '\\%')    // Escapar % como \%
+    .replace(/_/g, '\\_');   // Escapar _ como \_
+}
+
 app.get('/api/ctos/search', async (req, res) => {
   try {
     // Garantir headers CORS
@@ -1529,15 +1540,20 @@ app.get('/api/ctos/search', async (req, res) => {
       return res.status(400).json({ error: 'Nome da CTO é obrigatório' });
     }
     
-    console.log(`🔍 [API] Buscando CTOs com nome: ${nome}`);
+    // Limpar e escapar o nome para busca segura no LIKE
+    const nomeLimpo = nome.trim();
+    const nomeEscapado = escapeLikePattern(nomeLimpo);
+    
+    console.log(`🔍 [API] Buscando CTOs com nome: "${nomeLimpo}" (escaped: "${nomeEscapado}")`);
     
     if (supabase && isSupabaseAvailable()) {
       try {
         // Buscar CTOs por nome (case-insensitive, busca parcial)
+        // Usar nomeEscapado para garantir que caracteres especiais como \ funcionem corretamente
         const { data, error } = await supabase
           .from('ctos')
           .select('*')
-          .ilike('cto', `%${nome.trim()}%`)
+          .ilike('cto', `%${nomeEscapado}%`)
           .limit(100); // Limitar a 100 resultados
         
         if (error) {
