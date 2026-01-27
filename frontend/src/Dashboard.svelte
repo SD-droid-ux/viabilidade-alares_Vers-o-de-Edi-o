@@ -1,4 +1,5 @@
 <script>
+  import { onMount } from 'svelte';
   import { getAvailableTools } from './tools/toolsRegistry.js';
   import { getApiUrl } from './config.js';
   import Config from './Config.svelte';
@@ -13,8 +14,56 @@
   // Altere aqui o nome do arquivo quando adicionar a nova imagem em /public
   const backgroundImage = '/dashboard-background.png'; // Troque pelo nome da sua imagem
 
+  // Estado para permissões de ferramentas do usuário atual
+  let userToolPermissions = {};
+  
   // Lista de ferramentas disponíveis (vem do registry)
-  $: tools = getAvailableTools();
+  $: tools = getAvailableTools().filter(tool => {
+    // Se não há permissões carregadas, mostrar todas as ferramentas (padrão)
+    if (!userToolPermissions || Object.keys(userToolPermissions).length === 0) {
+      return true;
+    }
+    // Filtrar baseado nas permissões do usuário
+    return userToolPermissions[tool.id] !== false; // Mostrar se não estiver explicitamente desabilitado
+  });
+  
+  // Função para carregar permissões de ferramentas do usuário atual
+  async function loadUserToolPermissions() {
+    if (!currentUser) return;
+    
+    try {
+      const response = await fetch(getApiUrl(`/api/projetistas/${encodeURIComponent(currentUser)}/permissions`), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Usuario': currentUser || '',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.permissions) {
+          userToolPermissions = data.permissions;
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar permissões de ferramentas:', err);
+      // Em caso de erro, manter todas as ferramentas disponíveis (padrão)
+      userToolPermissions = {};
+    }
+  }
+  
+  // Carregar permissões quando o componente for montado ou quando currentUser mudar
+  $: if (currentUser) {
+    loadUserToolPermissions();
+  }
+  
+  // Também carregar ao montar o componente
+  onMount(() => {
+    if (currentUser) {
+      loadUserToolPermissions();
+    }
+  });
 
   // Estado do modal de confirmação de logout
   let showLogoutModal = false;
