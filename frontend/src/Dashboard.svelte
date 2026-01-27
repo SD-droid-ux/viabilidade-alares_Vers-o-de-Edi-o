@@ -1,9 +1,11 @@
 <script>
   import { getAvailableTools } from './tools/toolsRegistry.js';
   import { getApiUrl } from './config.js';
+  import Config from './Config.svelte';
   
   export let onToolSelect = (toolId) => {};
   export let currentUser = '';
+  export let userTipo = 'user'; // Tipo de usuário: 'admin' ou 'user'
   export let onLogout = () => {};
   export let onUserUpdate = (newUserName) => {}; // Callback para atualizar nome do usuário no componente pai
 
@@ -16,6 +18,9 @@
 
   // Estado do modal de confirmação de logout
   let showLogoutModal = false;
+
+  // Estado do modal de configurações
+  let showSettingsModal = false;
 
   // Estados para modal de alterar senha e nome
   let showChangePasswordModal = false;
@@ -40,6 +45,22 @@
 
   function handleLogoutClick() {
     showLogoutModal = true;
+  }
+
+  // Função para abrir modal de configurações
+  function openSettingsModal() {
+    showSettingsModal = true;
+  }
+
+  // Função para fechar modal de configurações
+  function closeSettingsModal() {
+    showSettingsModal = false;
+  }
+
+  // Função para recarregar dados (placeholder - não usado no Dashboard mas necessário para Config)
+  async function reloadCTOsData() {
+    // No Dashboard não há necessidade de recarregar CTOs
+    // Esta função existe apenas para compatibilidade com o componente Config
   }
 
   function closeLogoutModal() {
@@ -213,6 +234,15 @@
         >
           {currentUser}
         </span>
+        <button 
+          class="settings-button" 
+          on:click={openSettingsModal}
+          title="Configurações"
+          aria-label="Configurações"
+          type="button"
+        >
+          ⚙️
+        </button>
         <button class="logout-button" on:click={handleLogoutClick} title="Sair">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -262,6 +292,19 @@
     </div>
   </main>
 </div>
+
+<!-- Modal de Configurações -->
+{#if showSettingsModal}
+  <Config 
+    onClose={closeSettingsModal}
+    onReloadCTOs={reloadCTOsData}
+    onUpdateProjetistas={(list) => { /* No Dashboard não precisamos atualizar lista local */ }}
+    onUpdateTabulacoes={(list) => { /* No Dashboard não precisamos atualizar lista local */ }}
+    baseDataExists={true}
+    userTipo={userTipo}
+    currentUser={currentUser}
+  />
+{/if}
 
 <!-- Modal de Alterar Dados do Usuário -->
 {#if showChangePasswordModal}
@@ -595,6 +638,35 @@
   .user-name.clickable:active {
     background: rgba(255, 255, 255, 0.3);
     transform: translateY(0);
+  }
+
+  .settings-button {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1.5px solid rgba(255, 255, 255, 0.25);
+    border-radius: 10px;
+    padding: 0.625rem;
+    cursor: pointer;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(10px);
+    flex-shrink: 0;
+    font-size: 1.25rem;
+    width: 40px;
+    height: 40px;
+  }
+
+  .settings-button:hover {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: translateY(-2px) rotate(45deg);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .settings-button:active {
+    transform: translateY(0) rotate(45deg);
   }
 
   .logout-button {
