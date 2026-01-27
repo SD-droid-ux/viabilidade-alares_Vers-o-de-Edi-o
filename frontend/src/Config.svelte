@@ -16,6 +16,8 @@
   let onlineUsers = [];
   let usersInfo = {}; // Armazena informações de status e timestamps dos usuários
   let onlineUsersInterval = null;
+  let lastOnlineUsersHash = ''; // Hash para detectar mudanças e ajustar polling
+  let pollingInterval = 15000; // Intervalo inicial: 15 segundos (otimizado)
   let tabulacoesList = [
     'Aprovado Com Portas',
     'Aprovado Com Alívio de Rede/Cleanup',
@@ -67,6 +69,25 @@
       if (savedLastModified) {
         baseLastModified = new Date(savedLastModified);
       }
+      
+      // Carregar dados de usuários online do localStorage para mostrar instantaneamente
+      const savedOnlineUsers = localStorage.getItem('onlineUsers');
+      if (savedOnlineUsers) {
+        try {
+          onlineUsers = JSON.parse(savedOnlineUsers);
+        } catch (e) {
+          console.warn('Erro ao carregar onlineUsers do localStorage:', e);
+        }
+      }
+      
+      const savedUsersInfo = localStorage.getItem('usersInfo');
+      if (savedUsersInfo) {
+        try {
+          usersInfo = JSON.parse(savedUsersInfo);
+        } catch (e) {
+          console.warn('Erro ao carregar usersInfo do localStorage:', e);
+        }
+      }
     } catch (err) {
       console.error('Erro ao carregar do localStorage:', err);
     }
@@ -83,21 +104,57 @@
     // Carregar do localStorage primeiro para mostrar instantaneamente
     loadFromLocalStorage();
     
-    // Depois carregar do servidor em paralelo para atualizar
+    // Carregar usuários online IMEDIATAMENTE (prioridade alta para mostrar indicador verde rápido)
+    loadOnlineUsers().catch(err => {
+      console.error('Erro ao carregar usuários online:', err);
+    });
+    
+    // Depois carregar outros dados do servidor em paralelo
     Promise.all([
       loadProjetistas(),
       loadTabulacoes(),
       loadBaseLastModified(),
-      loadViAlas(),
-      loadOnlineUsers()
+      loadViAlas()
     ]).catch(err => {
       console.error('Erro ao carregar dados:', err);
     });
     
-    // Iniciar polling para atualizar usuários online a cada 10 segundos
-    onlineUsersInterval = setInterval(() => {
-      loadOnlineUsers();
-    }, 10000);
+    // Função para polling adaptativo de usuários online
+    const startAdaptivePolling = () => {
+      // Limpar intervalo anterior se existir
+      if (onlineUsersInterval) {
+        clearInterval(onlineUsersInterval);
+      }
+      
+      // Verificar se a aba está visível antes de fazer polling
+      const pollIfVisible = () => {
+        // Usar Page Visibility API para evitar polling quando aba está em background
+        if (typeof document !== 'undefined' && !document.hidden) {
+          loadOnlineUsers();
+        }
+      };
+      
+      // Fazer primeira verificação imediatamente
+      pollIfVisible();
+      
+      // Configurar polling adaptativo
+      onlineUsersInterval = setInterval(() => {
+        pollIfVisible();
+      }, pollingInterval);
+    };
+    
+    // Iniciar polling adaptativo
+    startAdaptivePolling();
+    
+    // Listener para detectar quando a aba volta a ficar visível
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          // Quando a aba volta a ficar visível, atualizar imediatamente
+          loadOnlineUsers();
+        }
+      });
+    }
     
     // Limpar intervalos quando componente for destruído
     return () => {
@@ -211,7 +268,7 @@
       // Buscar dados de entrada/saída do Supabase (fonte principal)
       const entradaSaidaResponse = await fetch(getApiUrl('/api/projetistas/entrada-saida'));
       
-      // Resetar listas
+      // Resetar listas usando reatribuição reativa
       onlineUsers = [];
       usersInfo = {};
       
@@ -398,7 +455,51 @@
       console.log('✅ [Config] onlineUsers:', onlineUsers);
       console.log('✅ [Config] usersInfo:', usersInfo);
       
+      // Detectar mudanças para ajustar polling adaptativo
+      const currentHash = JSON.stringify({ onlineUsers, usersInfo });
+      const hasChanged = currentHash !== lastOnlineUsersHash;
+      
+      if (hasChanged) {
+        // Se houve mudanças, reduzir intervalo temporariamente para atualizar mais rápido
+        pollingInterval = 10000; // 10 segundos quando há mudanças
+        lastOnlineUsersHash = currentHash;
+        
+        // Reiniciar polling com novo intervalo
+        if (onlineUsersInterval) {
+          clearInterval(onlineUsersInterval);
+          onlineUsersInterval = setInterval(() => {
+            if (typeof document !== 'undefined' && !document.hidden) {
+              loadOnlineUsers();
+            }
+          }, pollingInterval);
+        }
+      } else {
+        // Se não houve mudanças, aumentar intervalo gradualmente (até máximo de 30s)
+        if (pollingInterval < 30000) {
+          pollingInterval = Math.min(pollingInterval + 5000, 30000); // Aumentar em 5s até 30s
+          
+          // Reiniciar polling com novo intervalo
+          if (onlineUsersInterval) {
+            clearInterval(onlineUsersInterval);
+            onlineUsersInterval = setInterval(() => {
+              if (typeof document !== 'undefined' && !document.hidden) {
+                loadOnlineUsers();
+              }
+            }, pollingInterval);
+          }
+        }
+      }
+      
+      // Salvar no localStorage para próxima vez (cache para carregamento instantâneo)
+      try {
+        localStorage.setItem('onlineUsers', JSON.stringify(onlineUsers));
+        localStorage.setItem('usersInfo', JSON.stringify(usersInfo));
+      } catch (e) {
+        console.warn('Erro ao salvar onlineUsers/usersInfo no localStorage:', e);
+      }
+      
       console.log(`✅ [Config] Usuários online carregados: ${onlineUsers.length} online, ${Object.keys(usersInfo).length} com informações`);
+      console.log(`⏱️ [Config] Próximo polling em: ${pollingInterval / 1000}s`);
     } catch (err) {
       console.error('Erro ao carregar usuários online:', err);
     }
