@@ -4639,6 +4639,81 @@ app.put('/api/projetistas/:nome/permissions', requireAdmin, async (req, res) => 
   }
 });
 
+// Rota para buscar dados completos de um projetista específico (apenas Admin)
+// IMPORTANTE: Esta rota deve vir DEPOIS de rotas mais específicas como /permissions
+app.get('/api/projetistas/:nome', requireAdmin, async (req, res) => {
+  try {
+    const nomeEncoded = req.params.nome;
+    const nomeDecoded = decodeURIComponent(nomeEncoded).trim();
+    
+    if (!nomeDecoded) {
+      return res.status(400).json({ success: false, error: 'Nome do projetista não pode estar vazio' });
+    }
+    
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    // Buscar projetista no Supabase
+    if (supabase && isSupabaseAvailable()) {
+      try {
+        const { data, error } = await supabase
+          .from('projetistas')
+          .select('nome, senha, tipo')
+          .ilike('nome', nomeDecoded)
+          .limit(1);
+        
+        if (error) {
+          throw error;
+        }
+        
+        if (data && data.length > 0) {
+          return res.json({ 
+            success: true, 
+            projetista: {
+              nome: data[0].nome || '',
+              senha: data[0].senha || '',
+              tipo: data[0].tipo || 'user'
+            }
+          });
+        }
+      } catch (supabaseErr) {
+        console.error('❌ [Supabase] Erro ao buscar projetista, usando fallback Excel:', supabaseErr);
+        // Continuar com fallback Excel
+      }
+    }
+    
+    // Fallback: usar Excel
+    const projetistas = readProjetistas();
+    const projetista = projetistas.find(p => {
+      const nomeProj = typeof p === 'string' ? p : p.nome;
+      return nomeProj.toLowerCase() === nomeDecoded.toLowerCase();
+    });
+    
+    if (projetista) {
+      const dadosProjetista = typeof projetista === 'string' 
+        ? { nome: projetista, senha: '', tipo: 'user' }
+        : { 
+            nome: projetista.nome || '', 
+            senha: projetista.senha || '', 
+            tipo: projetista.tipo || 'user' 
+          };
+      
+      return res.json({ success: true, projetista: dadosProjetista });
+    }
+    
+    return res.status(404).json({ success: false, error: 'Projetista não encontrado' });
+  } catch (err) {
+    console.error('Erro ao buscar projetista:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Função para validar estrutura do arquivo Excel (ultra-otimizada para não travar)
 // OTIMIZAÇÃO: Aceita tanto Buffer (memória) quanto caminho de arquivo (disco)
 // Função para processar Excel em STREAMING REAL usando exceljs (para arquivos grandes)
