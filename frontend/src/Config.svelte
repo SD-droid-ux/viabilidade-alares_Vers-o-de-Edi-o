@@ -218,29 +218,47 @@
       // Processar dados de entrada/saída do Supabase como fonte principal
       if (entradaSaidaResponse.ok) {
         const entradaSaidaData = await entradaSaidaResponse.json();
+        console.log('🔍 [Config] Dados recebidos da API:', entradaSaidaData);
+        console.log('🔍 [Config] Lista de projetistas:', projetistasList);
+        
         if (entradaSaidaData.success && entradaSaidaData.entradaSaida) {
+          console.log('🔍 [Config] Registros de entrada/saída:', entradaSaidaData.entradaSaida);
+          
           // Agrupar por projetista e pegar o registro mais recente de cada um
           const registrosPorProjetista = {};
           
           entradaSaidaData.entradaSaida.forEach(registro => {
             const nome = registro.nome_projetista;
+            console.log(`🔍 [Config] Processando registro para: "${nome}"`);
+            console.log(`🔍 [Config] Registro completo:`, registro);
+            
             if (!registrosPorProjetista[nome] || 
                 new Date(registro.created_at) > new Date(registrosPorProjetista[nome].created_at)) {
               registrosPorProjetista[nome] = registro;
             }
           });
           
+          console.log('🔍 [Config] Registros agrupados por projetista:', registrosPorProjetista);
+          
           // Construir lista de usuários online e usersInfo baseado na tabela do Supabase
           Object.keys(registrosPorProjetista).forEach(nome => {
             const registro = registrosPorProjetista[nome];
             
+            console.log(`🔍 [Config] Verificando status para: "${nome}"`);
+            console.log(`🔍 [Config] data_saida:`, registro.data_saida);
+            
             // Se não tem data_saida, o usuário está online (fonte principal)
             const estaOnline = !registro.data_saida;
+            console.log(`🔍 [Config] Esta online? ${estaOnline}`);
             
             if (estaOnline) {
               // Usuário está online - adicionar à lista de online
+              console.log(`✅ [Config] Adicionando "${nome}" à lista de online`);
               if (!onlineUsers.includes(nome)) {
                 onlineUsers.push(nome);
+                console.log(`✅ [Config] "${nome}" adicionado à lista onlineUsers`);
+              } else {
+                console.log(`⚠️ [Config] "${nome}" já estava na lista onlineUsers`);
               }
               
               // Criar timestamp de login a partir de data_entrada e hora_entrada
@@ -252,12 +270,14 @@
                   dataEntrada: registro.data_entrada,
                   horaEntrada: registro.hora_entrada
                 };
+                console.log(`✅ [Config] usersInfo criado para "${nome}":`, usersInfo[nome]);
               } else {
                 // Fallback se não tiver data/hora
                 usersInfo[nome] = {
                   status: 'online',
                   loginTime: Date.now()
                 };
+                console.log(`⚠️ [Config] usersInfo criado sem data/hora para "${nome}"`);
               }
             } else {
               // Usuário está offline - usar dados de saída
@@ -280,6 +300,9 @@
               }
             }
           });
+          
+          console.log('✅ [Config] Lista final de onlineUsers:', onlineUsers);
+          console.log('✅ [Config] usersInfo final:', usersInfo);
         }
       }
       
@@ -302,21 +325,52 @@
       
       // Garantir que todos os projetistas na lista tenham informação de status
       projetistasList.forEach(projetista => {
+        console.log(`🔍 [Config] Verificando projetista da lista: "${projetista}"`);
+        console.log(`🔍 [Config] Está em onlineUsers?`, onlineUsers.includes(projetista));
+        console.log(`🔍 [Config] onlineUsers atual:`, onlineUsers);
+        console.log(`🔍 [Config] Tem usersInfo?`, !!usersInfo[projetista]);
+        console.log(`🔍 [Config] usersInfo para este projetista:`, usersInfo[projetista]);
+        
+        // Tentar encontrar correspondência case-insensitive ou com espaços
+        const matchingOnlineUser = onlineUsers.find(u => 
+          u.toLowerCase().trim() === projetista.toLowerCase().trim()
+        );
+        
+        if (matchingOnlineUser) {
+          console.log(`✅ [Config] Encontrada correspondência: "${projetista}" <-> "${matchingOnlineUser}"`);
+          // Se encontrou correspondência mas não tem usersInfo, criar
+          if (!usersInfo[projetista] && usersInfo[matchingOnlineUser]) {
+            usersInfo[projetista] = usersInfo[matchingOnlineUser];
+            console.log(`✅ [Config] Copiado usersInfo de "${matchingOnlineUser}" para "${projetista}"`);
+          }
+          // Garantir que está na lista de online
+          if (!onlineUsers.includes(projetista)) {
+            onlineUsers.push(projetista);
+            console.log(`✅ [Config] Adicionado "${projetista}" à lista onlineUsers`);
+          }
+        }
+        
         if (!usersInfo[projetista]) {
           // Se não tem informação na tabela, verificar se está na lista de online
-          if (onlineUsers.includes(projetista)) {
+          if (onlineUsers.includes(projetista) || matchingOnlineUser) {
             usersInfo[projetista] = {
               status: 'online',
               loginTime: Date.now()
             };
+            console.log(`✅ [Config] Criado usersInfo online para "${projetista}"`);
           } else {
             // Se não está online e não tem registro, considerar offline
             usersInfo[projetista] = {
               status: 'offline'
             };
+            console.log(`⚠️ [Config] Criado usersInfo offline para "${projetista}"`);
           }
         }
       });
+      
+      console.log('✅ [Config] Estado final após garantir status:');
+      console.log('✅ [Config] onlineUsers:', onlineUsers);
+      console.log('✅ [Config] usersInfo:', usersInfo);
       
       console.log(`✅ [Config] Usuários online carregados: ${onlineUsers.length} online, ${Object.keys(usersInfo).length} com informações`);
     } catch (err) {
