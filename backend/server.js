@@ -116,90 +116,50 @@ async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
       // Isso garante que não haja múltiplos registros abertos para o mesmo usuário
       console.log(`🔍 [Supabase] Verificando registros abertos para ${nomeLimpo}...`);
       
-      try {
-        const { data: registrosAbertos, error: selectAbertosError } = await supabase
-          .from(nomeTabela)
-          .select('id')
-          .eq('nome_projetista', nomeLimpo)
-          .is('data_saida', null);
-        
-        if (selectAbertosError) {
-          console.error('❌ [Supabase] Erro ao verificar registros abertos:', selectAbertosError);
-          console.error('❌ [Supabase] Código:', selectAbertosError.code);
-          console.error('❌ [Supabase] Mensagem:', selectAbertosError.message);
-          console.error('❌ [Supabase] Detalhes:', selectAbertosError.details);
-          // Continuar mesmo com erro, tentar inserir mesmo assim
-        } else if (registrosAbertos && registrosAbertos.length > 0) {
-          console.log(`⚠️ [Supabase] Encontrados ${registrosAbertos.length} registro(s) aberto(s), fechando...`);
-          // Fechar todos os registros abertos com a data/hora atual
-          for (const registro of registrosAbertos) {
-            const { error: closeError } = await supabase
-              .from(nomeTabela)
-              .update({
-                data_saida: data,
-                hora_saida: hora,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', registro.id);
-            
-            if (closeError) {
-              console.error(`❌ [Supabase] Erro ao fechar registro ${registro.id}:`, closeError);
-            } else {
-              console.log(`✅ [Supabase] Registro ${registro.id} fechado`);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('❌ [Supabase] Exceção ao verificar registros abertos:', err);
-        // Continuar mesmo com erro
-      }
+        // A função RPC inserir_entrada_projetista já fecha registros anteriores automaticamente
+        // Não precisamos verificar manualmente aqui
       
       // Agora inserir nova entrada
-      console.log(`🔍 [Supabase] Inserindo nova entrada para ${nomeLimpo} na tabela "${nomeTabela}"...`);
+      // PROBLEMA: O nome da tabela "Entrada/Saída_Projetistas" contém caracteres especiais
+      // que causam erro PGRST125 no PostgREST. Usar função RPC como solução.
+      console.log(`🔍 [Supabase] Inserindo nova entrada para ${nomeLimpo} usando função RPC...`);
       console.log(`🔍 [Supabase] Dados a inserir:`, {
         nome_projetista: nomeLimpo,
         data_entrada: data,
-        hora_entrada: hora,
-        data_saida: null,
-        hora_saida: null
+        hora_entrada: hora
       });
       
-      // Tentar inserir usando o nome exato da tabela
-      const { data: insertData, error: insertError } = await supabase
-        .from(nomeTabela)
-        .insert({
-          nome_projetista: nomeLimpo,
-          data_entrada: data,
-          hora_entrada: hora,
-          data_saida: null,
-          hora_saida: null
-        })
-        .select();
+      // Usar função RPC para inserir (contorna problema com caracteres especiais no nome da tabela)
+      const { data: insertData, error: insertError } = await supabase.rpc('inserir_entrada_projetista', {
+        p_nome_projetista: nomeLimpo,
+        p_data_entrada: data,
+        p_hora_entrada: hora
+      });
       
       if (insertError) {
-        console.error('❌ [Supabase] Erro ao inserir entrada:', insertError);
+        console.error('❌ [Supabase] Erro ao inserir entrada via RPC:', insertError);
         console.error('❌ [Supabase] Código do erro:', insertError.code);
         console.error('❌ [Supabase] Mensagem:', insertError.message);
         console.error('❌ [Supabase] Detalhes:', insertError.details);
         console.error('❌ [Supabase] Hint:', insertError.hint);
-        console.error('❌ [Supabase] Nome da tabela usado:', nomeTabela);
         console.error('❌ [Supabase] Erro completo:', JSON.stringify(insertError, null, 2));
         
-        // Se o erro for sobre tabela não encontrada, tentar verificar se existe
-        if (insertError.code === 'PGRST116' || insertError.message?.includes('does not exist')) {
-          console.error('❌ [Supabase] TABELA NÃO ENCONTRADA! Verifique se a tabela foi criada corretamente no Supabase.');
-          console.error('❌ [Supabase] Execute o SQL em backend/sql/create_entrada_saida_projetistas_table.sql');
+        // Se a função RPC não existir, informar ao usuário
+        if (insertError.code === 'PGRST116' || insertError.message?.includes('does not exist') || insertError.message?.includes('function')) {
+          console.error('❌ [Supabase] FUNÇÃO RPC NÃO ENCONTRADA!');
+          console.error('❌ [Supabase] Execute o SQL em backend/sql/create_rpc_functions.sql');
+          console.error('❌ [Supabase] Isso é necessário porque o nome da tabela contém caracteres especiais');
         }
         
         return { success: false, error: insertError };
       }
       
       if (!insertData || insertData.length === 0) {
-        console.error('❌ [Supabase] Inserção retornou sem dados');
+        console.error('❌ [Supabase] Inserção via RPC retornou sem dados');
         return { success: false, error: 'Inserção retornou sem dados' };
       }
       
-      console.log(`✅ [Supabase] Entrada inserida com sucesso! ID: ${insertData[0].id}`);
+      console.log(`✅ [Supabase] Entrada inserida com sucesso via RPC! ID: ${insertData[0].id}`);
       console.log(`✅ [Supabase] Registro completo:`, JSON.stringify(insertData[0], null, 2));
       return { success: true, data: insertData };
     } else {
@@ -207,60 +167,40 @@ async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
       const nomeTabela = 'Entrada/Saída_Projetistas';
       const nomeLimpo = nomeProjetista.trim();
       
-      console.log(`🔍 [Supabase] Buscando registro aberto para ${nomeLimpo} na tabela "${nomeTabela}"...`);
-      const { data: registros, error: selectError } = await supabase
-        .from(nomeTabela)
-        .select('id')
-        .eq('nome_projetista', nomeLimpo)
-        .is('data_saida', null)
-        .order('created_at', { ascending: false })
-        .limit(1);
-      
-      if (selectError) {
-        console.error('❌ [Supabase] Erro ao buscar registro:', selectError);
-        console.error('❌ [Supabase] Código:', selectError.code);
-        console.error('❌ [Supabase] Mensagem:', selectError.message);
-        console.error('❌ [Supabase] Detalhes:', selectError.details);
-        console.error('❌ [Supabase] Nome da tabela usado:', nomeTabela);
-        return { success: false, error: selectError };
-      }
-      
-      if (!registros || registros.length === 0) {
-        console.warn(`⚠️ [Supabase] Nenhum registro de entrada encontrado para ${nomeLimpo}`);
-        return { success: false, error: 'Nenhum registro de entrada encontrado' };
-      }
-      
-      console.log(`🔍 [Supabase] Atualizando registro ${registros[0].id} com data/hora de saída...`);
+      // Usar função RPC para atualizar saída (contorna problema com caracteres especiais)
+      console.log(`🔍 [Supabase] Atualizando saída para ${nomeLimpo} usando função RPC...`);
       console.log(`🔍 [Supabase] Dados a atualizar:`, {
         data_saida: data,
         hora_saida: hora
       });
       
-      const { data: updateData, error: updateError } = await supabase
-        .from(nomeTabela)
-        .update({
-          data_saida: data,
-          hora_saida: hora,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', registros[0].id)
-        .select();
+      const { data: updateData, error: updateError } = await supabase.rpc('atualizar_saida_projetista', {
+        p_nome_projetista: nomeLimpo,
+        p_data_saida: data,
+        p_hora_saida: hora
+      });
       
       if (updateError) {
-        console.error('❌ [Supabase] Erro ao atualizar saída:', updateError);
+        console.error('❌ [Supabase] Erro ao atualizar saída via RPC:', updateError);
         console.error('❌ [Supabase] Código:', updateError.code);
         console.error('❌ [Supabase] Mensagem:', updateError.message);
         console.error('❌ [Supabase] Detalhes:', updateError.details);
-        console.error('❌ [Supabase] Nome da tabela usado:', nomeTabela);
+        
+        // Se a função RPC não existir, informar ao usuário
+        if (updateError.code === 'PGRST116' || updateError.message?.includes('does not exist') || updateError.message?.includes('function')) {
+          console.error('❌ [Supabase] FUNÇÃO RPC NÃO ENCONTRADA!');
+          console.error('❌ [Supabase] Execute o SQL em backend/sql/create_rpc_functions.sql');
+        }
+        
         return { success: false, error: updateError };
       }
       
       if (!updateData || updateData.length === 0) {
-        console.error('❌ [Supabase] Atualização retornou sem dados');
-        return { success: false, error: 'Atualização retornou sem dados' };
+        console.warn(`⚠️ [Supabase] Nenhum registro de entrada encontrado para ${nomeLimpo}`);
+        return { success: false, error: 'Nenhum registro de entrada encontrado' };
       }
       
-      console.log(`✅ [Supabase] Saída atualizada com sucesso! ID: ${updateData[0].id}`);
+      console.log(`✅ [Supabase] Saída atualizada com sucesso via RPC! ID: ${updateData[0].id}`);
       console.log(`✅ [Supabase] Registro completo:`, JSON.stringify(updateData[0], null, 2));
       return { success: true, data: updateData };
     }
@@ -5674,14 +5614,12 @@ app.get('/api/projetistas/entrada-saida', async (req, res) => {
     // Tentar buscar no Supabase primeiro
     if (supabase && isSupabaseAvailable()) {
       try {
-        const nomeTabela = 'Entrada/Saída_Projetistas';
-        console.log(`🔍 [API] Buscando dados de entrada/saída na tabela "${nomeTabela}"...`);
+        // Usar função RPC para buscar dados (contorna problema com caracteres especiais)
+        console.log(`🔍 [API] Buscando dados de entrada/saída usando função RPC...`);
         
-        const { data, error } = await supabase
-          .from(nomeTabela)
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(1000); // Limitar a 1000 registros mais recentes
+        const { data, error } = await supabase.rpc('buscar_entrada_saida_projetistas', {
+          p_limit: 1000
+        });
         
         if (error) {
           console.error('❌ [Supabase] Erro ao buscar entrada/saída:', error);
@@ -5690,10 +5628,10 @@ app.get('/api/projetistas/entrada-saida', async (req, res) => {
           console.error('❌ [Supabase] Detalhes:', error.details);
           console.error('❌ [Supabase] Nome da tabela usado:', nomeTabela);
           
-          // Se o erro for sobre tabela não encontrada
-          if (error.code === 'PGRST116' || error.message?.includes('does not exist')) {
-            console.error('❌ [Supabase] TABELA NÃO ENCONTRADA! Verifique se a tabela foi criada corretamente.');
-            console.error('❌ [Supabase] Execute o SQL em backend/sql/create_entrada_saida_projetistas_table.sql');
+          // Se a função RPC não existir, informar ao usuário
+          if (error.code === 'PGRST116' || error.message?.includes('does not exist') || error.message?.includes('function')) {
+            console.error('❌ [Supabase] FUNÇÃO RPC NÃO ENCONTRADA!');
+            console.error('❌ [Supabase] Execute o SQL em backend/sql/create_rpc_functions.sql');
           }
           
           throw error;
@@ -5703,7 +5641,7 @@ app.get('/api/projetistas/entrada-saida', async (req, res) => {
           entradaSaidaData = data;
           console.log(`✅ [API] ${data.length} registro(s) de entrada/saída encontrado(s)`);
         } else {
-          console.log(`⚠️ [API] Nenhum registro encontrado na tabela "${nomeTabela}"`);
+          console.log(`⚠️ [API] Nenhum registro encontrado`);
         }
       } catch (supabaseErr) {
         console.error('❌ [Supabase] Erro ao buscar entrada/saída:', supabaseErr);
