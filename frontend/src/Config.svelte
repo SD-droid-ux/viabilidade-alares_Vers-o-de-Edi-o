@@ -18,6 +18,7 @@
   let onlineUsersInterval = null;
   let lastOnlineUsersHash = ''; // Hash para detectar mudanças e ajustar polling
   let pollingInterval = 15000; // Intervalo inicial: 15 segundos (otimizado)
+  let forceUpdate = 0; // Forçar atualização do componente quando necessário
   let tabulacoesList = [
     'Aprovado Com Portas',
     'Aprovado Com Alívio de Rede/Cleanup',
@@ -74,20 +75,33 @@
       const savedOnlineUsers = localStorage.getItem('onlineUsers');
       if (savedOnlineUsers) {
         try {
-          onlineUsers = JSON.parse(savedOnlineUsers);
+          const parsed = JSON.parse(savedOnlineUsers);
+          onlineUsers = Array.isArray(parsed) ? parsed : [];
+          console.log('✅ [Config] onlineUsers carregado do localStorage:', onlineUsers);
         } catch (e) {
           console.warn('Erro ao carregar onlineUsers do localStorage:', e);
+          onlineUsers = [];
         }
+      } else {
+        console.log('⚠️ [Config] Nenhum onlineUsers encontrado no localStorage');
       }
       
       const savedUsersInfo = localStorage.getItem('usersInfo');
       if (savedUsersInfo) {
         try {
           usersInfo = JSON.parse(savedUsersInfo);
+          console.log('✅ [Config] usersInfo carregado do localStorage:', Object.keys(usersInfo).length, 'usuários');
         } catch (e) {
           console.warn('Erro ao carregar usersInfo do localStorage:', e);
+          usersInfo = {};
         }
+      } else {
+        console.log('⚠️ [Config] Nenhum usersInfo encontrado no localStorage');
       }
+      
+      // Forçar atualização inicial após carregar do localStorage
+      forceUpdate = forceUpdate + 1;
+      console.log('🔄 [Config] Forçando atualização inicial após carregar do localStorage');
     } catch (err) {
       console.error('Erro ao carregar do localStorage:', err);
     }
@@ -498,8 +512,12 @@
         console.warn('Erro ao salvar onlineUsers/usersInfo no localStorage:', e);
       }
       
+      // Forçar atualização do componente para garantir que o indicador seja atualizado
+      forceUpdate = forceUpdate + 1;
+      
       console.log(`✅ [Config] Usuários online carregados: ${onlineUsers.length} online, ${Object.keys(usersInfo).length} com informações`);
       console.log(`⏱️ [Config] Próximo polling em: ${pollingInterval / 1000}s`);
+      console.log(`🔄 [Config] Forçando atualização do componente (forceUpdate: ${forceUpdate})`);
     } catch (err) {
       console.error('Erro ao carregar usuários online:', err);
     }
@@ -507,13 +525,32 @@
   
   // Função auxiliar para verificar se um projetista está online (com correspondência case-insensitive)
   function isProjetistaOnline(projetista) {
-    if (!projetista || !Array.isArray(onlineUsers)) return false;
+    if (!projetista) {
+      console.log(`🔍 [isProjetistaOnline] projetista inválido:`, projetista);
+      return false;
+    }
+    
+    if (!Array.isArray(onlineUsers)) {
+      console.log(`🔍 [isProjetistaOnline] onlineUsers não é array:`, onlineUsers);
+      return false;
+    }
     
     // Verificação exata primeiro
-    if (onlineUsers.includes(projetista)) return true;
+    if (onlineUsers.includes(projetista)) {
+      console.log(`✅ [isProjetistaOnline] "${projetista}" encontrado exatamente em onlineUsers`);
+      return true;
+    }
     
     // Verificação case-insensitive
-    return onlineUsers.some(u => u.toLowerCase().trim() === projetista.toLowerCase().trim());
+    const found = onlineUsers.some(u => u.toLowerCase().trim() === projetista.toLowerCase().trim());
+    if (found) {
+      const matchingUser = onlineUsers.find(u => u.toLowerCase().trim() === projetista.toLowerCase().trim());
+      console.log(`✅ [isProjetistaOnline] "${projetista}" encontrado (case-insensitive) como "${matchingUser}"`);
+    } else {
+      console.log(`❌ [isProjetistaOnline] "${projetista}" NÃO encontrado em onlineUsers:`, onlineUsers);
+    }
+    
+    return found;
   }
   
   // Função para obter texto do tooltip baseado no status do usuário
@@ -1450,11 +1487,13 @@
                   >
                     {projetista}
                   </span>
-                  {#if isProjetistaOnline(projetista)}
-                    <span class="online-indicator" title="Online">🟢</span>
-                  {:else}
-                    <span class="offline-indicator" title="Offline">🔴</span>
-                  {/if}
+                  {#key forceUpdate}
+                    {#if isProjetistaOnline(projetista)}
+                      <span class="online-indicator" title="Online">🟢</span>
+                    {:else}
+                      <span class="offline-indicator" title="Offline">🔴</span>
+                    {/if}
+                  {/key}
                 </div>
                 {#if userTipo === 'admin'}
                   <div class="projetista-actions">
