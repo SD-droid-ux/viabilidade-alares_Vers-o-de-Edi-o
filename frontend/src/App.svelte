@@ -284,9 +284,12 @@
     let dotsInterval = null;
     
     try {
-      // IMPORTANTE: Definir isLoading PRIMEIRO para mostrar a tela de loading imediatamente
+      // IMPORTANTE: Definir isLoading PRIMEIRO e NÃO definir isLoggedIn ainda
+      // Isso garante que a tela de loading apareça antes de qualquer outra coisa
       isLoading = true;
       loadingMessage = 'Carregando Dashboard.';
+      
+      console.log('🔄 [Login] Iniciando loading:', { isLoading, isLoggedIn, currentView });
       
       // Carregar nome do usuário e tipo do localStorage
       try {
@@ -298,11 +301,23 @@
         console.error('Erro ao carregar usuário:', err);
       }
       
-      // Definir isLoggedIn após carregar dados
+      // Aguardar múltiplos ticks para garantir que o Svelte atualize o DOM completamente
+      await tick();
+      await tick();
+      
+      // Aguardar um pouco mais para garantir que a tela de loading seja renderizada e visível
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      console.log('🔄 [Login] Após aguardar renderização:', { isLoading, isLoggedIn, currentView });
+      
+      // AGORA definir isLoggedIn após garantir que o loading está visível
+      // Mas manter isLoading = true para continuar mostrando o loading
       isLoggedIn = true;
       
-      // Aguardar tick para garantir que o Svelte atualize o DOM e mostre a tela de loading
+      // Aguardar mais um tick após definir isLoggedIn
       await tick();
+      
+      console.log('🔄 [Login] Após definir isLoggedIn:', { isLoading, isLoggedIn, currentView });
       
       // Animar "Carregando Dashboard" com três pontinhos
       dotsInterval = animateDots('Carregando Dashboard', (message) => {
@@ -352,9 +367,8 @@
         }
       }
       
-      // Se não há hash ou ferramenta inválida, mostrar Dashboard
-      // Definir currentView ANTES de ocultar o loading
-      currentView = 'dashboard';
+      // Se não há hash ou ferramenta inválida, preparar Dashboard
+      // MAS NÃO definir currentView ainda - manter como null para garantir que o loading continue visível
       currentTool = null;
       isToolInNewTab = false; // Dashboard não está em nova aba
       
@@ -364,6 +378,9 @@
       // Aguardar um pouco mais para garantir que tudo está carregado
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      // AGORA definir currentView como 'dashboard' ANTES de ocultar o loading
+      currentView = 'dashboard';
+      
       // Aguardar tick para garantir que o Svelte atualize o DOM
       await tick();
       
@@ -371,6 +388,8 @@
       if (!currentView || currentView === null) {
         currentView = 'dashboard';
       }
+      
+      console.log('🔄 [Login] Antes de ocultar loading:', { isLoading, isLoggedIn, currentView });
       
       // Ocultar loading e mostrar Dashboard
       isLoading = false;
