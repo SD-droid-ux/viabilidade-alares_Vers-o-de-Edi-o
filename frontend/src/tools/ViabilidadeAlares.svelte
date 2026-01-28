@@ -122,7 +122,6 @@
   let resizeStartMapHeight = 0;
   let resizeStartX = 0;
   let resizeStartY = 0;
-  let rafId = null; // Para requestAnimationFrame
 
   // Reactive statements para estilos
   $: sidebarWidthStyle = `${sidebarWidth}px`;
@@ -547,99 +546,59 @@
     e.preventDefault();
     e.stopPropagation();
     
-    // Cancelar qualquer requestAnimationFrame pendente
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-    }
+    const clientY = e.clientY || e.touches?.[0]?.clientY || resizeStartY;
+    const deltaY = clientY - resizeStartY;
+    const newHeight = resizeStartMapHeight + deltaY; // Usar pixels diretamente
     
-    // Usar requestAnimationFrame para melhor performance e reatividade
-    rafId = requestAnimationFrame(() => {
-      const clientY = e.clientY || e.touches?.[0]?.clientY || resizeStartY;
-      const deltaY = clientY - resizeStartY;
-      const newHeight = resizeStartMapHeight + deltaY;
-      
-      const container = document.querySelector('.main-area');
-      if (!container) return;
-      
-      const containerRect = container.getBoundingClientRect();
-      const containerHeight = containerRect.height;
-      
-      // Calcular o máximo de altura garantindo que a lista sempre fique visível
-      // Usar cálculo baseado na altura total do container, igual ao AnaliseCobertura.svelte
-      let maxHeight;
-      if (isListMinimized) {
-        // Quando a lista está minimizada, calcular baseado na posição real dela
-        // Isso garante que ela sempre fique visível no final da tela
-        const listElement = document.querySelector('.results-list-container.minimized, .empty-state.minimized');
-        if (listElement) {
-          // Obter posições relativas ao container
-          const listRect = listElement.getBoundingClientRect();
-          const containerTop = containerRect.top;
-          const listTop = listRect.top;
-          
-          // Calcular altura máxima baseado na posição da lista
-          // Altura máxima = posição da lista - topo do container - gap
-          const gap = 12; // 0.75rem = 12px (gap entre elementos)
-          const calculatedMaxHeight = listTop - containerTop - gap;
-          
-          // Também calcular limite fixo como fallback
-          const minSpaceForList = 90; // 60px lista + 8px handle + 12px gap + 10px margem
-          const fixedMaxHeight = containerHeight - minSpaceForList;
-          
-          // Usar o MENOR valor entre os dois cálculos para garantir que a lista não saia da tela
-          maxHeight = Math.max(Math.min(calculatedMaxHeight, fixedMaxHeight), 300);
-          
-          // Verificação adicional: garantir que a lista não saia da viewport
-          const viewportHeight = window.innerHeight;
-          if (listRect.bottom > viewportHeight) {
-            // Se a lista está saindo da viewport, reduzir o maxHeight
-            const overflow = listRect.bottom - viewportHeight;
-            maxHeight = Math.max(maxHeight - overflow - 20, 300); // 20px de margem extra de segurança
-          }
-        } else {
-          // Fallback: usar cálculo fixo se não encontrar a lista
-          const minSpaceForList = 90; // Mesmo valor usado no AnaliseCobertura.svelte
-          maxHeight = Math.max(containerHeight - minSpaceForList, 300);
-        }
+    // Limites: mínimo 300px, máximo baseado no container
+    const container = document.querySelector('.main-area');
+    const containerHeight = container ? container.getBoundingClientRect().height : 800;
+    
+    // Se a lista estiver minimizada, permitir que o mapa ocupe quase todo o espaço
+    // Deixar apenas espaço para a lista minimizada (~60px) + handle (~8px) + gap (~12px) + margem (~10px) = ~90px
+    const minSpaceForList = isListMinimized ? 90 : 200; // 90px quando minimizada, 200px quando expandida
+    const maxHeight = Math.max(containerHeight - minSpaceForList, 300);
+    const clampedHeight = Math.max(300, Math.min(maxHeight, newHeight));
+    
+    // Atualizar diretamente - Svelte detecta automaticamente
+    mapHeightPixels = clampedHeight;
+    
+    // Forçar atualização do DOM diretamente também
+    const mapElement = document.querySelector('.map-container');
+    const listElement = document.querySelector('.results-list-container, .empty-state');
+    if (mapElement) {
+      // Respeitar o estado minimizado do mapa ao redimensionar
+      if (isMapMinimized) {
+        // Se o mapa está minimizado, manter altura minimizada
+        mapElement.style.height = '60px';
+        mapElement.style.flex = '0 0 auto';
+        mapElement.style.minHeight = '60px';
       } else {
-        // Quando a lista está expandida, deixar espaço mínimo para ela
-        maxHeight = Math.max(containerHeight - 200, 300);
-      }
-      
-      const clampedHeight = Math.max(300, Math.min(maxHeight, newHeight));
-      
-      // Atualizar diretamente - Svelte detecta automaticamente
-      mapHeightPixels = clampedHeight;
-      
-      // Forçar atualização do DOM diretamente também para melhor performance
-      const mapElement = document.querySelector('.map-container');
-      const listElement = document.querySelector('.results-list-container, .empty-state');
-      
-      if (mapElement && !isMapMinimized) {
-        // Aplicar altura calculada diretamente no DOM para resposta imediata
+        // Se o mapa está expandido, aplicar altura calculada
         mapElement.style.height = `${clampedHeight}px`;
         mapElement.style.flex = '0 0 auto';
         mapElement.style.minHeight = `${clampedHeight}px`;
       }
-      
-      if (listElement) {
-        if (isListMinimized) {
-          // Garantir que a lista mantenha altura fixa quando minimizada
-          listElement.style.flex = '0 0 60px';
-          listElement.style.minHeight = '60px';
-          listElement.style.maxHeight = '60px';
-          listElement.style.height = '60px';
-        } else {
-          // Se a lista está expandida, ocupar o resto do espaço
-          listElement.style.flex = '1 1 auto';
-          listElement.style.minHeight = '200px';
-          listElement.style.maxHeight = 'none';
-          listElement.style.height = 'auto';
-        }
+    }
+    if (listElement) {
+      // Respeitar o estado minimizado da lista ao redimensionar
+      if (isListMinimized) {
+        // Se a lista está minimizada, manter estilos minimizados
+        listElement.style.flex = '0 0 auto';
+        listElement.style.minHeight = '60px';
+      } else {
+        // Se a lista está expandida, ocupar o resto do espaço
+        listElement.style.flex = '1 1 auto';
+        listElement.style.minHeight = '200px';
       }
-      
-      rafId = null;
-    });
+    }
+    
+    // Salvar no localStorage a cada movimento (sem await para não bloquear)
+    try {
+      localStorage.setItem('viabilidadeAlares_mapHeight', clampedHeight.toString());
+    } catch (err) {
+      console.warn('Erro ao salvar altura do mapa:', err);
+    }
   }
 
   function stopResizeMapTable() {
@@ -651,20 +610,7 @@
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
     
-    // Cancelar qualquer requestAnimationFrame pendente
-    if (rafId !== null) {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
-    
-    // Salvar altura final no localStorage
-    try {
-      localStorage.setItem('viabilidadeAlares_mapHeight', mapHeightPixels.toString());
-    } catch (err) {
-      console.warn('Erro ao salvar altura do mapa:', err);
-    }
-    
-    // Redimensionar o mapa do Google Maps após ajuste
+    // Redimensionar o mapa após ajuste
     if (map && google?.maps) {
       setTimeout(() => {
         google.maps.event.trigger(map, 'resize');
