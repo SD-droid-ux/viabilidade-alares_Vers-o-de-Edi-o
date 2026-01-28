@@ -564,21 +564,13 @@
       const containerRect = container.getBoundingClientRect();
       const containerHeight = containerRect.height;
       
-      // Calcular o máximo de altura baseado na posição real da lista minimizada
+      // Calcular o máximo de altura garantindo que a lista sempre fique visível
       let maxHeight;
       if (isListMinimized) {
-        // Quando a lista está minimizada, calcular baseado na posição real dela
-        const listElement = document.querySelector('.results-list-container.minimized, .empty-state.minimized');
-        if (listElement) {
-          const listRect = listElement.getBoundingClientRect();
-          const containerTop = containerRect.top;
-          const listTop = listRect.top;
-          // Altura máxima = posição da lista - topo do container - gap
-          maxHeight = Math.max(listTop - containerTop - 12, 300); // 12px é o gap
-        } else {
-          // Fallback: calcular baseado no espaço disponível
-          maxHeight = Math.max(containerHeight - 80, 300); // 60px lista + 8px handle + 12px gap
-        }
+        // Quando a lista está minimizada, calcular baseado na altura total do container
+        // Espaço necessário: 60px (lista) + 8px (handle) + 12px (gap) = 80px
+        // O mapa pode ocupar até containerHeight - 80px, garantindo que a lista fique no final
+        maxHeight = Math.max(containerHeight - 80, 300);
       } else {
         // Quando a lista está expandida, deixar espaço mínimo para ela
         maxHeight = Math.max(containerHeight - 200, 300);
