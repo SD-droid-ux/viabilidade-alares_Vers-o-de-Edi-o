@@ -1647,11 +1647,13 @@ app.get('/api/ctos/search', async (req, res) => {
           cidade: row.cid_rede || '',
           pop: row.pop || '',
           id: row.id_cto || row.id?.toString() || '',
+          id_cto: row.id_cto || row.id?.toString() || '',
           is_condominio: false,
           status_cto: row.status_cto || '',
           olt: row.olt || '',
           slot: row.slot || '',
-          pon: row.pon || ''
+          pon: row.pon || '',
+          data_criacao: row.data_cadastro || row.data_criacao || row.created_at || ''
         }));
         
         console.log(`✅ [API] ${ctos.length} CTOs encontradas com nome "${nome}"`);
