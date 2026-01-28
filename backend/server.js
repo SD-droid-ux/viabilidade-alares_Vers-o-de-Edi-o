@@ -1548,13 +1548,88 @@ app.get('/api/ctos/search', async (req, res) => {
     
     if (supabase && isSupabaseAvailable()) {
       try {
-        // Buscar CTOs por nome (case-insensitive, busca parcial)
+        // Estratégia de busca: primeiro tentar busca exata, depois parcial mais precisa
         // Usar nomeEscapado para garantir que caracteres especiais como \ funcionem corretamente
-        const { data, error } = await supabase
+        
+        // ETAPA 1: Busca exata (case-insensitive)
+        let { data, error } = await supabase
           .from('ctos')
           .select('*')
-          .ilike('cto', `%${nomeEscapado}%`)
-          .limit(100); // Limitar a 100 resultados
+          .ilike('cto', nomeEscapado) // Busca exata (sem % no início e fim)
+          .limit(100);
+        
+        if (error) {
+          console.error('❌ [API] Erro ao buscar CTOs (exata):', error);
+          throw error;
+        }
+        
+        // Se encontrou resultados com busca exata, usar esses
+        if (data && data.length > 0) {
+          console.log(`✅ [API] ${data.length} CTO(s) encontrada(s) com busca EXATA para "${nomeLimpo}"`);
+        } else {
+          // ETAPA 2: Se não encontrou com busca exata, tentar busca parcial mais precisa
+          // Usar padrão que evita pegar substrings no meio de números
+          // Exemplo: "CTO \ ITA 131" não deve pegar "CTO \ ITA 1310"
+          // Vamos usar busca que procura o nome completo como palavra (com espaços ou fim de string)
+          const nomeEscapadoComBoundaries = `${nomeEscapado}(\\s|$|\\\\)`;
+          
+          // Tentar busca parcial, mas filtrar resultados para garantir que não pegue substrings indesejadas
+          const { data: partialData, error: partialError } = await supabase
+            .from('ctos')
+            .select('*')
+            .ilike('cto', `%${nomeEscapado}%`)
+            .limit(200); // Buscar mais para filtrar depois
+          
+          if (partialError) {
+            console.error('❌ [API] Erro ao buscar CTOs (parcial):', partialError);
+            throw partialError;
+          }
+          
+          // Filtrar resultados para garantir correspondência exata do nome (ignorando case)
+          // Isso evita que "CTO \ ITA 131" pegue "CTO \ ITA 1310", "CTO \ ITA 1311", etc.
+          if (partialData && partialData.length > 0) {
+            const nomeLimpoLower = nomeLimpo.toLowerCase().trim();
+            data = partialData.filter(row => {
+              const ctoNome = (row.cto || '').toLowerCase().trim();
+              
+              // Verificar correspondência exata
+              if (ctoNome === nomeLimpoLower) {
+                return true;
+              }
+              
+              // Verificar se o nome da CTO começa com o nome pesquisado
+              if (ctoNome.startsWith(nomeLimpoLower)) {
+                const charAfter = ctoNome[nomeLimpoLower.length];
+                
+                // Se não há caractere depois (fim de string), é válido
+                if (!charAfter) {
+                  return true;
+                }
+                
+                // Se o caractere depois é espaço, barra invertida, ou qualquer coisa que NÃO seja dígito, é válido
+                // Isso evita que "131" pegue "1310", "1311", etc.
+                if (charAfter === ' ' || charAfter === '\\' || !/\d/.test(charAfter)) {
+                  return true;
+                }
+                
+                // Se o caractere depois é um dígito, rejeitar (evita pegar "1310" quando pesquisa "131")
+                return false;
+              }
+              
+              return false;
+            });
+            
+            // Limitar a 100 resultados após filtro
+            if (data.length > 100) {
+              data = data.slice(0, 100);
+            }
+            
+            console.log(`✅ [API] ${data.length} CTO(s) encontrada(s) com busca PARCIAL FILTRADA para "${nomeLimpo}" (de ${partialData.length} resultados iniciais)`);
+          } else {
+            data = [];
+            console.log(`⚠️ [API] Nenhuma CTO encontrada para "${nomeLimpo}"`);
+          }
+        }
         
         if (error) {
           console.error('❌ [API] Erro ao buscar CTOs:', error);
