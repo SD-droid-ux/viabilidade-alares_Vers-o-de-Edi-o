@@ -122,6 +122,7 @@
   let resizeStartMapHeight = 0;
   let resizeStartX = 0;
   let resizeStartY = 0;
+  let rafId = null; // Para requestAnimationFrame
 
   // Reactive statements para estilos
   $: sidebarWidthStyle = `${sidebarWidth}px`;
@@ -546,62 +547,77 @@
     e.preventDefault();
     e.stopPropagation();
     
-    const clientY = e.clientY || e.touches?.[0]?.clientY || resizeStartY;
-    const deltaY = clientY - resizeStartY;
-    const newHeight = resizeStartMapHeight + deltaY;
+    // Cancelar qualquer requestAnimationFrame pendente
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+    }
     
-    const container = document.querySelector('.main-area');
-    const containerHeight = container ? container.getBoundingClientRect().height : 800;
-    
-    // Se a lista estiver minimizada, permitir que o mapa ocupe quase todo o espaço
-    // Deixar apenas espaço para a lista minimizada (~60px) + handle (~8px) + gap (~12px) = ~80px
-    // Mas permitir que o usuário arraste até quase o final, deixando apenas o espaço mínimo necessário
-    const minSpaceForList = isListMinimized ? 80 : 200; // 80px quando minimizada, 200px quando expandida
-    const maxHeight = Math.max(containerHeight - minSpaceForList, 300);
-    const clampedHeight = Math.max(300, Math.min(maxHeight, newHeight));
-    
-    // Atualizar diretamente - Svelte detecta automaticamente
-    mapHeightPixels = clampedHeight;
-    
-    // Forçar atualização do DOM diretamente também
-    const mapElement = document.querySelector('.map-container');
-    const listElement = document.querySelector('.results-list-container, .empty-state');
-    if (mapElement) {
-      // Respeitar o estado minimizado do mapa ao redimensionar
-      if (isMapMinimized) {
-        // Se o mapa está minimizado, manter altura minimizada
-        mapElement.style.height = '60px';
-        mapElement.style.flex = '0 0 auto';
-        mapElement.style.minHeight = '60px';
+    // Usar requestAnimationFrame para melhor performance e reatividade
+    rafId = requestAnimationFrame(() => {
+      const clientY = e.clientY || e.touches?.[0]?.clientY || resizeStartY;
+      const deltaY = clientY - resizeStartY;
+      const newHeight = resizeStartMapHeight + deltaY;
+      
+      const container = document.querySelector('.main-area');
+      if (!container) return;
+      
+      const containerRect = container.getBoundingClientRect();
+      const containerHeight = containerRect.height;
+      
+      // Calcular o máximo de altura baseado na posição real da lista minimizada
+      let maxHeight;
+      if (isListMinimized) {
+        // Quando a lista está minimizada, calcular baseado na posição real dela
+        const listElement = document.querySelector('.results-list-container.minimized, .empty-state.minimized');
+        if (listElement) {
+          const listRect = listElement.getBoundingClientRect();
+          const containerTop = containerRect.top;
+          const listTop = listRect.top;
+          // Altura máxima = posição da lista - topo do container - gap
+          maxHeight = Math.max(listTop - containerTop - 12, 300); // 12px é o gap
+        } else {
+          // Fallback: calcular baseado no espaço disponível
+          maxHeight = Math.max(containerHeight - 80, 300); // 60px lista + 8px handle + 12px gap
+        }
       } else {
-        // Se o mapa está expandido, aplicar altura calculada
+        // Quando a lista está expandida, deixar espaço mínimo para ela
+        maxHeight = Math.max(containerHeight - 200, 300);
+      }
+      
+      const clampedHeight = Math.max(300, Math.min(maxHeight, newHeight));
+      
+      // Atualizar diretamente - Svelte detecta automaticamente
+      mapHeightPixels = clampedHeight;
+      
+      // Forçar atualização do DOM diretamente também para melhor performance
+      const mapElement = document.querySelector('.map-container');
+      const listElement = document.querySelector('.results-list-container, .empty-state');
+      
+      if (mapElement && !isMapMinimized) {
+        // Aplicar altura calculada diretamente no DOM para resposta imediata
         mapElement.style.height = `${clampedHeight}px`;
         mapElement.style.flex = '0 0 auto';
         mapElement.style.minHeight = `${clampedHeight}px`;
       }
-    }
-    if (listElement) {
-      // Respeitar o estado minimizado da lista ao redimensionar
-      if (isListMinimized) {
-        // Se a lista está minimizada, manter estilos minimizados com altura fixa
-        listElement.style.flex = '0 0 60px';
-        listElement.style.minHeight = '60px';
-        listElement.style.maxHeight = '60px';
-        listElement.style.height = '60px';
-      } else {
-        // Se a lista está expandida, ocupar o resto do espaço
-        listElement.style.flex = '1 1 auto';
-        listElement.style.minHeight = '200px';
-        listElement.style.maxHeight = 'none';
-        listElement.style.height = 'auto';
+      
+      if (listElement) {
+        if (isListMinimized) {
+          // Garantir que a lista mantenha altura fixa quando minimizada
+          listElement.style.flex = '0 0 60px';
+          listElement.style.minHeight = '60px';
+          listElement.style.maxHeight = '60px';
+          listElement.style.height = '60px';
+        } else {
+          // Se a lista está expandida, ocupar o resto do espaço
+          listElement.style.flex = '1 1 auto';
+          listElement.style.minHeight = '200px';
+          listElement.style.maxHeight = 'none';
+          listElement.style.height = 'auto';
+        }
       }
-    }
-    
-    try {
-      localStorage.setItem('viabilidadeAlares_mapHeight', clampedHeight.toString());
-    } catch (err) {
-      console.warn('Erro ao salvar altura do mapa:', err);
-    }
+      
+      rafId = null;
+    });
   }
 
   function stopResizeMapTable() {
@@ -613,6 +629,20 @@
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
     
+    // Cancelar qualquer requestAnimationFrame pendente
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    
+    // Salvar altura final no localStorage
+    try {
+      localStorage.setItem('viabilidadeAlares_mapHeight', mapHeightPixels.toString());
+    } catch (err) {
+      console.warn('Erro ao salvar altura do mapa:', err);
+    }
+    
+    // Redimensionar o mapa do Google Maps após ajuste
     if (map && google?.maps) {
       setTimeout(() => {
         google.maps.event.trigger(map, 'resize');
