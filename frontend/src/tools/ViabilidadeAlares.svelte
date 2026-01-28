@@ -3286,6 +3286,241 @@
     };
   }
 
+  // Função para atualizar visibilidade de CTOs no mapa baseado em ctoVisibility
+  async function updateMapVisibility() {
+    if (!map || !ctosRua || ctosRua.length === 0) return;
+    
+    // Remover marcadores e rotas de CTOs que não estão mais visíveis
+    const markersToRemove = [];
+    const routesToRemove = [];
+    
+    // Verificar cada CTO e remover marcador/rota se não estiver visível
+    for (let i = 0; i < ctosRua.length; i++) {
+      const cto = ctosRua[i];
+      const ctoKey = getCTOKey(cto);
+      const isVisible = ctoVisibility.get(ctoKey) !== false;
+      
+      if (!isVisible) {
+        // CTO não está visível, remover marcador e rota
+        // Encontrar marcador associado a esta CTO
+        const ctoMarker = markers.find((marker, idx) => {
+          // Verificar se o marcador está na mesma posição da CTO
+          const markerPos = marker.getPosition();
+          if (!markerPos) return false;
+          
+          const markerLat = markerPos.lat();
+          const markerLng = markerPos.lng();
+          const ctoLat = parseFloat(cto.latitude);
+          const ctoLng = parseFloat(cto.longitude);
+          
+          // Comparar coordenadas (com tolerância de 0.0001 graus ≈ 11 metros)
+          const latDiff = Math.abs(markerLat - ctoLat);
+          const lngDiff = Math.abs(markerLng - ctoLng);
+          
+          return latDiff < 0.0001 && lngDiff < 0.0001;
+        });
+        
+        if (ctoMarker) {
+          markersToRemove.push(ctoMarker);
+        }
+        
+        // Encontrar rota associada a esta CTO
+        const routeInfo = routeData.find(rd => {
+          const rdCto = rd.cto;
+          if (!rdCto) return false;
+          
+          const rdCtoKey = getCTOKey(rdCto);
+          return rdCtoKey === ctoKey;
+        });
+        
+        if (routeInfo && routeInfo.polyline) {
+          routesToRemove.push(routeInfo.polyline);
+          // Remover do routeData também
+          const routeDataIndex = routeData.findIndex(rd => rd === routeInfo);
+          if (routeDataIndex !== -1) {
+            routeData.splice(routeDataIndex, 1);
+          }
+        }
+      }
+    }
+    
+    // Remover marcadores do mapa e do array
+    markersToRemove.forEach(marker => {
+      marker.setMap(null);
+      const markerIndex = markers.findIndex(m => m === marker);
+      if (markerIndex !== -1) {
+        markers.splice(markerIndex, 1);
+      }
+    });
+    
+    // Remover rotas do mapa e do array
+    routesToRemove.forEach(route => {
+      route.setMap(null);
+      const routeIndex = routes.findIndex(r => r === route);
+      if (routeIndex !== -1) {
+        routes.splice(routeIndex, 1);
+      }
+    });
+    
+    // Adicionar marcadores e rotas de CTOs que agora estão visíveis mas não estão no mapa
+    for (let i = 0; i < ctosRua.length; i++) {
+      const cto = ctosRua[i];
+      const ctoKey = getCTOKey(cto);
+      const isVisible = ctoVisibility.get(ctoKey) !== false;
+      
+      if (isVisible) {
+        // Verificar se o marcador já existe no mapa
+        const ctoLat = parseFloat(cto.latitude);
+        const ctoLng = parseFloat(cto.longitude);
+        
+        if (isNaN(ctoLat) || isNaN(ctoLng)) continue;
+        
+        const markerExists = markers.some(marker => {
+          if (marker === clientMarker) return false; // Ignorar marcador do cliente
+          const markerPos = marker.getPosition();
+          if (!markerPos) return false;
+          
+          const markerLat = markerPos.lat();
+          const markerLng = markerPos.lng();
+          
+          const latDiff = Math.abs(markerLat - ctoLat);
+          const lngDiff = Math.abs(markerLng - ctoLng);
+          
+          return latDiff < 0.0001 && lngDiff < 0.0001;
+        });
+        
+        const routeExists = routeData.some(rd => {
+          const rdCto = rd.cto;
+          if (!rdCto) return false;
+          const rdCtoKey = getCTOKey(rdCto);
+          return rdCtoKey === ctoKey;
+        });
+        
+        // Se não existe marcador, criar
+        if (!markerExists) {
+          // Encontrar o índice da CTO no array ctos completo
+          const ctoIndex = ctos.findIndex(c => getCTOKey(c) === ctoKey);
+          if (ctoIndex !== -1) {
+            // Criar marcador usando a mesma lógica de drawRoutesAndMarkers
+            await createCTOMarker(ctos[ctoIndex], ctoIndex);
+          }
+        }
+        
+        // Se não existe rota e a CTO precisa de rota, criar
+        if (!routeExists && !cto.is_condominio && cto.distancia_metros && cto.distancia_metros > 0 && cto.distancia_real) {
+          const ctoIndex = ctos.findIndex(c => getCTOKey(c) === ctoKey);
+          if (ctoIndex !== -1) {
+            await drawRealRoute(ctos[ctoIndex], ctoIndex);
+          }
+        }
+      }
+    }
+    
+    // Atualizar numeração dos marcadores
+    ctoNumbersVersion++;
+    await tick();
+  }
+  
+  // Função auxiliar para criar marcador de CTO (extraída da lógica de drawRoutesAndMarkers)
+  async function createCTOMarker(cto, index) {
+    if (!map || !cto) return;
+    
+    const ctoLat = parseFloat(cto.latitude);
+    const ctoLng = parseFloat(cto.longitude);
+    
+    if (isNaN(ctoLat) || isNaN(ctoLng)) return;
+    
+    const originalPosition = { lat: ctoLat, lng: ctoLng };
+    const isPredio = cto.is_condominio === true;
+    
+    // Determinar cor e ícone (mesma lógica de drawRoutesAndMarkers)
+    let ctoColor;
+    if (isPredio) {
+      const statusCto = cto.status_cto_condominio || cto.condominio_data?.status_cto || '';
+      const isAtivado = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
+      ctoColor = isAtivado ? '#28A745' : '#95A5A6';
+    } else {
+      ctoColor = getCTOColor(cto.pct_ocup || 0);
+    }
+    
+    // Criar ícone
+    let iconConfig;
+    if (isPredio) {
+      const statusCto = cto.status_cto_condominio || cto.condominio_data?.status_cto || '';
+      const isAtivado = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
+      const windowColor = isAtivado ? '#28A745' : '#95A5A6';
+      const strokeColor = isAtivado ? '#1E7E34' : '#7F8C8D';
+      
+      const svgContent = `
+        <svg width="24" height="32" viewBox="0 0 24 32" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="4" width="20" height="26" fill="#F5F5F5" stroke="${strokeColor}" stroke-width="1.5"/>
+          <rect x="4" y="6" width="4" height="4" fill="${windowColor}"/>
+          <rect x="10" y="6" width="4" height="4" fill="${windowColor}"/>
+          <rect x="16" y="6" width="4" height="4" fill="${windowColor}"/>
+          <rect x="4" y="11" width="4" height="4" fill="${windowColor}"/>
+          <rect x="10" y="11" width="4" height="4" fill="${windowColor}"/>
+          <rect x="16" y="11" width="4" height="4" fill="${windowColor}"/>
+          <rect x="4" y="16" width="4" height="4" fill="${windowColor}"/>
+          <rect x="10" y="16" width="4" height="4" fill="${windowColor}"/>
+          <rect x="16" y="16" width="4" height="4" fill="${windowColor}"/>
+          <rect x="4" y="21" width="4" height="4" fill="${windowColor}"/>
+          <rect x="10" y="21" width="4" height="4" fill="${windowColor}"/>
+          <rect x="16" y="21" width="4" height="4" fill="${windowColor}"/>
+          <rect x="4" y="26" width="4" height="4" fill="${windowColor}"/>
+          <rect x="10" y="26" width="4" height="4" fill="${windowColor}"/>
+          <rect x="16" y="26" width="4" height="4" fill="${windowColor}"/>
+          <path d="M 8 30 Q 12 26, 16 30" stroke="${strokeColor}" stroke-width="1.5" fill="none"/>
+          <line x1="8" y1="30" x2="16" y2="30" stroke="${strokeColor}" stroke-width="1.5"/>
+        </svg>
+      `.trim();
+      
+      const svgDataUri = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svgContent);
+      iconConfig = {
+        url: svgDataUri,
+        scaledSize: new google.maps.Size(24, 32),
+        anchor: new google.maps.Point(12, 32),
+        origin: new google.maps.Point(0, 0)
+      };
+    } else {
+      // Contar quantos marcadores já existem (exceto clientMarker) para numeração
+      const existingMarkersCount = markers.filter(m => m !== clientMarker).length;
+      const markerNumber = existingMarkersCount + 1;
+      
+      iconConfig = {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 18,
+        fillColor: ctoColor,
+        fillOpacity: 1,
+        strokeColor: '#000000',
+        strokeWeight: 3,
+        anchor: new google.maps.Point(0, 0)
+      };
+    }
+    
+    const ctoMarker = new google.maps.Marker({
+      position: originalPosition,
+      map: map,
+      title: isPredio 
+        ? `🏢 ${cto.nome} (PRÉDIO) - ${cto.distancia_metros}m - Não cria rota`
+        : `${cto.nome} - ${cto.distancia_metros}m (${cto.vagas_total - cto.clientes_conectados} portas disponíveis)`,
+      icon: iconConfig,
+      label: isPredio ? undefined : (() => {
+        const existingMarkersCount = markers.filter(m => m !== clientMarker).length;
+        const markerNumber = existingMarkersCount + 1;
+        return {
+          text: `${markerNumber}`,
+          color: '#FFFFFF',
+          fontSize: '14px',
+          fontWeight: 'bold'
+        };
+      })(),
+      zIndex: 1000 + index,
+      optimized: false
+    });
+    
+    markers.push(ctoMarker);
+  }
+
   async function drawRoutesAndMarkers() {
     if (!map || !clientCoords || ctos.length === 0) return;
 
@@ -3366,6 +3601,15 @@
       // Usar posição original para bounds
       bounds.extend(originalPosition);
 
+      // Verificar visibilidade da CTO
+      const ctoKey = getCTOKey(cto);
+      const isVisible = ctoVisibility.get(ctoKey) !== false;
+      
+      // Se não estiver visível, pular esta CTO
+      if (!isVisible) {
+        continue;
+      }
+      
       // Separar CTOs que precisam de rotas das que não precisam
       if (!cto.is_condominio && !isPredio && cto.distancia_metros && cto.distancia_metros > 0 && cto.distancia_real) {
         // CTOs normais que precisam de rotas
@@ -5827,6 +6071,8 @@
                           ctoVisibility = newVisibility;
                           ctoNumbersVersion++;
                           await tick();
+                          // Atualizar mapa removendo/adicionando marcadores e rotas
+                          await updateMapVisibility();
                         }}
                       />
                     </th>
@@ -5854,6 +6100,8 @@
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
                     {@const pctOcup = parseFloat(cto.pct_ocup || 0)}
                     {@const occupationClass = pctOcup < 50 ? 'low' : pctOcup >= 50 && pctOcup < 80 ? 'medium' : 'high'}
+                    {@const statusCto = (cto.status_cto || '').toUpperCase().trim()}
+                    {@const statusClass = statusCto === 'ATIVADO' ? 'low' : statusCto === 'NAO ATIVADO' || statusCto === 'NÃO ATIVADO' ? 'high' : ''}
                     {@const cellKey0 = getCellKey(rowIndex, 0)}
                     {@const cellKey1 = getCellKey(rowIndex, 1)}
                     {@const cellKey2 = getCellKey(rowIndex, 2)}
@@ -5885,12 +6133,20 @@
                             ctoVisibility = ctoVisibility;
                             ctoNumbersVersion++;
                             await tick();
+                            // Atualizar mapa removendo/adicionando marcador e rota
+                            await updateMapVisibility();
                           }}
                         />
                       </td>
                       <td class="numeric" class:cell-selected={selectedCells.includes(cellKey1) || selectedRows.includes(rowIndex) || selectedColumns.includes(1)} on:click={(e) => handleCellClick(e, rowIndex, 1)}>{ctoNumbers.get(cto) || '-'}</td>
                       <td class="cto-name-cell" class:cell-selected={selectedCells.includes(cellKey2) || selectedRows.includes(rowIndex) || selectedColumns.includes(2)} on:click={(e) => handleCellClick(e, rowIndex, 2)}><strong>{cto.nome || ''}</strong></td>
-                      <td class:cell-selected={selectedCells.includes(cellKey3) || selectedRows.includes(rowIndex) || selectedColumns.includes(3)} on:click={(e) => handleCellClick(e, rowIndex, 3)}>{cto.status_cto || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey3) || selectedRows.includes(rowIndex) || selectedColumns.includes(3)} on:click={(e) => handleCellClick(e, rowIndex, 3)}>
+                        {#if statusClass}
+                          <span class="status-badge {statusClass}">{cto.status_cto || 'N/A'}</span>
+                        {:else}
+                          {cto.status_cto || 'N/A'}
+                        {/if}
+                      </td>
                       <td class:cell-selected={selectedCells.includes(cellKey4) || selectedRows.includes(rowIndex) || selectedColumns.includes(4)} on:click={(e) => handleCellClick(e, rowIndex, 4)}>{cto.cidade || 'N/A'}</td>
                       <td class:cell-selected={selectedCells.includes(cellKey5) || selectedRows.includes(rowIndex) || selectedColumns.includes(5)} on:click={(e) => handleCellClick(e, rowIndex, 5)}>{cto.pop || 'N/A'}</td>
                       <td class:cell-selected={selectedCells.includes(cellKey6) || selectedRows.includes(rowIndex) || selectedColumns.includes(6)} on:click={(e) => handleCellClick(e, rowIndex, 6)}>{cto.olt || 'N/A'}</td>
@@ -7009,6 +7265,24 @@
   }
 
   .occupation-badge.high {
+    background: #fee2e2;
+    color: #991b1b;
+  }
+
+  /* Estilos para badge de Status */
+  .status-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.8125rem;
+  }
+
+  .status-badge.low {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .status-badge.high {
     background: #fee2e2;
     color: #991b1b;
   }
