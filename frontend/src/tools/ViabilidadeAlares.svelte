@@ -554,8 +554,9 @@
     const containerHeight = container ? container.getBoundingClientRect().height : 800;
     
     // Se a lista estiver minimizada, permitir que o mapa ocupe quase todo o espaço
-    // Deixar apenas espaço para a lista minimizada (~70px) + handle (~20px) + pequena margem
-    const minSpaceForList = isListMinimized ? 90 : 200; // 90px quando minimizada, 200px quando expandida
+    // Deixar apenas espaço para a lista minimizada (~60px) + handle (~8px) + gap (~12px) = ~80px
+    // Mas permitir que o usuário arraste até quase o final, deixando apenas o espaço mínimo necessário
+    const minSpaceForList = isListMinimized ? 80 : 200; // 80px quando minimizada, 200px quando expandida
     const maxHeight = Math.max(containerHeight - minSpaceForList, 300);
     const clampedHeight = Math.max(300, Math.min(maxHeight, newHeight));
     
@@ -582,13 +583,17 @@
     if (listElement) {
       // Respeitar o estado minimizado da lista ao redimensionar
       if (isListMinimized) {
-        // Se a lista está minimizada, manter estilos minimizados
-        listElement.style.flex = '0 0 auto';
+        // Se a lista está minimizada, manter estilos minimizados com altura fixa
+        listElement.style.flex = '0 0 60px';
         listElement.style.minHeight = '60px';
+        listElement.style.maxHeight = '60px';
+        listElement.style.height = '60px';
       } else {
         // Se a lista está expandida, ocupar o resto do espaço
         listElement.style.flex = '1 1 auto';
         listElement.style.minHeight = '200px';
+        listElement.style.maxHeight = 'none';
+        listElement.style.height = 'auto';
       }
     }
     
@@ -6234,7 +6239,8 @@
   .results-list-container.minimized {
     min-height: 60px;
     max-height: 60px;
-    flex: 0 0 auto !important;
+    flex: 0 0 60px !important;
+    height: 60px !important;
   }
 
   .list-header {
@@ -6269,7 +6275,8 @@
   .empty-state.minimized {
     min-height: 60px;
     max-height: 60px;
-    flex: 0 0 auto !important;
+    flex: 0 0 60px !important;
+    height: 60px !important;
   }
 
   .empty-state.minimized .list-header {
