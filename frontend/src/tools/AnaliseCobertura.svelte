@@ -2918,6 +2918,21 @@
   }
 
   // Função para formatar porcentagem
+  // Função para formatar data de criação
+  function formatDataCriacao(cto) {
+    const dataCriacao = cto.data_criacao || cto.data_cadastro || cto.created_at || '';
+    if (!dataCriacao) return 'N/A';
+    try {
+      const data = new Date(dataCriacao);
+      if (!isNaN(data.getTime())) {
+        return data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      }
+    } catch (e) {
+      // Ignorar erro
+    }
+    return dataCriacao;
+  }
+
   function formatPercentage(value) {
     const num = parseFloat(value) || 0;
     return num.toFixed(1) + '%';
@@ -3565,19 +3580,7 @@
                       <td class:cell-selected={selectedCells.includes(cellKey8) || selectedRows.includes(rowIndex) || selectedColumns.includes(8)} on:click={(e) => handleCellClick(e, rowIndex, 8)}>{cto.slot || 'N/A'}</td>
                       <td class:cell-selected={selectedCells.includes(cellKey9) || selectedRows.includes(rowIndex) || selectedColumns.includes(9)} on:click={(e) => handleCellClick(e, rowIndex, 9)}>{cto.pon || 'N/A'}</td>
                       <td class:cell-selected={selectedCells.includes(cellKey10) || selectedRows.includes(rowIndex) || selectedColumns.includes(10)} on:click={(e) => handleCellClick(e, rowIndex, 10)}>{cto.id_cto || cto.id || 'N/A'}</td>
-                      <td class:cell-selected={selectedCells.includes(cellKey11) || selectedRows.includes(rowIndex) || selectedColumns.includes(11)} on:click={(e) => handleCellClick(e, rowIndex, 11)}>
-                        {@const dataCriacao = cto.data_criacao || cto.data_cadastro || cto.created_at || ''}
-                        {#if dataCriacao}
-                          {@const data = new Date(dataCriacao)}
-                          {#if !isNaN(data.getTime())}
-                            {data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                          {:else}
-                            {dataCriacao}
-                          {/if}
-                        {:else}
-                          N/A
-                        {/if}
-                      </td>
+                      <td class:cell-selected={selectedCells.includes(cellKey11) || selectedRows.includes(rowIndex) || selectedColumns.includes(11)} on:click={(e) => handleCellClick(e, rowIndex, 11)}>{formatDataCriacao(cto)}</td>
                       <td class="numeric" class:cell-selected={selectedCells.includes(cellKey12) || selectedRows.includes(rowIndex) || selectedColumns.includes(12)} on:click={(e) => handleCellClick(e, rowIndex, 12)}>{cto.vagas_total || 0}</td>
                       <td class="numeric" class:cell-selected={selectedCells.includes(cellKey13) || selectedRows.includes(rowIndex) || selectedColumns.includes(13)} on:click={(e) => handleCellClick(e, rowIndex, 13)}>{cto.clientes_conectados || 0}</td>
                       <td class="numeric" class:cell-selected={selectedCells.includes(cellKey14) || selectedRows.includes(rowIndex) || selectedColumns.includes(14)} on:click={(e) => handleCellClick(e, rowIndex, 14)}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
