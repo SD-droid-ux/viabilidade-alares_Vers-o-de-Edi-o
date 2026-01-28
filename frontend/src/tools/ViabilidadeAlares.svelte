@@ -2402,6 +2402,10 @@
       // Desenhar rotas e marcadores
       // Prédios já foram plotados, agora plotar CTOs normais com rotas
       await drawRoutesAndMarkers();
+      
+      // Atualizar numeração dos marcadores para garantir que corresponda à coluna N°
+      await tick(); // Aguardar ctoNumbers ser recalculado
+      await updateMarkerNumbers();
 
     } catch (err) {
       error = err.message || 'Erro ao buscar CTOs';
@@ -3374,11 +3378,22 @@
     });
     
     // Remover rotas do mapa e do array
-    routesToRemove.forEach(route => {
-      route.setMap(null);
+    // Ordenar por índice decrescente para evitar problemas ao remover múltiplas rotas
+    const routesToRemoveWithIndex = routesToRemove.map(route => {
       const routeIndex = routes.findIndex(r => r === route);
-      if (routeIndex !== -1) {
-        routes.splice(routeIndex, 1);
+      return { route, routeIndex };
+    }).filter(item => item.routeIndex !== -1).sort((a, b) => b.routeIndex - a.routeIndex);
+    
+    routesToRemoveWithIndex.forEach(({ route, routeIndex }) => {
+      route.setMap(null);
+      // Se a rota que está sendo removida estava sendo editada, finalizar edição
+      if (editingRouteIndex === routeIndex) {
+        finishEditingRoute(routeIndex);
+      }
+      routes.splice(routeIndex, 1);
+      // Ajustar editingRouteIndex se necessário (se removemos uma rota antes da que está sendo editada)
+      if (editingRouteIndex !== null && editingRouteIndex > routeIndex) {
+        editingRouteIndex--;
       }
     });
     
@@ -3436,9 +3451,67 @@
       }
     }
     
+    // Atualizar numeração dos marcadores existentes no mapa
+    await updateMarkerNumbers();
+    
     // Atualizar numeração dos marcadores
     ctoNumbersVersion++;
     await tick();
+  }
+  
+  // Função para atualizar os números dos marcadores no mapa baseado em ctoNumbers
+  async function updateMarkerNumbers() {
+    if (!map || !ctosRua || ctosRua.length === 0) return;
+    
+    // Para cada CTO visível, encontrar seu marcador e atualizar o label
+    for (const cto of ctosRua) {
+      const ctoKey = getCTOKey(cto);
+      const isVisible = ctoVisibility.get(ctoKey) !== false;
+      
+      if (!isVisible) continue; // Pular CTOs não visíveis
+      
+      const ctoLat = parseFloat(cto.latitude);
+      const ctoLng = parseFloat(cto.longitude);
+      
+      if (isNaN(ctoLat) || isNaN(ctoLng)) continue;
+      
+      // Encontrar o marcador correspondente a esta CTO
+      const ctoMarker = markers.find(marker => {
+        if (marker === clientMarker) return false; // Ignorar marcador do cliente
+        
+        const markerPos = marker.getPosition();
+        if (!markerPos) return false;
+        
+        const markerLat = markerPos.lat();
+        const markerLng = markerPos.lng();
+        
+        const latDiff = Math.abs(markerLat - ctoLat);
+        const lngDiff = Math.abs(markerLng - ctoLng);
+        
+        return latDiff < 0.0001 && lngDiff < 0.0001;
+      });
+      
+      if (ctoMarker) {
+        // Obter o número correto da CTO baseado em ctoNumbers
+        const markerNumber = ctoNumbers.get(cto);
+        
+        // Verificar se é prédio (prédios não têm numeração)
+        const isPredio = cto.is_condominio === true;
+        
+        if (!isPredio && markerNumber) {
+          // Atualizar o label do marcador
+          ctoMarker.setLabel({
+            text: `${markerNumber}`,
+            color: '#FFFFFF',
+            fontSize: '14px',
+            fontWeight: 'bold'
+          });
+        } else if (isPredio) {
+          // Remover label se for prédio
+          ctoMarker.setLabel(null);
+        }
+      }
+    }
   }
   
   // Função auxiliar para criar marcador de CTO (extraída da lógica de drawRoutesAndMarkers)
@@ -3502,10 +3575,6 @@
         origin: new google.maps.Point(0, 0)
       };
     } else {
-      // Contar quantos marcadores já existem (exceto clientMarker) para numeração
-      const existingMarkersCount = markers.filter(m => m !== clientMarker).length;
-      const markerNumber = existingMarkersCount + 1;
-      
       iconConfig = {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 18,
@@ -3517,6 +3586,9 @@
       };
     }
     
+    // Usar ctoNumbers para numeração que corresponde à coluna N° da tabela
+    const markerNumber = isPredio ? null : ctoNumbers.get(cto);
+    
     const ctoMarker = new google.maps.Marker({
       position: originalPosition,
       map: map,
@@ -3524,16 +3596,12 @@
         ? `🏢 ${cto.nome} (PRÉDIO) - ${cto.distancia_metros}m - Não cria rota`
         : `${cto.nome} - ${cto.distancia_metros}m (${cto.vagas_total - cto.clientes_conectados} portas disponíveis)`,
       icon: iconConfig,
-      label: isPredio ? undefined : (() => {
-        const existingMarkersCount = markers.filter(m => m !== clientMarker).length;
-        const markerNumber = existingMarkersCount + 1;
-        return {
-          text: `${markerNumber}`,
-          color: '#FFFFFF',
-          fontSize: '14px',
-          fontWeight: 'bold'
-        };
-      })(),
+      label: isPredio ? undefined : (markerNumber ? {
+        text: `${markerNumber}`,
+        color: '#FFFFFF',
+        fontSize: '14px',
+        fontWeight: 'bold'
+      } : undefined),
       zIndex: 1000 + index,
       optimized: false
     });
@@ -3570,8 +3638,7 @@
       coordinateGroups[coordKey].push({ index: i, cto });
     }
 
-    // Contador para numeração sequencial (não baseado no índice do loop)
-    let markerNumber = 1;
+    // Não precisamos mais de markerNumber, usamos ctoNumbers.get(cto) que já está calculado
 
     // OTIMIZAÇÃO DE PERFORMANCE: Separar rotas de marcadores
     // 1. Primeiro: Criar todos os marcadores (rápido)
@@ -3678,9 +3745,9 @@
           ctoColor = getCTOColor(cto.pct_ocup || 0);
         }
 
-        // Usar markerNumber para numeração sequencial (1, 2, 3, 4, 5)
+        // Usar ctoNumbers para numeração que corresponde à coluna N° da tabela
         // APENAS para CTOs normais (prédios não têm numeração)
-        const currentMarkerNumber = isPredio ? null : markerNumber;
+        const currentMarkerNumber = isPredio ? null : ctoNumbers.get(cto);
 
         // Visual diferente para prédios: usar ícone de prédio com múltiplos andares
         // Usar imagem SVG do prédio em vez de path customizado
@@ -3784,11 +3851,7 @@
           markers.push(ctoMarker);
           markerCreated = true;
 
-          // Incrementar o número do marcador APENAS para CTOs normais (não prédios)
-          // Prédios não têm numeração, então não incrementam o contador
-          if (!isPredio) {
-            markerNumber++;
-          }
+          // Não precisa incrementar markerNumber, pois usamos ctoNumbers.get(cto) que já está calculado
 
           // InfoWindow para a CTO ou Prédio
           let infoWindowContent = '';
