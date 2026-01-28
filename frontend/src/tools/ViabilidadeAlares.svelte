@@ -526,12 +526,13 @@
   }
 
   function startResizeMapTable(e) {
+    console.log('🖱️ Iniciando redimensionamento mapa/tabela', e);
     e.preventDefault();
     e.stopPropagation();
     e.stopImmediatePropagation();
     isResizingMapTable = true;
     resizeStartY = e.clientY || e.touches?.[0]?.clientY || 0;
-    resizeStartMapHeight = mapHeightPixels;
+    resizeStartMapHeight = mapHeightPixels; // Usar pixels ao invés de percent
     document.addEventListener('mousemove', handleResizeMapTable, { passive: false, capture: true });
     document.addEventListener('mouseup', stopResizeMapTable, { passive: false, capture: true });
     document.addEventListener('touchmove', handleResizeMapTable, { passive: false, capture: true });
@@ -555,7 +556,7 @@
     const containerHeight = container ? container.getBoundingClientRect().height : 800;
     
     // Se a lista estiver minimizada, permitir que o mapa ocupe quase todo o espaço
-    // Deixar apenas espaço para a lista minimizada (~60px) + handle (~8px) + gap (~12px) + margem (~10px) = ~90px
+    // Deixar apenas espaço para a lista minimizada (~70px) + handle (~20px) + pequena margem
     const minSpaceForList = isListMinimized ? 90 : 200; // 90px quando minimizada, 200px quando expandida
     const maxHeight = Math.max(containerHeight - minSpaceForList, 300);
     const clampedHeight = Math.max(300, Math.min(maxHeight, newHeight));
@@ -593,7 +594,9 @@
       }
     }
     
-    // Salvar no localStorage a cada movimento (sem await para não bloquear)
+    console.log(`📏 Arrastando mapa/tabela: Mapa ${clampedHeight}px`);
+    
+    // Salvar no localStorage (sem await para não bloquear)
     try {
       localStorage.setItem('viabilidadeAlares_mapHeight', clampedHeight.toString());
     } catch (err) {
@@ -602,6 +605,7 @@
   }
 
   function stopResizeMapTable() {
+    console.log('✅ Parando redimensionamento mapa/tabela');
     isResizingMapTable = false;
     document.removeEventListener('mousemove', handleResizeMapTable, { capture: true });
     document.removeEventListener('mouseup', stopResizeMapTable, { capture: true });
@@ -611,7 +615,7 @@
     document.body.style.userSelect = '';
     
     // Redimensionar o mapa após ajuste
-    if (map && google?.maps) {
+    if (map) {
       setTimeout(() => {
         google.maps.event.trigger(map, 'resize');
       }, 100);
