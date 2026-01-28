@@ -941,6 +941,7 @@ app.get('/api/ctos/nearby', async (req, res) => {
           }
           
           // Se chegou aqui, é CTO de rua (não está na base de prédios)
+          const dataCadastro = row.data_cadastro || row.data_criacao || row.created_at || '';
           nearbyCTOs.push({
             nome: row.cto || row.id_cto || '',
             latitude: parseFloat(row.latitude),
@@ -960,7 +961,7 @@ app.get('/api/ctos/nearby', async (req, res) => {
             condominio_data: null,
             status_cto_condominio: null,
             status_cto: row.status_cto || '', // Incluir status da CTO
-            data_criacao: row.data_cadastro || row.data_criacao || row.created_at || ''
+            data_criacao: dataCadastro
           });
         }
         
@@ -1638,24 +1639,31 @@ app.get('/api/ctos/search', async (req, res) => {
         }
         
         // Formatar resultados
-        const ctos = (data || []).map(row => ({
-          nome: row.cto || row.id_cto || '',
-          latitude: parseFloat(row.latitude),
-          longitude: parseFloat(row.longitude),
-          vagas_total: row.portas || 0,
-          clientes_conectados: row.ocupado || 0,
-          pct_ocup: row.pct_ocup || 0,
-          cidade: row.cid_rede || '',
-          pop: row.pop || '',
-          id: row.id_cto || row.id?.toString() || '',
-          id_cto: row.id_cto || row.id?.toString() || '',
-          is_condominio: false,
-          status_cto: row.status_cto || '',
-          olt: row.olt || '',
-          slot: row.slot || '',
-          pon: row.pon || '',
-          data_criacao: row.data_cadastro || row.data_criacao || row.created_at || ''
-        }));
+        const ctos = (data || []).map((row, index) => {
+          const dataCadastro = row.data_cadastro || row.data_criacao || row.created_at || '';
+          // Log apenas para as primeiras 3 CTOs para debug
+          if (index < 3) {
+            console.log(`🔍 [API] CTO ${index + 1} - ID: ${row.id_cto}, data_cadastro original:`, row.data_cadastro, 'tipo:', typeof row.data_cadastro);
+          }
+          return {
+            nome: row.cto || row.id_cto || '',
+            latitude: parseFloat(row.latitude),
+            longitude: parseFloat(row.longitude),
+            vagas_total: row.portas || 0,
+            clientes_conectados: row.ocupado || 0,
+            pct_ocup: row.pct_ocup || 0,
+            cidade: row.cid_rede || '',
+            pop: row.pop || '',
+            id: row.id_cto || row.id?.toString() || '',
+            id_cto: row.id_cto || row.id?.toString() || '',
+            is_condominio: false,
+            status_cto: row.status_cto || '',
+            olt: row.olt || '',
+            slot: row.slot || '',
+            pon: row.pon || '',
+            data_criacao: dataCadastro
+          };
+        });
         
         console.log(`✅ [API] ${ctos.length} CTOs encontradas com nome "${nome}"`);
         
@@ -4934,21 +4942,46 @@ async function processExcelStreaming(filePath, supabaseClient) {
   // Função auxiliar para converter data
   const parseDate = (value) => {
     if (!value) return null;
-    if (value instanceof Date) return value.toISOString().split('T')[0];
+    
+    // Se for Date, converter para string
+    if (value instanceof Date) {
+      return value.toISOString().split('T')[0];
+    }
+    
+    // Se for string, verificar formato MM/YYYY primeiro
     if (typeof value === 'string') {
-      const date = new Date(value);
+      const str = value.trim();
+      
+      // Verificar se já está no formato MM/YYYY (ex: "04/2023")
+      const mmYYYYMatch = str.match(/^(\d{1,2})\/(\d{4})$/);
+      if (mmYYYYMatch) {
+        const mes = mmYYYYMatch[1].padStart(2, '0');
+        const ano = mmYYYYMatch[2];
+        // Converter para YYYY-MM-01 (primeiro dia do mês) para armazenar no Supabase
+        // Quando exibir, será convertido de volta para MM/YYYY no frontend
+        return `${ano}-${mes}-01`;
+      }
+      
+      // Tentar outros formatos de data
+      const date = new Date(str);
       if (!isNaN(date.getTime())) {
         return date.toISOString().split('T')[0];
       }
+      
+      // Se não conseguiu converter, retornar null (não armazenar data inválida)
+      console.warn(`⚠️ [parseDate] Formato de data não reconhecido: "${str}"`);
+      return null;
     }
+    
+    // Se for número, pode ser Excel serial date
     if (typeof value === 'number') {
-      // Excel serial date
       const excelEpoch = new Date(1899, 11, 30);
       const date = new Date(excelEpoch.getTime() + value * 86400000);
       if (!isNaN(date.getTime())) {
         return date.toISOString().split('T')[0];
       }
     }
+    
     return null;
   };
   
