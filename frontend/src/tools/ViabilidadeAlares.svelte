@@ -127,9 +127,9 @@
   $: sidebarWidthStyle = `${sidebarWidth}px`;
   $: mapHeightStyle = `${mapHeightPixels}px`;
   $: mapContainerStyle = isMapMinimized 
-    ? 'height: 60px; flex: 0 0 auto; min-height: 60px;'
+    ? 'height: 60px; flex: 0 0 auto; min-height: 60px; max-height: 60px;'
     : isListMinimized 
-      ? 'flex: 1 1 auto; min-height: 300px;'
+      ? 'flex: 1 1 auto; min-height: 300px; height: auto;'
       : `height: ${mapHeightPixels}px; flex: 0 0 auto; min-height: ${mapHeightPixels}px;`;
 
   // Substitua pela sua chave do Google Maps
@@ -6165,6 +6165,7 @@
   .map-container.minimized {
     min-height: 60px;
     max-height: 60px;
+    flex: 0 0 auto !important;
   }
 
   .map-header {
@@ -6190,6 +6191,8 @@
   .map {
     flex: 1;
     min-height: 300px;
+    width: 100%;
+    height: 100%;
   }
 
   .map.hidden {
@@ -6208,6 +6211,7 @@
   .results-list-container.minimized {
     min-height: 60px;
     max-height: 60px;
+    flex: 0 0 auto !important;
   }
 
   .list-header {
@@ -6242,6 +6246,7 @@
   .empty-state.minimized {
     min-height: 60px;
     max-height: 60px;
+    flex: 0 0 auto !important;
   }
 
   .empty-state.minimized .list-header {
