@@ -366,6 +366,26 @@
     return ctoVisibility.get(ctoKey) === true;
   }) && !allCTOsVisible;
   
+  // Função para obter o status da CTO de forma robusta
+  // Verifica múltiplos campos possíveis para garantir que pegue o valor correto da base de dados
+  function getStatusCTO(cto) {
+    // Tentar múltiplos campos possíveis na ordem de prioridade
+    const status = cto.status_cto || 
+                   cto.status || 
+                   cto.status_cto_condominio || 
+                   cto.condominio_data?.status_cto ||
+                   cto.cto_data?.status_cto ||
+                   '';
+    
+    // Se encontrou um valor válido (não vazio, não null, não undefined), retornar
+    if (status && typeof status === 'string' && status.trim() !== '') {
+      return status.trim();
+    }
+    
+    // Se não encontrou nenhum valor, retornar N/A
+    return 'N/A';
+  }
+  
   // Função para formatar data de criação
   function formatDataCriacao(cto) {
     if (!cto.data_criacao) return 'N/A';
@@ -384,7 +404,7 @@
       case 0: return ''; // Checkbox - vazio (não copiar)
       case 1: return (ctoNumbers.get(cto) || '-').toString(); // N°
       case 2: return cto.nome || ''; // CTO
-      case 3: return cto.status_cto || 'N/A'; // Status
+      case 3: return getStatusCTO(cto); // Status
       case 4: return cto.cidade || 'N/A'; // Cidade
       case 5: return cto.pop || 'N/A'; // POP
       case 6: return cto.olt || 'N/A'; // CHASSE (usa campo olt)
@@ -6100,8 +6120,9 @@
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
                     {@const pctOcup = parseFloat(cto.pct_ocup || 0)}
                     {@const occupationClass = pctOcup < 50 ? 'low' : pctOcup >= 50 && pctOcup < 80 ? 'medium' : 'high'}
-                    {@const statusCto = (cto.status_cto || '').toUpperCase().trim()}
-                    {@const statusClass = statusCto === 'ATIVADO' ? 'low' : statusCto === 'NAO ATIVADO' || statusCto === 'NÃO ATIVADO' ? 'high' : ''}
+                    {@const statusCto = getStatusCTO(cto)}
+                    {@const statusCtoUpper = statusCto.toUpperCase().trim()}
+                    {@const statusClass = statusCtoUpper === 'ATIVADO' ? 'low' : statusCtoUpper === 'NAO ATIVADO' || statusCtoUpper === 'NÃO ATIVADO' ? 'high' : ''}
                     {@const cellKey0 = getCellKey(rowIndex, 0)}
                     {@const cellKey1 = getCellKey(rowIndex, 1)}
                     {@const cellKey2 = getCellKey(rowIndex, 2)}
@@ -6142,9 +6163,9 @@
                       <td class="cto-name-cell" class:cell-selected={selectedCells.includes(cellKey2) || selectedRows.includes(rowIndex) || selectedColumns.includes(2)} on:click={(e) => handleCellClick(e, rowIndex, 2)}><strong>{cto.nome || ''}</strong></td>
                       <td class:cell-selected={selectedCells.includes(cellKey3) || selectedRows.includes(rowIndex) || selectedColumns.includes(3)} on:click={(e) => handleCellClick(e, rowIndex, 3)}>
                         {#if statusClass}
-                          <span class="status-badge {statusClass}">{cto.status_cto || 'N/A'}</span>
+                          <span class="status-badge {statusClass}">{statusCto}</span>
                         {:else}
-                          {cto.status_cto || 'N/A'}
+                          {statusCto}
                         {/if}
                       </td>
                       <td class:cell-selected={selectedCells.includes(cellKey4) || selectedRows.includes(rowIndex) || selectedColumns.includes(4)} on:click={(e) => handleCellClick(e, rowIndex, 4)}>{cto.cidade || 'N/A'}</td>
@@ -7275,6 +7296,8 @@
     border-radius: 4px;
     font-weight: 600;
     font-size: 0.8125rem;
+    white-space: nowrap; /* Evitar quebra de linha */
+    display: inline-block; /* Garantir que o badge não quebre */
   }
 
   .status-badge.low {
@@ -7285,6 +7308,11 @@
   .status-badge.high {
     background: #fee2e2;
     color: #991b1b;
+  }
+
+  /* Garantir que a célula de Status não quebre linha */
+  .results-table td:nth-child(4) {
+    white-space: nowrap;
   }
 
   .empty-state {
