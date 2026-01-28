@@ -128,9 +128,7 @@
   $: mapHeightStyle = `${mapHeightPixels}px`;
   $: mapContainerStyle = isMapMinimized 
     ? 'height: 60px; flex: 0 0 auto; min-height: 60px; max-height: 60px;'
-    : isListMinimized 
-      ? 'flex: 1 1 auto; min-height: 300px; height: auto;'
-      : `height: ${mapHeightPixels}px; flex: 0 0 auto; min-height: ${mapHeightPixels}px;`;
+    : `height: ${mapHeightPixels}px; flex: 0 0 auto; min-height: ${mapHeightPixels}px;`;
 
   // Substitua pela sua chave do Google Maps
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'SUA_CHAVE_AQUI';
@@ -552,20 +550,47 @@
     const deltaY = clientY - resizeStartY;
     const newHeight = resizeStartMapHeight + deltaY;
     
-    // Se a lista estiver minimizada, não permitir redimensionamento manual
-    // (o mapa vai usar flex: 1 automaticamente)
-    if (isListMinimized) {
-      return;
-    }
-    
     const container = document.querySelector('.main-area');
     const containerHeight = container ? container.getBoundingClientRect().height : 800;
     
-    const minSpaceForList = 200;
+    // Se a lista estiver minimizada, permitir que o mapa ocupe quase todo o espaço
+    // Deixar apenas espaço para a lista minimizada (~70px) + handle (~20px) + pequena margem
+    const minSpaceForList = isListMinimized ? 90 : 200; // 90px quando minimizada, 200px quando expandida
     const maxHeight = Math.max(containerHeight - minSpaceForList, 300);
     const clampedHeight = Math.max(300, Math.min(maxHeight, newHeight));
     
+    // Atualizar diretamente - Svelte detecta automaticamente
     mapHeightPixels = clampedHeight;
+    
+    // Forçar atualização do DOM diretamente também
+    const mapElement = document.querySelector('.map-container');
+    const listElement = document.querySelector('.results-list-container, .empty-state');
+    if (mapElement) {
+      // Respeitar o estado minimizado do mapa ao redimensionar
+      if (isMapMinimized) {
+        // Se o mapa está minimizado, manter altura minimizada
+        mapElement.style.height = '60px';
+        mapElement.style.flex = '0 0 auto';
+        mapElement.style.minHeight = '60px';
+      } else {
+        // Se o mapa está expandido, aplicar altura calculada
+        mapElement.style.height = `${clampedHeight}px`;
+        mapElement.style.flex = '0 0 auto';
+        mapElement.style.minHeight = `${clampedHeight}px`;
+      }
+    }
+    if (listElement) {
+      // Respeitar o estado minimizado da lista ao redimensionar
+      if (isListMinimized) {
+        // Se a lista está minimizada, manter estilos minimizados
+        listElement.style.flex = '0 0 auto';
+        listElement.style.minHeight = '60px';
+      } else {
+        // Se a lista está expandida, ocupar o resto do espaço
+        listElement.style.flex = '1 1 auto';
+        listElement.style.minHeight = '200px';
+      }
+    }
     
     try {
       localStorage.setItem('viabilidadeAlares_mapHeight', clampedHeight.toString());
@@ -5241,7 +5266,6 @@
       </div>
 
       <!-- Handle de redimensionamento horizontal (mapa/lista) -->
-      {#if !isListMinimized}
       <div 
         class="resize-handle resize-handle-horizontal"
         on:mousedown|stopPropagation={startResizeMapTable}
@@ -5252,7 +5276,6 @@
         tabindex="0"
       >
       </div>
-      {/if}
 
       <!-- Lista de CTOs -->
       {#if ctos.length > 0}
