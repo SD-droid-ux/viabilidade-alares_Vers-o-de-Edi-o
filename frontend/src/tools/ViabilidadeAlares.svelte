@@ -302,6 +302,16 @@
     }
   }
   
+  // Handler para detectar cliques fora da tabela e limpar seleção
+  function handleDocumentClick(e) {
+    // Verificar se o clique foi fora da tabela
+    const tableElement = e.target.closest('.results-table');
+    if (!tableElement) {
+      // Clique foi fora da tabela, limpar seleção
+      clearSelection();
+    }
+  }
+  
   // Prevenir seleção de texto nativa dentro da tabela
   function preventTextSelection(e) {
     if (e.target.tagName !== 'INPUT' && 
@@ -1420,6 +1430,9 @@
       // Adicionar handler para Ctrl+C
       document.addEventListener('keydown', handleCopyKeydown);
       
+      // Adicionar handler para detectar cliques fora da tabela
+      document.addEventListener('click', handleDocumentClick);
+      
       // Registrar função de configurações com o parent
       if (onSettingsRequest && typeof onSettingsRequest === 'function') {
         onSettingsRequest(openSettings);
@@ -1440,6 +1453,8 @@
   onDestroy(() => {
     // Remover handler de Ctrl+C
     document.removeEventListener('keydown', handleCopyKeydown);
+    // Remover handler de cliques fora da tabela
+    document.removeEventListener('click', handleDocumentClick);
     cleanup();
   });
 
@@ -5794,7 +5809,7 @@
           </div>
           {#if !isListMinimized}
             <div class="table-wrapper">
-              <table class="results-table" on:click={handleClickOutside} on:selectstart={preventTextSelection}>
+              <table class="results-table" on:selectstart={preventTextSelection}>
                 <thead>
                   <tr>
                     <th class:selected={selectedColumns.includes(0)} on:click={(e) => handleColumnHeaderClick(e, 0)}>
