@@ -110,6 +110,23 @@
   let changeUserNameError = '';
   let changeUserNameSuccess = false;
 
+  // Estados para redimensionamento e minimização
+  let sidebarWidth = 400; // Largura inicial da sidebar em pixels
+  let mapHeightPixels = 400; // Altura inicial do mapa em pixels
+  let isResizingSidebar = false;
+  let isResizingMapTable = false;
+  let isSearchPanelMinimized = false;
+  let isMapMinimized = false;
+  let isListMinimized = false; // Para a lista de CTOs
+  let resizeStartSidebarWidth = 0;
+  let resizeStartMapHeight = 0;
+  let resizeStartX = 0;
+  let resizeStartY = 0;
+
+  // Reactive statements para estilos
+  $: sidebarWidthStyle = `${sidebarWidth}px`;
+  $: mapHeightStyle = `${mapHeightPixels}px`;
+
   // Substitua pela sua chave do Google Maps
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'SUA_CHAVE_AQUI';
 
@@ -451,6 +468,140 @@
     }
   }
 
+  // Funções de redimensionamento
+  function startResizeSidebar(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    isResizingSidebar = true;
+    resizeStartX = e.clientX || e.touches?.[0]?.clientX || 0;
+    resizeStartSidebarWidth = sidebarWidth;
+    document.addEventListener('mousemove', handleResizeSidebar, { passive: false, capture: true });
+    document.addEventListener('mouseup', stopResizeSidebar, { passive: false, capture: true });
+    document.addEventListener('touchmove', handleResizeSidebar, { passive: false, capture: true });
+    document.addEventListener('touchend', stopResizeSidebar, { passive: false, capture: true });
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    return false;
+  }
+
+  function handleResizeSidebar(e) {
+    if (!isResizingSidebar) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (isSearchPanelMinimized) return;
+    
+    const clientX = e.clientX || e.touches?.[0]?.clientX || resizeStartX;
+    const deltaX = clientX - resizeStartX;
+    const newWidth = resizeStartSidebarWidth + deltaX;
+    const clampedWidth = Math.max(300, Math.min(700, newWidth));
+    
+    sidebarWidth = clampedWidth;
+    
+    const sidebarElement = document.querySelector('.search-panel');
+    if (sidebarElement) {
+      sidebarElement.style.width = `${clampedWidth}px`;
+      sidebarElement.style.flex = '0 0 auto';
+    }
+    
+    try {
+      localStorage.setItem('viabilidadeAlares_sidebarWidth', clampedWidth.toString());
+    } catch (err) {
+      console.warn('Erro ao salvar largura da sidebar:', err);
+    }
+  }
+
+  function stopResizeSidebar() {
+    isResizingSidebar = false;
+    document.removeEventListener('mousemove', handleResizeSidebar, { capture: true });
+    document.removeEventListener('mouseup', stopResizeSidebar, { capture: true });
+    document.removeEventListener('touchmove', handleResizeSidebar, { capture: true });
+    document.removeEventListener('touchend', stopResizeSidebar, { capture: true });
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  }
+
+  function startResizeMapTable(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    isResizingMapTable = true;
+    resizeStartY = e.clientY || e.touches?.[0]?.clientY || 0;
+    resizeStartMapHeight = mapHeightPixels;
+    document.addEventListener('mousemove', handleResizeMapTable, { passive: false, capture: true });
+    document.addEventListener('mouseup', stopResizeMapTable, { passive: false, capture: true });
+    document.addEventListener('touchmove', handleResizeMapTable, { passive: false, capture: true });
+    document.addEventListener('touchend', stopResizeMapTable, { passive: false, capture: true });
+    document.body.style.cursor = 'row-resize';
+    document.body.style.userSelect = 'none';
+    return false;
+  }
+
+  function handleResizeMapTable(e) {
+    if (!isResizingMapTable) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const clientY = e.clientY || e.touches?.[0]?.clientY || resizeStartY;
+    const deltaY = clientY - resizeStartY;
+    const newHeight = resizeStartMapHeight + deltaY;
+    
+    const container = document.querySelector('.main-area');
+    const containerHeight = container ? container.getBoundingClientRect().height : 800;
+    
+    const minSpaceForList = isListMinimized ? 90 : 200;
+    const maxHeight = Math.max(containerHeight - minSpaceForList, 300);
+    const clampedHeight = Math.max(300, Math.min(maxHeight, newHeight));
+    
+    mapHeightPixels = clampedHeight;
+    
+    try {
+      localStorage.setItem('viabilidadeAlares_mapHeight', clampedHeight.toString());
+    } catch (err) {
+      console.warn('Erro ao salvar altura do mapa:', err);
+    }
+  }
+
+  function stopResizeMapTable() {
+    isResizingMapTable = false;
+    document.removeEventListener('mousemove', handleResizeMapTable, { capture: true });
+    document.removeEventListener('mouseup', stopResizeMapTable, { capture: true });
+    document.removeEventListener('touchmove', handleResizeMapTable, { capture: true });
+    document.removeEventListener('touchend', stopResizeMapTable, { capture: true });
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    
+    if (map && google?.maps) {
+      setTimeout(() => {
+        google.maps.event.trigger(map, 'resize');
+      }, 100);
+    }
+  }
+
+  // Carregar preferências salvas
+  function loadResizePreferences() {
+    try {
+      const savedSidebarWidth = localStorage.getItem('viabilidadeAlares_sidebarWidth');
+      if (savedSidebarWidth) {
+        sidebarWidth = parseInt(savedSidebarWidth, 10);
+        if (isNaN(sidebarWidth) || sidebarWidth < 250 || sidebarWidth > 700) {
+          sidebarWidth = 400;
+        }
+      }
+      
+      const savedMapHeight = localStorage.getItem('viabilidadeAlares_mapHeight');
+      if (savedMapHeight) {
+        mapHeightPixels = parseInt(savedMapHeight, 10);
+        if (isNaN(mapHeightPixels) || mapHeightPixels < 300) {
+          mapHeightPixels = 400;
+        }
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar preferências de redimensionamento:', err);
+    }
+  }
+
   // Função auxiliar para animar três pontinhos
   function animateDots(baseMessage, callback) {
     let dotCount = 0;
@@ -758,6 +909,9 @@
   // Inicializar ferramenta quando o componente é montado
   onMount(async () => {
     try {
+      // Carregar preferências de redimensionamento
+      loadResizePreferences();
+      
       // Registrar função de configurações com o parent
       if (onSettingsRequest && typeof onSettingsRequest === 'function') {
         onSettingsRequest(openSettings);
@@ -4781,276 +4935,389 @@
 {:else}
 <!-- Conteúdo da Ferramenta de Viabilidade -->
 <div class="viabilidade-content">
-  <div class="main-content">
-    <aside class="sidebar">
-      <!-- Box de aviso quando não há base de dados -->
-      {#if !baseDataExists}
-        <div class="base-data-warning">
-          <div class="warning-icon">⚠️</div>
-          <div class="warning-content">
-            <h3>Atenção</h3>
-            <p>Nenhuma base de dados foi carregada. Não é possível identificar as CTOs dentro da nossa estrutura de rede.</p>
-          </div>
+  <div class="main-layout">
+    <!-- Painel de Busca -->
+    <aside class="search-panel" class:minimized={isSearchPanelMinimized} style="width: {isSearchPanelMinimized ? '60px' : sidebarWidthStyle} !important; flex: 0 0 auto;">
+      <div class="panel-header">
+        <div class="panel-header-content">
+          {#if !isSearchPanelMinimized}
+            <h2>Viabilidade Alares</h2>
+          {:else}
+            <h2 class="vertical-title"></h2>
+          {/if}
+          <button 
+            class="minimize-button" 
+            disabled={isResizingSidebar || isResizingMapTable}
+            on:click={() => isSearchPanelMinimized = !isSearchPanelMinimized}
+            aria-label={isSearchPanelMinimized ? 'Expandir painel de busca' : 'Minimizar painel de busca'}
+            title={isSearchPanelMinimized ? 'Expandir' : 'Minimizar'}
+          >
+            {isSearchPanelMinimized ? '➡️' : '⬅️'}
+          </button>
         </div>
-      {/if}
-      
+        {#if !isSearchPanelMinimized}
+          <p>Localize o cliente e encontre CTOs próximas</p>
+        {/if}
+      </div>
+
+      {#if !isSearchPanelMinimized}
       <div class="search-section">
-        <h2>Localização do Cliente</h2>
-
-        <div class="mode-selector">
-          <button 
-            class:active={searchMode === 'address'}
-            on:click={() => searchMode = 'address'}
-          >
-            Endereço
-          </button>
-          <button 
-            class:active={searchMode === 'coordinates'}
-            on:click={() => searchMode = 'coordinates'}
-          >
-            Coordenadas
-          </button>
-        </div>
-
-        {#if searchMode === 'address'}
-          <div class="input-group">
-            <label for="address">Endereço (Rua e Número)</label>
-            <input 
-              type="text" 
-              id="address"
-              bind:value={addressInput}
-              placeholder="Ex: Rua Exemplo, 123, São Paulo"
-              disabled={loading}
-            />
-          </div>
-        {:else}
-          <div class="input-group">
-            <label for="coordinates">Coordenadas (Latitude, Longitude)</label>
-            <input 
-              type="text" 
-              id="coordinates"
-              bind:value={coordinatesInput}
-              placeholder="Ex: -22.5728462249402, -47.40101216301998"
-              disabled={loading}
-            />
+        <!-- Box de aviso quando não há base de dados -->
+        {#if !baseDataExists}
+          <div class="base-data-warning">
+            <div class="warning-icon">⚠️</div>
+            <div class="warning-content">
+              <h3>Atenção</h3>
+              <p>Nenhuma base de dados foi carregada. Não é possível identificar as CTOs dentro da nossa estrutura de rede.</p>
+            </div>
           </div>
         {/if}
+        
+        <div class="search-form">
 
-        <button 
-          class="search-button"
-          on:click={searchClientLocation}
-          disabled={loading || !googleMapsLoaded}
-        >
-          {loading ? 'Localizando...' : 'Localizar no Mapa'}
-        </button>
+          <div class="search-mode-selector">
+            <button 
+              class="mode-button"
+              class:active={searchMode === 'address'}
+              on:click={() => searchMode = 'address'}
+            >
+              Endereço
+            </button>
+            <button 
+              class="mode-button"
+              class:active={searchMode === 'coordinates'}
+              on:click={() => searchMode = 'coordinates'}
+            >
+              Coordenadas
+            </button>
+          </div>
 
-        {#if clientCoords}
+          {#if searchMode === 'address'}
+            <div class="form-group">
+              <label for="address">Endereço (Rua e Número)</label>
+              <input 
+                type="text" 
+                id="address"
+                bind:value={addressInput}
+                placeholder="Ex: Rua Exemplo, 123, São Paulo"
+                disabled={loading}
+              />
+            </div>
+          {:else}
+            <div class="form-group">
+              <label for="coordinates">Coordenadas (Latitude, Longitude)</label>
+              <input 
+                type="text" 
+                id="coordinates"
+                bind:value={coordinatesInput}
+                placeholder="Ex: -22.5728462249402, -47.40101216301998"
+                disabled={loading}
+              />
+            </div>
+          {/if}
+
           <button 
             class="search-button"
-            on:click={openReportModal}
+            on:click={searchClientLocation}
+            disabled={loading || !googleMapsLoaded}
           >
-            Gerar Relatório
+            {loading ? 'Localizando...' : 'Localizar no Mapa'}
           </button>
-        {/if}
 
+          {#if clientCoords}
+            <button 
+              class="search-button"
+              on:click={openReportModal}
+            >
+              Gerar Relatório
+            </button>
+          {/if}
 
-        {#if error}
-          <div class="error-message">
-            {error}
-          </div>
-        {/if}
+          {#if error}
+            <div class="error-message">
+              {error}
+            </div>
+          {/if}
 
-        {#if ctos.length > 0}
-          <div class="results-info">
-            <p>
-              <strong>{ctosRua.length}</strong> 
-              {ctosRua.length === 1 ? 'Equipamento encontrado' : 'Equipamentos encontrados'}
-              <button 
-                class="info-icon" 
-                on:click={() => showInfoEquipamentos = !showInfoEquipamentos}
-                title="Informação"
-                aria-label="Informação sobre equipamentos"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="12" cy="12" r="10" fill="#7B68EE" stroke="#7B68EE" stroke-width="1"/>
-                  <path d="M12 16V12" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                  <circle cx="12" cy="8" r="1" fill="white"/>
-                </svg>
-              </button>
-            </p>
-            {#if showInfoEquipamentos}
-              <div 
-                class="info-modal-overlay" 
-                on:click={() => showInfoEquipamentos = false}
-                on:keydown={(e) => e.key === 'Escape' && (showInfoEquipamentos = false)}
-                role="button"
-                tabindex="-1"
-                aria-label="Fechar modal de informação"
-              >
-                <div 
-                  class="info-modal-box" 
-                  on:click|stopPropagation
-                  on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
-                  role="dialog"
-                  tabindex="0"
-                  aria-modal="true"
+          {#if ctos.length > 0}
+            <div class="results-info">
+              <p>
+                <strong>{ctosRua.length}</strong> 
+                {ctosRua.length === 1 ? 'Equipamento encontrado' : 'Equipamentos encontrados'}
+                <button 
+                  class="info-icon" 
+                  on:click={() => showInfoEquipamentos = !showInfoEquipamentos}
+                  title="Informação"
+                  aria-label="Informação sobre equipamentos"
                 >
-                  <div class="info-modal-header">
-                    <h3>Informação</h3>
-                    <button class="info-modal-close" on:click={() => showInfoEquipamentos = false} aria-label="Fechar">×</button>
-                  </div>
-                  <div class="info-modal-body">
-                    <p>Quantidade total de equipamentos CTO encontrados dentro de um raio de 250 metros do endereço pesquisado.</p>
-                  </div>
-                </div>
-              </div>
-            {/if}
-          </div>
-
-          {@const totalPortasDisponiveis = ctosRua.reduce((sum, cto) => sum + ((cto.vagas_total || 0) - (cto.clientes_conectados || 0)), 0)}
-          <div class="results-info">
-            <p>
-              <strong>{totalPortasDisponiveis}</strong> 
-              {totalPortasDisponiveis === 1 ? 'Porta disponível encontrada' : 'Portas disponíveis encontradas'}
-              <button 
-                class="info-icon" 
-                on:click={() => showInfoPortas = !showInfoPortas}
-                title="Informação"
-                aria-label="Informação sobre portas disponíveis"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="12" cy="12" r="10" fill="#7B68EE" stroke="#7B68EE" stroke-width="1"/>
-                  <path d="M12 16V12" stroke="white" stroke-width="2" stroke-linecap="round"/>
-                  <circle cx="12" cy="8" r="1" fill="white"/>
-                </svg>
-              </button>
-            </p>
-            {#if showInfoPortas}
-              <div 
-                class="info-modal-overlay" 
-                on:click={() => showInfoPortas = false}
-                on:keydown={(e) => e.key === 'Escape' && (showInfoPortas = false)}
-                role="button"
-                tabindex="-1"
-                aria-label="Fechar modal de informação"
-              >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" fill="#7B68EE" stroke="#7B68EE" stroke-width="1"/>
+                    <path d="M12 16V12" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="12" cy="8" r="1" fill="white"/>
+                  </svg>
+                </button>
+              </p>
+              {#if showInfoEquipamentos}
                 <div 
-                  class="info-modal-box" 
-                  on:click|stopPropagation
-                  on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
-                  role="dialog"
-                  tabindex="0"
-                  aria-modal="true"
+                  class="info-modal-overlay" 
+                  on:click={() => showInfoEquipamentos = false}
+                  on:keydown={(e) => e.key === 'Escape' && (showInfoEquipamentos = false)}
+                  role="button"
+                  tabindex="-1"
+                  aria-label="Fechar modal de informação"
                 >
-                  <div class="info-modal-header">
-                    <h3>Informação</h3>
-                    <button class="info-modal-close" on:click={() => showInfoPortas = false} aria-label="Fechar">×</button>
-                  </div>
-                  <div class="info-modal-body">
-                    <p>Soma total de portas disponíveis (não conectadas) de todos os equipamentos CTO encontrados dentro de um raio de 250 metros do endereço pesquisado.</p>
+                  <div 
+                    class="info-modal-box" 
+                    on:click|stopPropagation
+                    on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
+                    role="dialog"
+                    tabindex="0"
+                    aria-modal="true"
+                  >
+                    <div class="info-modal-header">
+                      <h3>Informação</h3>
+                      <button class="info-modal-close" on:click={() => showInfoEquipamentos = false} aria-label="Fechar">×</button>
+                    </div>
+                    <div class="info-modal-body">
+                      <p>Quantidade total de equipamentos CTO encontrados dentro de um raio de 250 metros do endereço pesquisado.</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            {/if}
-          </div>
+              {/if}
+            </div>
 
-          <div class="ctos-list-container">
-            <div class="ctos-list">
-              {#each ctosRua as cto, index}
-                {@const ctoColor = getCTOColor(cto.pct_ocup || 0)}
-                <div class="cto-item">
-                  <div class="cto-header">
-                    <span class="cto-number" style="background: {ctoColor};">{index + 1}</span>
-                    <span class="cto-name">{cto.nome}</span>
-                  </div>
-                  <div class="cto-details">
-                    <div class="cto-row">
-                      <span class="cto-label">Cidade:</span>
-                      <span class="cto-value">{cto.cidade}</span>
+            {@const totalPortasDisponiveis = ctosRua.reduce((sum, cto) => sum + ((cto.vagas_total || 0) - (cto.clientes_conectados || 0)), 0)}
+            <div class="results-info">
+              <p>
+                <strong>{totalPortasDisponiveis}</strong> 
+                {totalPortasDisponiveis === 1 ? 'Porta disponível encontrada' : 'Portas disponíveis encontradas'}
+                <button 
+                  class="info-icon" 
+                  on:click={() => showInfoPortas = !showInfoPortas}
+                  title="Informação"
+                  aria-label="Informação sobre portas disponíveis"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" fill="#7B68EE" stroke="#7B68EE" stroke-width="1"/>
+                    <path d="M12 16V12" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="12" cy="8" r="1" fill="white"/>
+                  </svg>
+                </button>
+              </p>
+              {#if showInfoPortas}
+                <div 
+                  class="info-modal-overlay" 
+                  on:click={() => showInfoPortas = false}
+                  on:keydown={(e) => e.key === 'Escape' && (showInfoPortas = false)}
+                  role="button"
+                  tabindex="-1"
+                  aria-label="Fechar modal de informação"
+                >
+                  <div 
+                    class="info-modal-box" 
+                    on:click|stopPropagation
+                    on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
+                    role="dialog"
+                    tabindex="0"
+                    aria-modal="true"
+                  >
+                    <div class="info-modal-header">
+                      <h3>Informação</h3>
+                      <button class="info-modal-close" on:click={() => showInfoPortas = false} aria-label="Fechar">×</button>
                     </div>
-                    <div class="cto-row">
-                      <span class="cto-label">POP:</span>
-                      <span class="cto-value">{cto.pop}</span>
-                    </div>
-                    <div class="cto-row">
-                      <span class="cto-label">ID:</span>
-                      <span class="cto-value">{cto.id}</span>
-                    </div>
-                    <div class="cto-row">
-                      <span class="cto-label">Total de Portas:</span>
-                      <span class="cto-value">{cto.vagas_total}</span>
-                    </div>
-                    <div class="cto-row">
-                      <span class="cto-label">Portas Conectadas:</span>
-                      <span class="cto-value">{cto.clientes_conectados}</span>
-                    </div>
-                    <div class="cto-row">
-                      <span class="cto-label">Portas Disponíveis:</span>
-                      <span class="cto-value">{cto.vagas_total - cto.clientes_conectados}</span>
-                    </div>
-                    <div class="cto-row">
-                      <span class="cto-label">Distância:</span>
-                      <span class="cto-value">{cto.distancia_metros}m ({cto.distancia_km}km)</span>
+                    <div class="info-modal-body">
+                      <p>Soma total de portas disponíveis (não conectadas) de todos os equipamentos CTO encontrados dentro de um raio de 250 metros do endereço pesquisado.</p>
                     </div>
                   </div>
                 </div>
-              {/each}
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </aside>
+
+    <!-- Handle de redimensionamento vertical (sidebar) -->
+    <div 
+      class="resize-handle resize-handle-vertical"
+      on:mousedown|stopPropagation={startResizeSidebar}
+      on:touchstart|stopPropagation={startResizeSidebar}
+      class:resizing={isResizingSidebar}
+      role="separator"
+      aria-label="Ajustar largura da barra lateral"
+      tabindex="0"
+    >
+    </div>
+
+    <!-- Área Principal (Mapa e Lista) -->
+    <main class="main-area">
+      <!-- Mapa -->
+      <div class="map-container" class:minimized={isMapMinimized} style="height: {isMapMinimized ? '60px' : mapHeightStyle}; flex: 0 0 auto; min-height: {isMapMinimized ? '60px' : mapHeightStyle};">
+        <div class="map-header">
+          <h3>Mapa</h3>
+          <button 
+            class="minimize-button" 
+            disabled={isResizingSidebar || isResizingMapTable}
+            on:click={async () => {
+              isMapMinimized = !isMapMinimized;
+              if (!isMapMinimized && map && google?.maps) {
+                await tick();
+                setTimeout(() => {
+                  if (map && google.maps) {
+                    google.maps.event.trigger(map, 'resize');
+                  }
+                }, 100);
+              }
+            }}
+            aria-label={isMapMinimized ? 'Expandir mapa' : 'Minimizar mapa'}
+            title={isMapMinimized ? 'Expandir' : 'Minimizar'}
+          >
+            {isMapMinimized ? '⬆️' : '⬇️'}
+          </button>
+        </div>
+        <div id="map" class="map" class:hidden={isMapMinimized}></div>
+        
+        <!-- Popup de informações da rota -->
+        {#if selectedRouteIndex !== null}
+          {@const routeInfo = routeData.find(rd => {
+            const route = routes[selectedRouteIndex];
+            return rd.polyline === route;
+          })}
+          {@const cto = routeInfo ? routeInfo.cto : null}
+          {@const ctoIndex = routeInfo ? routeInfo.ctoIndex : selectedRouteIndex}
+          {@const distancia = cto ? `${cto.distancia_metros}m (${cto.distancia_km}km)` : 'N/A'}
+          <div 
+            class="route-popup"
+            style="left: {routePopupPosition.x}px; top: {routePopupPosition.y}px;"
+            on:mousemove={dragRoutePopup}
+            on:mouseup={stopDraggingRoutePopup}
+            on:mouseleave={stopDraggingRoutePopup}
+          >
+            <div class="route-popup-content">
+              <div 
+                class="route-popup-header"
+                on:mousedown={startDraggingRoutePopup}
+                style="cursor: move;"
+              >
+                <h3>Rota {ctoIndex + 1}</h3>
+                <button class="route-popup-close" on:click={closeRoutePopup}>×</button>
+              </div>
+              <div class="route-popup-info">
+                <p><strong>CTO:</strong> {cto ? cto.nome : 'N/A'}</p>
+                <p><strong>Metragem:</strong> {distancia}</p>
+              </div>
+              <div class="route-popup-actions">
+                {#if editingRouteIndex === selectedRouteIndex}
+                  <button 
+                    class="route-popup-button finish"
+                    on:click={() => finishEditingRoute(selectedRouteIndex)}
+                  >
+                    ✓ Finalizar Edição
+                  </button>
+                {:else}
+                  <button 
+                    class="route-popup-button edit"
+                    on:click={() => editSingleRoute(selectedRouteIndex)}
+                  >
+                   Editar Rota
+                  </button>
+                {/if}
+              </div>
             </div>
           </div>
         {/if}
       </div>
-    </aside>
 
-    <main class="map-container">
-      <div id="map"></div>
-      
-      <!-- Popup de informações da rota -->
-      {#if selectedRouteIndex !== null}
-        {@const routeInfo = routeData.find(rd => {
-          const route = routes[selectedRouteIndex];
-          return rd.polyline === route;
-        })}
-        {@const cto = routeInfo ? routeInfo.cto : null}
-        {@const ctoIndex = routeInfo ? routeInfo.ctoIndex : selectedRouteIndex}
-        {@const distancia = cto ? `${cto.distancia_metros}m (${cto.distancia_km}km)` : 'N/A'}
-        <div 
-          class="route-popup"
-          style="left: {routePopupPosition.x}px; top: {routePopupPosition.y}px;"
-          on:mousemove={dragRoutePopup}
-          on:mouseup={stopDraggingRoutePopup}
-          on:mouseleave={stopDraggingRoutePopup}
-        >
-          <div class="route-popup-content">
-            <div 
-              class="route-popup-header"
-              on:mousedown={startDraggingRoutePopup}
-              style="cursor: move;"
+      <!-- Handle de redimensionamento horizontal (mapa/lista) -->
+      <div 
+        class="resize-handle resize-handle-horizontal"
+        on:mousedown|stopPropagation={startResizeMapTable}
+        on:touchstart|stopPropagation={startResizeMapTable}
+        class:resizing={isResizingMapTable}
+        role="separator"
+        aria-label="Ajustar altura do mapa e lista"
+        tabindex="0"
+      >
+      </div>
+
+      <!-- Lista de CTOs -->
+      {#if ctos.length > 0}
+        <div class="results-list-container" class:minimized={isListMinimized} style="flex: {isListMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isListMinimized ? '60px' : '200px'};">
+          <div class="list-header">
+            <h3>Lista de Equipamentos Encontrados - {ctosRua.length} Equipamentos</h3>
+            <button 
+              class="minimize-button" 
+              disabled={isResizingSidebar || isResizingMapTable}
+              on:click={() => isListMinimized = !isListMinimized}
+              aria-label={isListMinimized ? 'Expandir lista' : 'Minimizar lista'}
+              title={isListMinimized ? 'Expandir' : 'Minimizar'}
             >
-              <h3>Rota {ctoIndex + 1}</h3>
-              <button class="route-popup-close" on:click={closeRoutePopup}>×</button>
-            </div>
-            <div class="route-popup-info">
-              <p><strong>CTO:</strong> {cto ? cto.nome : 'N/A'}</p>
-              <p><strong>Metragem:</strong> {distancia}</p>
-            </div>
-            <div class="route-popup-actions">
-              {#if editingRouteIndex === selectedRouteIndex}
-                <button 
-                  class="route-popup-button finish"
-                  on:click={() => finishEditingRoute(selectedRouteIndex)}
-                >
-                  ✓ Finalizar Edição
-                </button>
-              {:else}
-                <button 
-                  class="route-popup-button edit"
-                  on:click={() => editSingleRoute(selectedRouteIndex)}
-                >
-                 Editar Rota
-                </button>
-              {/if}
-            </div>
+              {isListMinimized ? '⬆️' : '⬇️'}
+            </button>
           </div>
+          {#if !isListMinimized}
+            <div class="ctos-list-container">
+              <div class="ctos-list">
+                {#each ctosRua as cto, index}
+                  {@const ctoColor = getCTOColor(cto.pct_ocup || 0)}
+                  <div class="cto-item">
+                    <div class="cto-header">
+                      <span class="cto-number" style="background: {ctoColor};">{index + 1}</span>
+                      <span class="cto-name">{cto.nome}</span>
+                    </div>
+                    <div class="cto-details">
+                      <div class="cto-row">
+                        <span class="cto-label">Cidade:</span>
+                        <span class="cto-value">{cto.cidade}</span>
+                      </div>
+                      <div class="cto-row">
+                        <span class="cto-label">POP:</span>
+                        <span class="cto-value">{cto.pop}</span>
+                      </div>
+                      <div class="cto-row">
+                        <span class="cto-label">ID:</span>
+                        <span class="cto-value">{cto.id}</span>
+                      </div>
+                      <div class="cto-row">
+                        <span class="cto-label">Total de Portas:</span>
+                        <span class="cto-value">{cto.vagas_total}</span>
+                      </div>
+                      <div class="cto-row">
+                        <span class="cto-label">Portas Conectadas:</span>
+                        <span class="cto-value">{cto.clientes_conectados}</span>
+                      </div>
+                      <div class="cto-row">
+                        <span class="cto-label">Portas Disponíveis:</span>
+                        <span class="cto-value">{cto.vagas_total - cto.clientes_conectados}</span>
+                      </div>
+                      <div class="cto-row">
+                        <span class="cto-label">Distância:</span>
+                        <span class="cto-value">{cto.distancia_metros}m ({cto.distancia_km}km)</span>
+                      </div>
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+      {:else if !isLoading && !error}
+        <div class="empty-state" class:minimized={isListMinimized} style="flex: {isListMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isListMinimized ? '60px' : '200px'};">
+          <div class="list-header">
+            <h3>Lista de Equipamentos Encontrados - Nenhum Equipamento Pesquisado</h3>
+            <button 
+              class="minimize-button" 
+              disabled={isResizingSidebar || isResizingMapTable}
+              on:click={() => isListMinimized = !isListMinimized}
+              aria-label={isListMinimized ? 'Expandir lista' : 'Minimizar lista'}
+              title={isListMinimized ? 'Expandir' : 'Minimizar'}
+            >
+              {isListMinimized ? '⬆️' : '⬇️'}
+            </button>
+          </div>
+          {#if !isListMinimized}
+            <p>🔍 Localize um cliente para ver os equipamentos encontrados aqui</p>
+          {/if}
         </div>
       {/if}
     </main>
@@ -5621,9 +5888,338 @@
 
   .viabilidade-content {
     width: 100%;
-    height: 100%;
+    height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    background: #f5f7fa;
+  }
+
+  .main-layout {
+    display: flex;
+    flex: 1;
+    height: 100%;
+    gap: 0.75rem;
+    padding: 1rem;
+    padding-bottom: 1.75rem;
+    overflow: hidden;
+    align-items: flex-start;
+    position: relative;
+    box-sizing: border-box;
+  }
+
+  .search-panel {
+    min-width: 300px !important;
+    max-width: 700px !important;
+    width: 400px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 0 0 auto;
+    height: calc(100% - 2.75rem);
+    box-sizing: border-box;
+  }
+
+  .panel-header {
+    position: relative;
+  }
+
+  .panel-header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .panel-header h2 {
+    margin: 0 0 0.5rem 0;
+    color: #4c1d95;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  .panel-header p {
+    margin: 0;
+    color: #666;
+    font-size: 0.875rem;
+  }
+
+  .minimize-button {
+    background: transparent;
+    border: 1px solid rgba(123, 104, 238, 0.3);
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    color: #7B68EE;
+    font-weight: 400;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    box-shadow: none;
+    opacity: 0.7;
+  }
+
+  .minimize-button:hover {
+    opacity: 1;
+    background: rgba(100, 149, 237, 0.1);
+    border-color: #7B68EE;
+    color: #4c1d95;
+  }
+
+  .minimize-button:active {
+    background: rgba(123, 104, 238, 0.15);
+    border-color: #7B68EE;
+    color: #4c1d95;
+    transform: scale(0.95);
+  }
+
+  .minimize-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .vertical-title {
+    margin: 0;
+    color: #4c1d95;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  .search-panel.minimized {
+    padding: 1rem 0.75rem;
+    overflow: hidden;
+    min-width: 60px !important;
+    max-width: 60px !important;
+    align-items: center;
+  }
+
+  .search-panel.minimized .panel-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+  }
+
+  .search-panel.minimized .panel-header-content {
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .search-panel.minimized .panel-header-content h2,
+  .search-panel.minimized .vertical-title {
+    margin: 0;
+    font-size: 1.5rem;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+  }
+
+  .search-panel.minimized .panel-header p {
+    display: none;
+  }
+
+  .search-panel.minimized .minimize-button {
+    width: 100%;
+    min-width: auto;
+  }
+
+  .search-mode-selector {
+    display: flex;
+    gap: 0.5rem;
+    border-bottom: 2px solid #e5e7eb;
+    padding-bottom: 0.75rem;
+  }
+
+  .mode-button {
+    flex: 1;
+    padding: 0.5rem;
+    border: none;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+
+  .mode-button:hover {
+    background: #f3f4f6;
+  }
+
+  .mode-button.active {
+    background: linear-gradient(135deg, #6495ED 0%, #7B68EE 100%);
+    color: white;
+  }
+
+  .search-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .resize-handle {
+    flex-shrink: 0;
+    background: transparent;
+    transition: background 0.2s;
+    z-index: 10;
+  }
+
+  .resize-handle-vertical {
+    width: 8px;
+    cursor: col-resize;
+    margin: 0 -4px;
+  }
+
+  .resize-handle-vertical:hover {
+    background: rgba(123, 104, 238, 0.2);
+  }
+
+  .resize-handle-vertical.resizing {
+    background: rgba(123, 104, 238, 0.4);
+  }
+
+  .resize-handle-horizontal {
+    height: 8px;
+    cursor: row-resize;
+    margin: -4px 0;
+  }
+
+  .resize-handle-horizontal:hover {
+    background: rgba(123, 104, 238, 0.2);
+  }
+
+  .resize-handle-horizontal.resizing {
+    background: rgba(123, 104, 238, 0.4);
+  }
+
+  .main-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .map-container {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .map-container.minimized {
+    min-height: 60px;
+    max-height: 60px;
+  }
+
+  .map-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+  }
+
+  .map-header h3 {
+    margin: 0;
+    color: #4c1d95;
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+
+  .map-container.minimized .map-header {
+    border-bottom: none;
+  }
+
+  .map {
+    flex: 1;
+    min-height: 300px;
+  }
+
+  .map.hidden {
+    display: none;
+  }
+
+  .results-list-container {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .results-list-container.minimized {
+    min-height: 60px;
+    max-height: 60px;
+  }
+
+  .list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+  }
+
+  .list-header h3 {
+    margin: 0;
+    color: #4c1d95;
+    font-size: 1.25rem;
+    font-weight: 600;
+  }
+
+  .results-list-container.minimized .list-header {
+    border-bottom: none;
+  }
+
+  .empty-state {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .empty-state.minimized {
+    min-height: 60px;
+    max-height: 60px;
+  }
+
+  .empty-state.minimized .list-header {
+    border-bottom: none;
+  }
+
+  .empty-state p {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    font-size: 1rem;
+    padding: 2rem;
   }
 
   .error-container {
@@ -5734,79 +6330,25 @@
   }
 
 
-  .main-content {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-  }
-
-  .sidebar {
-    width: 400px;
-    background: rgba(255, 255, 255, 0.95);
-    box-shadow: 2px 0 8px rgba(0,0,0,0.15);
-    backdrop-filter: blur(10px);
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow: hidden;
-  }
-
   .search-section {
     flex: 1;
     overflow-y: auto;
-    padding: 1.5rem;
-    padding-bottom: 1.5rem;
+    overflow-x: hidden;
   }
 
-
-  .search-section h2 {
-    margin-top: 0;
-    font-size: 1.2rem;
-    color: #7B68EE;
-    font-weight: 600;
-  }
-
-  .mode-selector {
-    display: flex;
-    gap: 0.5rem;
+  .form-group {
     margin-bottom: 1rem;
   }
 
-  .mode-selector button {
-    flex: 1;
-    padding: 0.625rem;
-    border: 1px solid #E0E0E0;
-    background: white;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-weight: 500;
-    font-size: 0.9rem;
-  }
-
-  .mode-selector button.active {
-    background: linear-gradient(135deg, #7B68EE 0%, #6495ED 100%);
-    color: white;
-    border-color: #7B68EE;
-  }
-
-  .mode-selector button:hover {
-    border-color: #7B68EE;
-  }
-
-  .input-group {
-    margin-bottom: 1rem;
-  }
-
-  .input-group label {
+  .form-group label {
     display: block;
     margin-bottom: 0.5rem;
     font-weight: 500;
-    color: #7B68EE;
+    color: #4c1d95;
+    font-size: 0.875rem;
   }
 
-  .input-group input {
+  .form-group input {
     width: 100%;
     padding: 0.75rem;
     border: 1px solid #ddd;
@@ -5815,7 +6357,7 @@
     box-sizing: border-box;
   }
 
-  .input-group input:focus {
+  .form-group input:focus {
     outline: none;
     border-color: #7B68EE;
     box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.1);
@@ -6256,12 +6798,9 @@
   }
 
   .ctos-list-container {
-    margin-top: 1.5rem;
-    margin-bottom: 2.5rem;
-    background: rgba(255, 255, 255, 0.98);
-    border-radius: 8px;
-    padding: 1rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.5rem;
   }
 
   .logout-button {
@@ -6386,15 +6925,6 @@
 
   }
 
-  .map-container {
-    flex: 1;
-    position: relative;
-  }
-
-  #map {
-    width: 100%;
-    height: 100%;
-  }
 
   /* Modal de Relatório */
   .modal-overlay {
