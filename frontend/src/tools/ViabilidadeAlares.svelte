@@ -123,6 +123,269 @@
   let resizeStartX = 0;
   let resizeStartY = 0;
 
+  // ========== SISTEMA DE TABELA (igual ao AnaliseCobertura) ==========
+  // Mapa para controlar quais CTOs estão visíveis no mapa (key: identificador único da CTO)
+  let ctoVisibility = new Map(); // Map<ctoKey, boolean>
+  
+  // Função para gerar uma chave única para uma CTO
+  function getCTOKey(cto) {
+    const id = cto.id_cto || cto.id || 'NO_ID';
+    const lat = parseFloat(cto.latitude || 0).toFixed(6);
+    const lng = parseFloat(cto.longitude || 0).toFixed(6);
+    return `${id}_${cto.nome || 'UNKNOWN'}_${lat}_${lng}`;
+  }
+
+  // Sistema de seleção de tabela
+  let selectedCells = []; // Array de strings "row-col" (ex: "0-2" = linha 0, coluna 2)
+  let selectedRows = []; // Array de índices de linha
+  let selectedColumns = []; // Array de índices de coluna
+  let selectionMode = 'cell'; // 'cell', 'row', 'column'
+  let selectionStart = null; // {row, col} para range selection com Shift
+  let isSelecting = false; // Flag para indicar se está em processo de seleção (drag)
+  
+  // Variável reativa para forçar atualização quando seleção mudar
+  $: selectionKey = `${selectedCells.length}-${selectedRows.length}-${selectedColumns.length}-${selectedColumns.join(',')}-${selectedRows.join(',')}`;
+  
+  // Função para gerar chave de célula (row-col)
+  function getCellKey(rowIndex, colIndex) {
+    return `${rowIndex}-${colIndex}`;
+  }
+  
+  // Função para verificar se uma célula está selecionada
+  function isCellSelected(rowIndex, colIndex) {
+    const _ = selectionKey; // Forçar reatividade
+    
+    const cellKey = getCellKey(rowIndex, colIndex);
+    
+    if (selectedCells.includes(cellKey)) return true;
+    if (selectedRows.includes(rowIndex)) return true;
+    if (selectedColumns.includes(colIndex)) return true;
+    return false;
+  }
+  
+  // Função para selecionar célula única
+  function selectCell(rowIndex, colIndex, addToSelection = false) {
+    const cellKey = getCellKey(rowIndex, colIndex);
+    
+    if (!addToSelection) {
+      selectedCells = [cellKey];
+      selectedRows = [];
+      selectedColumns = [];
+    } else {
+      if (!selectedCells.includes(cellKey)) {
+        selectedCells = [...selectedCells, cellKey];
+      }
+    }
+    selectionMode = 'cell';
+    selectionStart = { row: rowIndex, col: colIndex };
+  }
+  
+  // Função para selecionar linha inteira
+  function selectRow(rowIndex, addToSelection = false) {
+    if (!addToSelection) {
+      selectedCells = [];
+      selectedRows = [rowIndex];
+      selectedColumns = [];
+    } else {
+      if (!selectedRows.includes(rowIndex)) {
+        selectedRows = [...selectedRows, rowIndex];
+      }
+    }
+    selectionMode = 'row';
+  }
+  
+  // Função para selecionar coluna inteira
+  function selectColumn(colIndex, addToSelection = false) {
+    if (!addToSelection) {
+      selectedCells = [];
+      selectedRows = [];
+      selectedColumns = [colIndex];
+    } else {
+      if (!selectedColumns.includes(colIndex)) {
+        selectedColumns = [...selectedColumns, colIndex];
+      }
+    }
+    selectionMode = 'column';
+  }
+  
+  // Função para limpar todas as seleções
+  function clearSelection() {
+    selectedCells = [];
+    selectedRows = [];
+    selectedColumns = [];
+    selectionStart = null;
+  }
+  
+  // Função para selecionar range de células (Shift + Click)
+  function selectRange(startRow, startCol, endRow, endCol) {
+    const minRow = Math.min(startRow, endRow);
+    const maxRow = Math.max(startRow, endRow);
+    const minCol = Math.min(startCol, endCol);
+    const maxCol = Math.max(startCol, endCol);
+    
+    selectedRows = [];
+    selectedColumns = [];
+    
+    const newSelectedCells = [];
+    for (let row = minRow; row <= maxRow; row++) {
+      for (let col = minCol; col <= maxCol; col++) {
+        newSelectedCells.push(getCellKey(row, col));
+      }
+    }
+    
+    selectedCells = newSelectedCells;
+  }
+  
+  // Handler para click em célula
+  function handleCellClick(e, rowIndex, colIndex) {
+    const tdElement = e.currentTarget || e.target.closest('td');
+    
+    if (e.target.tagName === 'INPUT' || 
+        e.target.type === 'checkbox' ||
+        e.target.closest('input[type="checkbox"]') ||
+        e.target.closest('span.occupation-badge')) {
+      return;
+    }
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (e.shiftKey && selectionStart) {
+      selectRange(selectionStart.row, selectionStart.col, rowIndex, colIndex);
+    } else if (e.ctrlKey || e.metaKey) {
+      const cellKey = getCellKey(rowIndex, colIndex);
+      selectedRows = [];
+      selectedColumns = [];
+      
+      if (selectedCells.includes(cellKey)) {
+        selectedCells = selectedCells.filter(key => key !== cellKey);
+      } else {
+        selectedCells = [...selectedCells, cellKey];
+      }
+      selectionStart = { row: rowIndex, col: colIndex };
+    } else {
+      selectCell(rowIndex, colIndex, false);
+    }
+  }
+  
+  // Handler para click em header de coluna
+  function handleColumnHeaderClick(e, colIndex) {
+    if (colIndex === 0) return; // Não fazer nada se clicar na coluna do checkbox
+    
+    if (e.target.tagName === 'INPUT' || 
+        e.target.type === 'checkbox' ||
+        e.target.closest('input[type="checkbox"]')) {
+      return;
+    }
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (e.ctrlKey || e.metaKey) {
+      selectedCells = [];
+      selectedRows = [];
+      
+      if (selectedColumns.includes(colIndex)) {
+        selectedColumns = selectedColumns.filter(idx => idx !== colIndex);
+      } else {
+        selectedColumns = [...selectedColumns, colIndex];
+      }
+    } else {
+      selectColumn(colIndex, false);
+    }
+  }
+  
+  // Limpar seleção ao clicar fora da tabela
+  function handleClickOutside(e) {
+    if (!e.target.closest('.results-table')) {
+      clearSelection();
+    }
+  }
+  
+  // Prevenir seleção de texto nativa dentro da tabela
+  function preventTextSelection(e) {
+    if (e.target.tagName !== 'INPUT' && 
+        e.target.tagName !== 'TEXTAREA' &&
+        !e.target.closest('input') &&
+        !e.target.closest('textarea') &&
+        e.target.closest('.results-table')) {
+      e.preventDefault();
+    }
+  }
+  
+  // Números das CTOs (para exibição na tabela)
+  let ctoNumbers = new Map();
+  let ctoNumbersVersion = 0;
+  
+  // Calcular números das CTOs baseado na visibilidade
+  $: {
+    const _ = ctoNumbersVersion;
+    const _visibility = Array.from(ctoVisibility.entries());
+    
+    if (ctosRua.length > 0) {
+      ctoNumbers = calculateCTONumbers();
+    } else {
+      ctoNumbers = new Map();
+    }
+  }
+  
+  function calculateCTONumbers() {
+    const numbers = new Map();
+    let counter = 1;
+    
+    for (const cto of ctosRua) {
+      const ctoKey = getCTOKey(cto);
+      if (ctoVisibility.get(ctoKey) !== false) {
+        numbers.set(cto, counter);
+        counter++;
+      }
+    }
+    
+    return numbers;
+  }
+  
+  // Computed para verificar se todas as CTOs estão visíveis
+  $: allCTOsVisible = ctosRua.length > 0 && ctosRua.every(cto => {
+    const ctoKey = getCTOKey(cto);
+    return ctoVisibility.get(ctoKey) !== false;
+  });
+  
+  // Computed para verificar se algumas CTOs estão visíveis (para estado indeterminado do checkbox)
+  $: someCTOsVisible = ctosRua.length > 0 && ctosRua.some(cto => {
+    const ctoKey = getCTOKey(cto);
+    return ctoVisibility.get(ctoKey) === true;
+  }) && !allCTOsVisible;
+  
+  // Função para formatar data de criação
+  function formatDataCriacao(cto) {
+    if (!cto.data_criacao) return 'N/A';
+    try {
+      const date = new Date(cto.data_criacao);
+      return date.toLocaleDateString('pt-BR');
+    } catch {
+      return 'N/A';
+    }
+  }
+  
+  // Menu da tabela (InfoWindow)
+  let tableMenuInfoWindow = null;
+  let tableMenuPosition = { x: 0, y: 0 };
+  
+  function openTableMenuInfoWindow(e) {
+    e.stopPropagation();
+    const button = e.currentTarget;
+    const rect = button.getBoundingClientRect();
+    tableMenuPosition = {
+      x: rect.right + 10,
+      y: rect.top
+    };
+    tableMenuInfoWindow = tableMenuInfoWindow ? null : 'open';
+  }
+  
+  function closeTableMenuInfoWindow() {
+    tableMenuInfoWindow = null;
+  }
+
   // Reactive statements para estilos
   $: sidebarWidthStyle = `${sidebarWidth}px`;
   $: mapHeightStyle = `${mapHeightPixels}px`;
@@ -566,7 +829,7 @@
     
     // Forçar atualização do DOM diretamente também
     const mapElement = document.querySelector('.map-container');
-    const listElement = document.querySelector('.results-list-container, .empty-state');
+    const listElement = document.querySelector('.results-table-container, .empty-state');
     if (mapElement) {
       // Respeitar o estado minimizado do mapa ao redimensionar
       if (isMapMinimized) {
@@ -1882,6 +2145,20 @@
 
       // Atribuir ao array final (prédios + até 5 CTOs de rua)
       ctos = todasCTOs;
+      
+      // Inicializar visibilidade de todas as CTOs como verdadeira (todas visíveis por padrão)
+      ctoVisibility.clear();
+      for (const cto of ctosRua) {
+        const ctoKey = getCTOKey(cto);
+        if (!ctoVisibility.has(ctoKey)) {
+          ctoVisibility.set(ctoKey, true); // Todas visíveis por padrão
+        }
+      }
+      ctoVisibility = ctoVisibility; // Forçar reatividade
+      ctoNumbersVersion++; // Forçar atualização da numeração
+      
+      // Aguardar a reatividade do Svelte recalcular ctoNumbers antes de atualizar o mapa
+      await tick();
       
       // Desenhar rotas e marcadores
       // Prédios já foram plotados, agora plotar CTOs normais com rotas
@@ -5284,102 +5561,172 @@
       >
       </div>
 
-      <!-- Lista de CTOs -->
-      {#if ctos.length > 0}
-        <div class="results-list-container" class:minimized={isListMinimized} style="flex: {isListMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isListMinimized ? '60px' : '200px'};">
-          <div class="list-header">
-            <h3>Lista de Equipamentos Encontrados - {ctosRua.length} Equipamentos</h3>
-            <button 
-              class="minimize-button" 
-              disabled={isResizingSidebar || isResizingMapTable}
-              on:click={async () => {
-                isListMinimized = !isListMinimized;
-                // Quando expandir ou minimizar a lista, redimensionar o mapa
-                if (map && google?.maps) {
-                  await tick();
-                  setTimeout(() => {
-                    if (map && google.maps) {
-                      google.maps.event.trigger(map, 'resize');
-                    }
-                  }, 100);
-                }
-              }}
-              aria-label={isListMinimized ? 'Expandir lista' : 'Minimizar lista'}
-              title={isListMinimized ? 'Expandir' : 'Minimizar'}
-            >
-              {isListMinimized ? '⬆️' : '⬇️'}
-            </button>
+      <!-- Tabela de Resultados -->
+      {#if ctosRua.length > 0}
+        <div class="results-table-container" class:minimized={isListMinimized} style="flex: {isListMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isListMinimized ? '60px' : '200px'};">
+          <div class="table-header">
+            <h3>Tabela de Equipamentos Encontrados - {ctosRua.length} Equipamentos Encontrados</h3>
+            <div class="table-header-buttons">
+              <button 
+                class="minimize-button table-menu-button" 
+                on:click={openTableMenuInfoWindow}
+                aria-label="Menu da tabela"
+                title="Menu"
+              >
+                <span class="vertical-dots"></span>
+              </button>
+              <button 
+                class="minimize-button" 
+                disabled={isResizingSidebar || isResizingMapTable}
+                on:click={async () => {
+                  isListMinimized = !isListMinimized;
+                  if (map && google?.maps) {
+                    await tick();
+                    setTimeout(() => {
+                      if (map && google.maps) {
+                        google.maps.event.trigger(map, 'resize');
+                      }
+                    }, 100);
+                  }
+                }}
+                aria-label={isListMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
+                title={isListMinimized ? 'Expandir' : 'Minimizar'}
+              >
+                {isListMinimized ? '⬆️' : '⬇️'}
+              </button>
+            </div>
           </div>
           {#if !isListMinimized}
-            <div class="ctos-list-container">
-              <div class="ctos-list">
-                {#each ctosRua as cto, index}
-                  {@const ctoColor = getCTOColor(cto.pct_ocup || 0)}
-                  <div class="cto-item">
-                    <div class="cto-header">
-                      <span class="cto-number" style="background: {ctoColor};">{index + 1}</span>
-                      <span class="cto-name">{cto.nome}</span>
-                    </div>
-                    <div class="cto-details">
-                      <div class="cto-row">
-                        <span class="cto-label">Cidade:</span>
-                        <span class="cto-value">{cto.cidade}</span>
-                      </div>
-                      <div class="cto-row">
-                        <span class="cto-label">POP:</span>
-                        <span class="cto-value">{cto.pop}</span>
-                      </div>
-                      <div class="cto-row">
-                        <span class="cto-label">ID:</span>
-                        <span class="cto-value">{cto.id}</span>
-                      </div>
-                      <div class="cto-row">
-                        <span class="cto-label">Total de Portas:</span>
-                        <span class="cto-value">{cto.vagas_total}</span>
-                      </div>
-                      <div class="cto-row">
-                        <span class="cto-label">Portas Conectadas:</span>
-                        <span class="cto-value">{cto.clientes_conectados}</span>
-                      </div>
-                      <div class="cto-row">
-                        <span class="cto-label">Portas Disponíveis:</span>
-                        <span class="cto-value">{cto.vagas_total - cto.clientes_conectados}</span>
-                      </div>
-                      <div class="cto-row">
-                        <span class="cto-label">Distância:</span>
-                        <span class="cto-value">{cto.distancia_metros}m ({cto.distancia_km}km)</span>
-                      </div>
-                    </div>
-                  </div>
-                {/each}
-              </div>
+            <div class="table-wrapper">
+              <table class="results-table" on:click={handleClickOutside} on:selectstart={preventTextSelection}>
+                <thead>
+                  <tr>
+                    <th class:selected={selectedColumns.includes(0)} on:click={(e) => handleColumnHeaderClick(e, 0)}>
+                      <input 
+                        type="checkbox" 
+                        checked={allCTOsVisible}
+                        indeterminate={someCTOsVisible}
+                        on:change={async (e) => {
+                          const isChecked = e.target.checked;
+                          const newVisibility = new Map();
+                          for (const cto of ctosRua) {
+                            const ctoKey = getCTOKey(cto);
+                            newVisibility.set(ctoKey, isChecked);
+                          }
+                          ctoVisibility = newVisibility;
+                          ctoNumbersVersion++;
+                          await tick();
+                        }}
+                      />
+                    </th>
+                    <th class:selected={selectedColumns.includes(1)} on:click={(e) => handleColumnHeaderClick(e, 1)}>N°</th>
+                    <th class:selected={selectedColumns.includes(2)} on:click={(e) => handleColumnHeaderClick(e, 2)}>CTO</th>
+                    <th class:selected={selectedColumns.includes(3)} on:click={(e) => handleColumnHeaderClick(e, 3)}>Latitude</th>
+                    <th class:selected={selectedColumns.includes(4)} on:click={(e) => handleColumnHeaderClick(e, 4)}>Longitude</th>
+                    <th class:selected={selectedColumns.includes(5)} on:click={(e) => handleColumnHeaderClick(e, 5)}>Cidade</th>
+                    <th class:selected={selectedColumns.includes(6)} on:click={(e) => handleColumnHeaderClick(e, 6)}>POP</th>
+                    <th class:selected={selectedColumns.includes(7)} on:click={(e) => handleColumnHeaderClick(e, 7)}>CHASSE</th>
+                    <th class:selected={selectedColumns.includes(8)} on:click={(e) => handleColumnHeaderClick(e, 8)}>PLACA</th>
+                    <th class:selected={selectedColumns.includes(9)} on:click={(e) => handleColumnHeaderClick(e, 9)}>OLT</th>
+                    <th class:selected={selectedColumns.includes(10)} on:click={(e) => handleColumnHeaderClick(e, 10)}>ID CTO</th>
+                    <th class:selected={selectedColumns.includes(11)} on:click={(e) => handleColumnHeaderClick(e, 11)}>Data de Criação</th>
+                    <th class:selected={selectedColumns.includes(12)} on:click={(e) => handleColumnHeaderClick(e, 12)}>Portas Total</th>
+                    <th class:selected={selectedColumns.includes(13)} on:click={(e) => handleColumnHeaderClick(e, 13)}>Ocupadas</th>
+                    <th class:selected={selectedColumns.includes(14)} on:click={(e) => handleColumnHeaderClick(e, 14)}>Disponíveis</th>
+                    <th class:selected={selectedColumns.includes(15)} on:click={(e) => handleColumnHeaderClick(e, 15)}>Ocupação</th>
+                    <th class:selected={selectedColumns.includes(16)} on:click={(e) => handleColumnHeaderClick(e, 16)}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each ctosRua as cto, rowIndex}
+                    {@const ctoKey = getCTOKey(cto)}
+                    {@const isVisible = ctoVisibility.get(ctoKey) !== false}
+                    {@const pctOcup = parseFloat(cto.pct_ocup || 0)}
+                    {@const occupationClass = pctOcup < 50 ? 'low' : pctOcup >= 50 && pctOcup < 80 ? 'medium' : 'high'}
+                    {@const cellKey0 = getCellKey(rowIndex, 0)}
+                    {@const cellKey1 = getCellKey(rowIndex, 1)}
+                    {@const cellKey2 = getCellKey(rowIndex, 2)}
+                    {@const cellKey3 = getCellKey(rowIndex, 3)}
+                    {@const cellKey4 = getCellKey(rowIndex, 4)}
+                    {@const cellKey5 = getCellKey(rowIndex, 5)}
+                    {@const cellKey6 = getCellKey(rowIndex, 6)}
+                    {@const cellKey7 = getCellKey(rowIndex, 7)}
+                    {@const cellKey8 = getCellKey(rowIndex, 8)}
+                    {@const cellKey9 = getCellKey(rowIndex, 9)}
+                    {@const cellKey10 = getCellKey(rowIndex, 10)}
+                    {@const cellKey11 = getCellKey(rowIndex, 11)}
+                    {@const cellKey12 = getCellKey(rowIndex, 12)}
+                    {@const cellKey13 = getCellKey(rowIndex, 13)}
+                    {@const cellKey14 = getCellKey(rowIndex, 14)}
+                    {@const cellKey15 = getCellKey(rowIndex, 15)}
+                    {@const cellKey16 = getCellKey(rowIndex, 16)}
+                    <tr class:row-selected={selectedRows.includes(rowIndex)}>
+                      <td class="checkbox-cell" class:cell-selected={selectedCells.includes(cellKey0) || selectedRows.includes(rowIndex) || selectedColumns.includes(0)}>
+                        <input 
+                          type="checkbox" 
+                          checked={isVisible}
+                          on:click|stopPropagation={(e) => {
+                            e.stopPropagation();
+                          }}
+                          on:change={async (e) => {
+                            const isChecked = e.target.checked;
+                            ctoVisibility.set(ctoKey, isChecked);
+                            ctoVisibility = ctoVisibility;
+                            ctoNumbersVersion++;
+                            await tick();
+                          }}
+                        />
+                      </td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey1) || selectedRows.includes(rowIndex) || selectedColumns.includes(1)} on:click={(e) => handleCellClick(e, rowIndex, 1)}>{ctoNumbers.get(cto) || '-'}</td>
+                      <td class="cto-name-cell" class:cell-selected={selectedCells.includes(cellKey2) || selectedRows.includes(rowIndex) || selectedColumns.includes(2)} on:click={(e) => handleCellClick(e, rowIndex, 2)}><strong>{cto.nome || ''}</strong></td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey3) || selectedRows.includes(rowIndex) || selectedColumns.includes(3)} on:click={(e) => handleCellClick(e, rowIndex, 3)}>{cto.latitude || ''}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey4) || selectedRows.includes(rowIndex) || selectedColumns.includes(4)} on:click={(e) => handleCellClick(e, rowIndex, 4)}>{cto.longitude || ''}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey5) || selectedRows.includes(rowIndex) || selectedColumns.includes(5)} on:click={(e) => handleCellClick(e, rowIndex, 5)}>{cto.cidade || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey6) || selectedRows.includes(rowIndex) || selectedColumns.includes(6)} on:click={(e) => handleCellClick(e, rowIndex, 6)}>{cto.pop || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey7) || selectedRows.includes(rowIndex) || selectedColumns.includes(7)} on:click={(e) => handleCellClick(e, rowIndex, 7)}>{cto.olt || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey8) || selectedRows.includes(rowIndex) || selectedColumns.includes(8)} on:click={(e) => handleCellClick(e, rowIndex, 8)}>{cto.slot || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey9) || selectedRows.includes(rowIndex) || selectedColumns.includes(9)} on:click={(e) => handleCellClick(e, rowIndex, 9)}>{cto.pon || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey10) || selectedRows.includes(rowIndex) || selectedColumns.includes(10)} on:click={(e) => handleCellClick(e, rowIndex, 10)}>{cto.id_cto || cto.id || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey11) || selectedRows.includes(rowIndex) || selectedColumns.includes(11)} on:click={(e) => handleCellClick(e, rowIndex, 11)}>{formatDataCriacao(cto)}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey12) || selectedRows.includes(rowIndex) || selectedColumns.includes(12)} on:click={(e) => handleCellClick(e, rowIndex, 12)}>{cto.vagas_total || 0}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey13) || selectedRows.includes(rowIndex) || selectedColumns.includes(13)} on:click={(e) => handleCellClick(e, rowIndex, 13)}>{cto.clientes_conectados || 0}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey14) || selectedRows.includes(rowIndex) || selectedColumns.includes(14)} on:click={(e) => handleCellClick(e, rowIndex, 14)}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey15) || selectedRows.includes(rowIndex) || selectedColumns.includes(15)} on:click={(e) => handleCellClick(e, rowIndex, 15)}>
+                        <span class="occupation-badge {occupationClass}">{pctOcup.toFixed(1)}%</span>
+                      </td>
+                      <td class:cell-selected={selectedCells.includes(cellKey16) || selectedRows.includes(rowIndex) || selectedColumns.includes(16)} on:click={(e) => handleCellClick(e, rowIndex, 16)}>{cto.status_cto || 'N/A'}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
             </div>
           {/if}
         </div>
       {:else if !isLoading && !error}
         <div class="empty-state" class:minimized={isListMinimized} style="flex: {isListMinimized ? '0 0 auto' : '1 1 auto'}; min-height: {isListMinimized ? '60px' : '200px'};">
-          <div class="list-header">
-            <h3>Lista de Equipamentos Encontrados - Nenhum Equipamento Pesquisado</h3>
-            <button 
-              class="minimize-button" 
-              disabled={isResizingSidebar || isResizingMapTable}
-              on:click={async () => {
-                isListMinimized = !isListMinimized;
-                // Quando expandir ou minimizar a lista, redimensionar o mapa
-                if (map && google?.maps) {
-                  await tick();
-                  setTimeout(() => {
-                    if (map && google.maps) {
-                      google.maps.event.trigger(map, 'resize');
-                    }
-                  }, 100);
-                }
-              }}
-              aria-label={isListMinimized ? 'Expandir lista' : 'Minimizar lista'}
-              title={isListMinimized ? 'Expandir' : 'Minimizar'}
-            >
-              {isListMinimized ? '⬆️' : '⬇️'}
-            </button>
+          <div class="table-header">
+            <h3>Tabela de Equipamentos Encontrados - Nenhum Equipamento Pesquisado</h3>
+            <div class="table-header-buttons">
+              <button 
+                class="minimize-button" 
+                disabled={isResizingSidebar || isResizingMapTable}
+                on:click={async () => {
+                  isListMinimized = !isListMinimized;
+                  if (map && google?.maps) {
+                    await tick();
+                    setTimeout(() => {
+                      if (map && google.maps) {
+                        google.maps.event.trigger(map, 'resize');
+                      }
+                    }, 100);
+                  }
+                }}
+                aria-label={isListMinimized ? 'Expandir tabela' : 'Minimizar tabela'}
+                title={isListMinimized ? 'Expandir' : 'Minimizar'}
+              >
+                {isListMinimized ? '⬆️' : '⬇️'}
+              </button>
+            </div>
           </div>
           {#if !isListMinimized}
             <p>🔍 Localize um cliente para ver os equipamentos encontrados aqui</p>
@@ -6234,70 +6581,300 @@
     display: none;
   }
 
-  .results-list-container {
+  .results-table-container {
     background: white;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
     display: flex;
     flex-direction: column;
+    min-height: 200px;
+    overflow: visible;
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .results-table-container.minimized {
+    padding: 1rem 1.5rem;
     overflow: hidden;
   }
 
-  .results-list-container.minimized {
-    min-height: 60px;
-    max-height: 60px;
-    flex: 0 0 60px !important;
-    height: 60px !important;
+  .results-table-container.minimized .table-header {
+    margin-bottom: 0;
   }
 
-  .list-header {
+  .table-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #e5e7eb;
-    background: #f9fafb;
+    margin-bottom: 1rem;
+    flex-shrink: 0;
+    position: relative;
   }
 
-  .list-header h3 {
+  .table-header h3 {
     margin: 0;
     color: #4c1d95;
-    font-size: 1.25rem;
+    font-size: 1.125rem;
     font-weight: 600;
   }
 
-  .results-list-container.minimized .list-header {
-    border-bottom: none;
+  .table-header-buttons {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .vertical-dots {
+    font-size: 0.875rem;
+    line-height: 0.5;
+    color: #7B68EE;
+    font-weight: bold;
+    display: inline-block;
+    letter-spacing: 0;
+    opacity: 0.7;
+  }
+
+  .table-menu-button:hover .vertical-dots {
+    opacity: 1;
+  }
+
+  .vertical-dots::before {
+    content: '•';
+    display: block;
+  }
+
+  .vertical-dots::after {
+    content: '•\A•';
+    white-space: pre;
+    display: block;
+  }
+
+  .table-wrapper {
+    overflow-y: auto;
+    overflow-x: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-wrapper::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .table-wrapper::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+  }
+
+  .table-wrapper::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+  }
+
+  .table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .results-table thead {
+    background-color: #f9fafb;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .results-table th {
+    padding: 0.75rem;
+    text-align: center;
+    font-weight: 600;
+    color: #374151;
+    border-bottom: 2px solid #e5e7eb;
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+  }
+
+  .results-table th:first-child {
+    text-align: center;
+    width: 50px;
+  }
+
+  .results-table th:nth-child(2) {
+    text-align: center;
+    width: 50px;
+  }
+
+  .results-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+    color: #4b5563;
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    cursor: cell;
+  }
+
+  .results-table .cto-name-cell {
+    white-space: nowrap;
+    min-width: 150px;
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    cursor: cell;
+  }
+
+  .results-table tbody tr:hover {
+    background-color: #f9fafb;
+  }
+
+  .results-table tbody tr:nth-child(even) {
+    background-color: #ffffff;
+  }
+
+  .results-table tbody tr:nth-child(even):hover {
+    background-color: #f9fafb;
+  }
+
+  .results-table .checkbox-cell {
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    cursor: default;
+  }
+
+  .results-table .checkbox-cell input[type="checkbox"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+  }
+
+  .results-table .numeric {
+    text-align: center;
+  }
+
+  .results-table td.cell-selected {
+    background-color: rgba(100, 149, 237, 0.15) !important;
+    border: 2px solid #6495ED !important;
+    position: relative;
+  }
+
+  .results-table td.cell-selected::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border: 1px solid #7B68EE;
+    pointer-events: none;
+  }
+
+  .results-table th.selected {
+    background-color: rgba(100, 149, 237, 0.2) !important;
+    border-bottom: 2px solid #6495ED !important;
+  }
+
+  .results-table tbody tr.row-selected {
+    background-color: rgba(100, 149, 237, 0.1) !important;
+  }
+
+  .results-table tbody tr.row-selected:hover {
+    background-color: rgba(100, 149, 237, 0.15) !important;
+  }
+
+  .occupation-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.8125rem;
+  }
+
+  .occupation-badge.low {
+    background: #dcfce7;
+    color: #166534;
+  }
+
+  .occupation-badge.medium {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  .occupation-badge.high {
+    background: #fee2e2;
+    color: #991b1b;
   }
 
   .empty-state {
     background: white;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+    color: #6b7280;
+    flex: 1 1 auto;
+    min-height: 200px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 0;
   }
 
   .empty-state.minimized {
+    padding: 1rem 1.5rem;
     min-height: 60px;
-    max-height: 60px;
-    flex: 0 0 60px !important;
-    height: 60px !important;
   }
 
-  .empty-state.minimized .list-header {
-    border-bottom: none;
+  .empty-state.minimized .table-header {
+    margin-bottom: 0;
+  }
+
+  .empty-state .table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .empty-state .table-header h3 {
+    margin: 0;
+    color: #4c1d95;
+    font-size: 1.125rem;
+    font-weight: 600;
   }
 
   .empty-state p {
+    margin: 0;
     flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #666;
-    font-size: 1rem;
-    padding: 2rem;
+    text-align: center;
   }
 
   .error-container {
@@ -6875,11 +7452,6 @@
     font-size: 1rem;
   }
 
-  .ctos-list-container {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1rem 1.5rem;
-  }
 
   .logout-button {
     padding: 0.625rem 1.125rem;
@@ -6909,99 +7481,6 @@
   }
 
 
-  .ctos-list {
-    max-height: 400px;
-    overflow-y: auto;
-    padding-right: 0.5rem;
-  }
-
-  .ctos-list::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .ctos-list::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 3px;
-  }
-
-  .ctos-list::-webkit-scrollbar-thumb {
-    background: #7B68EE;
-    border-radius: 3px;
-  }
-
-  .cto-item {
-    background: white;
-    border: 1px solid #E0E0E0;
-    border-radius: 6px;
-    padding: 1rem;
-    margin-bottom: 0.75rem;
-    transition: all 0.2s ease;
-  }
-
-  .cto-item:hover {
-    box-shadow: 0 2px 8px rgba(123, 104, 238, 0.2);
-    border-color: #7B68EE;
-  }
-
-  .cto-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 2px solid #7B68EE;
-  }
-
-  .cto-number {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    color: white;
-    border-radius: 50%;
-    font-weight: 700;
-    font-size: 0.9rem;
-  }
-
-  .cto-name {
-    font-weight: 600;
-    color: #7B68EE;
-    font-size: 1rem;
-  }
-
-  .cto-details {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-  }
-
-  .cto-row {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .cto-label {
-    font-size: 0.75rem;
-    color: #666;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .cto-value {
-    font-size: 0.9rem;
-    color: #333;
-    font-weight: 600;
-  }
-
-  @media (max-width: 768px) {
-    .cto-details {
-      grid-template-columns: 1fr;
-    }
-
-  }
 
 
   /* Modal de Relatório */
