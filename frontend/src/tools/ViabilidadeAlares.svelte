@@ -367,6 +367,222 @@
     }
   }
   
+  // Função para obter o valor de uma célula baseado em rowIndex e colIndex
+  function getCellValue(rowIndex, colIndex, cto) {
+    switch(colIndex) {
+      case 0: return ''; // Checkbox - vazio (não copiar)
+      case 1: return (ctoNumbers.get(cto) || '-').toString(); // #
+      case 2: return cto.nome || ''; // CTO
+      case 3: return (cto.latitude || '').toString(); // Latitude
+      case 4: return (cto.longitude || '').toString(); // Longitude
+      case 5: return cto.cidade || 'N/A'; // Cidade
+      case 6: return cto.pop || 'N/A'; // POP
+      case 7: return cto.olt || 'N/A'; // CHASSE (usa campo olt)
+      case 8: return cto.slot || 'N/A'; // PLACA (usa campo slot)
+      case 9: return cto.pon || 'N/A'; // OLT (usa campo pon)
+      case 10: return (cto.id_cto || cto.id || 'N/A').toString(); // ID CTO
+      case 11: {
+        // Data de Criação - formatar se existir
+        const dataCriacao = cto.data_criacao || cto.data_cadastro || cto.created_at || '';
+        if (!dataCriacao) return 'N/A';
+        
+        // Se for string, verificar se já está no formato DD/MM/YYYY
+        if (typeof dataCriacao === 'string') {
+          // Tentar formato DD/MM/YYYY (ex: "31/10/2022")
+          const ddMMYYYYMatch = dataCriacao.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+          if (ddMMYYYYMatch) {
+            return dataCriacao; // Já está no formato correto
+          }
+          
+          // Tentar formato YYYY-MM-DD (ex: "2022-10-31")
+          const yyyyMMDDMatch = dataCriacao.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+          if (yyyyMMDDMatch) {
+            const dia = yyyyMMDDMatch[3].padStart(2, '0');
+            const mes = yyyyMMDDMatch[2].padStart(2, '0');
+            const ano = yyyyMMDDMatch[1];
+            return `${dia}/${mes}/${ano}`;
+          }
+        }
+        
+        // Tentar converter para Date se não for string ou se não bateu com nenhum padrão
+        try {
+          const data = new Date(dataCriacao);
+          if (!isNaN(data.getTime())) {
+            const dia = String(data.getDate()).padStart(2, '0');
+            const mes = String(data.getMonth() + 1).padStart(2, '0');
+            const ano = data.getFullYear();
+            return `${dia}/${mes}/${ano}`;
+          }
+        } catch (e) {
+          // Ignorar erro
+        }
+        
+        // Se não conseguiu formatar, retornar como está
+        return String(dataCriacao);
+      }
+      case 12: return (cto.vagas_total || 0).toString(); // Portas Total
+      case 13: return (cto.clientes_conectados || 0).toString(); // Ocupadas
+      case 14: return ((cto.vagas_total || 0) - (cto.clientes_conectados || 0)).toString(); // Disponíveis
+      case 15: return `${parseFloat(cto.pct_ocup || 0).toFixed(1)}%`; // Ocupação
+      case 16: return cto.status_cto || 'N/A'; // Status
+      default: return '';
+    }
+  }
+  
+  // Função para copiar seleção para clipboard
+  async function copySelectionToClipboard() {
+    if (selectedCells.length === 0 && selectedColumns.length === 0 && selectedRows.length === 0) {
+      console.log('⚠️ Nada selecionado para copiar');
+      return; // Nada selecionado
+    }
+    
+    console.log('📋 Copiando seleção:', {
+      cells: selectedCells.length,
+      columns: selectedColumns.length,
+      rows: selectedRows.length,
+      selectedColumns: selectedColumns,
+      selectedCells: selectedCells.slice(0, 5) // Primeiros 5 para debug
+    });
+    
+    let textToCopy = '';
+    
+    // Se coluna(s) inteira(s) selecionada(s)
+    if (selectedColumns.length > 0) {
+      // Ordenar colunas
+      const sortedColumns = [...selectedColumns].sort((a, b) => a - b);
+      
+      // Para cada linha
+      ctosRua.forEach((cto, rowIndex) => {
+        const rowValues = [];
+        sortedColumns.forEach(colIndex => {
+          rowValues.push(getCellValue(rowIndex, colIndex, cto));
+        });
+        textToCopy += rowValues.join('\t') + '\n'; // Tab separa colunas, \n separa linhas
+      });
+    }
+    // Se linha(s) inteira(s) selecionada(s)
+    else if (selectedRows.length > 0) {
+      const sortedRows = [...selectedRows].sort((a, b) => a - b);
+      
+      sortedRows.forEach(rowIndex => {
+        const cto = ctosRua[rowIndex];
+        if (cto) {
+          const rowValues = [];
+          // Copiar todas as colunas (exceto checkbox)
+          for (let colIndex = 1; colIndex <= 16; colIndex++) {
+            rowValues.push(getCellValue(rowIndex, colIndex, cto));
+          }
+          textToCopy += rowValues.join('\t') + '\n';
+        }
+      });
+    }
+    // Se células individuais selecionadas
+    else if (selectedCells.length > 0) {
+      // Organizar células por linha e coluna
+      const cellsByRow = {};
+      selectedCells.forEach(cellKey => {
+        const [row, col] = cellKey.split('-').map(Number);
+        if (!cellsByRow[row]) cellsByRow[row] = {};
+        if (ctosRua[row]) {
+          cellsByRow[row][col] = getCellValue(row, col, ctosRua[row]);
+        }
+      });
+      
+      // Ordenar linhas e colunas
+      const sortedRows = Object.keys(cellsByRow).map(Number).sort((a, b) => a - b);
+      
+      // Encontrar todas as colunas únicas para manter alinhamento
+      const allColumns = new Set();
+      sortedRows.forEach(row => {
+        Object.keys(cellsByRow[row]).forEach(col => allColumns.add(Number(col)));
+      });
+      const sortedColumns = Array.from(allColumns).sort((a, b) => a - b);
+      
+      // Gerar texto formatado
+      sortedRows.forEach(rowIndex => {
+        const rowValues = [];
+        sortedColumns.forEach(colIndex => {
+          rowValues.push(cellsByRow[rowIndex][colIndex] || '');
+        });
+        textToCopy += rowValues.join('\t') + '\n';
+      });
+    }
+    
+    // Copiar para clipboard
+    if (textToCopy && textToCopy.trim()) {
+      const textToCopyTrimmed = textToCopy.trim();
+      console.log('📋 Texto a copiar (primeiros 200 chars):', textToCopyTrimmed.substring(0, 200));
+      
+      try {
+        // Método moderno (requer HTTPS ou localhost)
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(textToCopyTrimmed);
+          console.log('✅ Dados copiados para clipboard (método moderno)');
+        } else {
+          throw new Error('Clipboard API não disponível');
+        }
+      } catch (err) {
+        console.warn('⚠️ Método moderno falhou, tentando fallback:', err);
+        // Fallback para método antigo (funciona em HTTP também)
+        try {
+          const textArea = document.createElement('textarea');
+          textArea.value = textToCopyTrimmed;
+          textArea.style.position = 'fixed';
+          textArea.style.top = '0';
+          textArea.style.left = '0';
+          textArea.style.width = '2em';
+          textArea.style.height = '2em';
+          textArea.style.padding = '0';
+          textArea.style.border = 'none';
+          textArea.style.outline = 'none';
+          textArea.style.boxShadow = 'none';
+          textArea.style.background = 'transparent';
+          textArea.style.opacity = '0';
+          textArea.style.zIndex = '-9999';
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textArea);
+          
+          if (successful) {
+            console.log('✅ Dados copiados para clipboard (método fallback)');
+          } else {
+            console.error('❌ Falha ao executar execCommand("copy")');
+          }
+        } catch (fallbackErr) {
+          console.error('❌ Erro no método fallback:', fallbackErr);
+          alert('Erro ao copiar. Tente selecionar o texto manualmente.');
+        }
+      }
+    } else {
+      console.warn('⚠️ Nenhum texto para copiar');
+    }
+  }
+  
+  // Handler para Ctrl+C
+  function handleCopyKeydown(e) {
+    // Verificar se é Ctrl+C (ou Cmd+C no Mac)
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+      // Verificar se há seleção na tabela
+      if (selectedCells.length > 0 || selectedColumns.length > 0 || selectedRows.length > 0) {
+        // Verificar se não está em um input ou textarea (onde queremos copiar texto normal)
+        const activeElement = document.activeElement;
+        const isInput = activeElement?.tagName === 'INPUT' || 
+                       activeElement?.tagName === 'TEXTAREA' ||
+                       activeElement?.contentEditable === 'true';
+        
+        // Se não é um input editável, copiar nossa seleção da tabela
+        if (!isInput) {
+          e.preventDefault();
+          e.stopPropagation();
+          copySelectionToClipboard();
+          return false;
+        }
+      }
+    }
+  }
 
   // Reactive statements para estilos
   $: sidebarWidthStyle = `${sidebarWidth}px`;
@@ -1200,6 +1416,9 @@
       // Carregar preferências de redimensionamento
       loadResizePreferences();
       
+      // Adicionar handler para Ctrl+C
+      document.addEventListener('keydown', handleCopyKeydown);
+      
       // Registrar função de configurações com o parent
       if (onSettingsRequest && typeof onSettingsRequest === 'function') {
         onSettingsRequest(openSettings);
@@ -1218,6 +1437,8 @@
 
   // Limpar recursos quando o componente é desmontado
   onDestroy(() => {
+    // Remover handler de Ctrl+C
+    document.removeEventListener('keydown', handleCopyKeydown);
     cleanup();
   });
 
