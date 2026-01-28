@@ -6174,12 +6174,17 @@
   }
 
   .main-area {
-    flex: 1;
+    flex: 1 1 auto; /* Cresce para preencher espaço disponível */
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    min-width: 0;
+    gap: 0.75rem; /* Espaçamento entre mapa e tabela */
     overflow: hidden;
+    width: 100%;
+    position: relative;
+    min-height: 0;
+    box-sizing: border-box;
+    height: calc(100% - 2.75rem); /* Altura = 100% do pai - padding top (1rem) - padding bottom (1.75rem) */
+    /* Bordas sempre visíveis + pequena distância até o final da página */
   }
 
   .map-container {
