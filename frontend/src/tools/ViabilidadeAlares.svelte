@@ -3327,7 +3327,10 @@
       if (!isVisible) {
         // CTO não está visível, remover marcador e rota
         // Encontrar marcador associado a esta CTO
-        const ctoMarker = markers.find((marker, idx) => {
+        const ctoMarker = markers.find((marker) => {
+          if (!marker) return false;
+          // Só considerar marcadores que realmente estão no mapa (evita "fantasmas" no array markers)
+          if (marker.getMap && marker.getMap() !== map) return false;
           // Verificar se o marcador está na mesma posição da CTO
           const markerPos = marker.getPosition();
           if (!markerPos) return false;
@@ -3368,13 +3371,14 @@
       }
     }
     
-    // Remover marcadores do mapa e do array
-    markersToRemove.forEach(marker => {
-      marker.setMap(null);
-      const markerIndex = markers.findIndex(m => m === marker);
-      if (markerIndex !== -1) {
-        markers.splice(markerIndex, 1);
-      }
+    // Remover marcadores do mapa e do array (com dedupe e remoção robusta)
+    const uniqueMarkersToRemove = Array.from(new Set(markersToRemove));
+    uniqueMarkersToRemove.forEach(marker => {
+      try {
+        marker.setMap(null);
+      } catch (_) {}
+      // Remover sempre do array, mesmo se findIndex falhar por algum motivo
+      markers = markers.filter(m => m !== marker);
     });
     
     // Remover rotas do mapa e do array
@@ -3411,7 +3415,10 @@
         if (isNaN(ctoLat) || isNaN(ctoLng)) continue;
         
         const markerExists = markers.some(marker => {
+          if (!marker) return false;
           if (marker === clientMarker) return false; // Ignorar marcador do cliente
+          // Só contar marcadores que realmente estão no mapa
+          if (marker.getMap && marker.getMap() !== map) return false;
           const markerPos = marker.getPosition();
           if (!markerPos) return false;
           
