@@ -336,18 +336,32 @@
       case 9: return cto.pon || 'N/A'; // OLT (usa campo pon)
       case 10: return (cto.id_cto || cto.id || 'N/A').toString(); // ID CTO
       case 11: {
-        // Data de Criação - formatar se existir
+        // Data de Criação - formatar se existir (formato: MM/YYYY)
         const dataCriacao = cto.data_criacao || cto.data_cadastro || cto.created_at || '';
-        if (dataCriacao) {
-          // Se for uma string de data, formatar
-          try {
-            const data = new Date(dataCriacao);
-            if (!isNaN(data.getTime())) {
-              // Formato: DD/MM/YYYY
-              return data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        if (!dataCriacao) return 'N/A';
+        try {
+          const data = new Date(dataCriacao);
+          if (!isNaN(data.getTime())) {
+            // Formato: MM/YYYY (apenas mês e ano)
+            const mes = String(data.getMonth() + 1).padStart(2, '0');
+            const ano = data.getFullYear();
+            return `${mes}/${ano}`;
+          }
+        } catch (e) {
+          // Ignorar erro
+        }
+        // Se não conseguir converter, tentar extrair mês/ano da string original
+        if (typeof dataCriacao === 'string') {
+          // Tentar padrões comuns: YYYY-MM, MM/YYYY, etc.
+          const match = dataCriacao.match(/(\d{1,2})\/(\d{4})|(\d{4})-(\d{1,2})/);
+          if (match) {
+            if (match[1] && match[2]) {
+              // Formato MM/YYYY
+              return `${match[1].padStart(2, '0')}/${match[2]}`;
+            } else if (match[3] && match[4]) {
+              // Formato YYYY-MM
+              return `${match[4].padStart(2, '0')}/${match[3]}`;
             }
-          } catch (e) {
-            // Se não conseguir formatar, retornar como está
           }
         }
         return dataCriacao || 'N/A';
@@ -2918,17 +2932,34 @@
   }
 
   // Função para formatar porcentagem
-  // Função para formatar data de criação
+  // Função para formatar data de criação (formato: MM/YYYY)
   function formatDataCriacao(cto) {
     const dataCriacao = cto.data_criacao || cto.data_cadastro || cto.created_at || '';
     if (!dataCriacao) return 'N/A';
     try {
       const data = new Date(dataCriacao);
       if (!isNaN(data.getTime())) {
-        return data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        // Formato: MM/YYYY (apenas mês e ano)
+        const mes = String(data.getMonth() + 1).padStart(2, '0');
+        const ano = data.getFullYear();
+        return `${mes}/${ano}`;
       }
     } catch (e) {
       // Ignorar erro
+    }
+    // Se não conseguir converter, tentar extrair mês/ano da string original
+    if (typeof dataCriacao === 'string') {
+      // Tentar padrões comuns: YYYY-MM, MM/YYYY, etc.
+      const match = dataCriacao.match(/(\d{1,2})\/(\d{4})|(\d{4})-(\d{1,2})/);
+      if (match) {
+        if (match[1] && match[2]) {
+          // Formato MM/YYYY
+          return `${match[1].padStart(2, '0')}/${match[2]}`;
+        } else if (match[3] && match[4]) {
+          // Formato YYYY-MM
+          return `${match[4].padStart(2, '0')}/${match[3]}`;
+        }
+      }
     }
     return dataCriacao;
   }
