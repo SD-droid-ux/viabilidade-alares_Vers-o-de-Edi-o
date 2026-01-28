@@ -51,10 +51,12 @@
   
   // Função para gerar uma chave única para uma CTO (declarada aqui para uso nos reactive statements)
   function getCTOKey(cto) {
-    // Usar nome + coordenadas para criar chave única
+    // Usar ID + nome + coordenadas para criar chave única
+    // O ID é essencial para diferenciar CTOs com mesmo nome mas caminhos diferentes
+    const id = cto.id_cto || cto.id || 'NO_ID';
     const lat = parseFloat(cto.latitude || 0).toFixed(6);
     const lng = parseFloat(cto.longitude || 0).toFixed(6);
-    return `${cto.nome || 'UNKNOWN'}_${lat}_${lng}`;
+    return `${id}_${cto.nome || 'UNKNOWN'}_${lat}_${lng}`;
   }
   
   // Função para gerar chave do caminho de rede (CIDADE|POP|CHASSE|PLACA|OLT)
@@ -571,13 +573,27 @@
     
     // Coletar todos os caminhos de rede únicos das CTOs
     const caminhosUnicos = new Set();
+    const caminhosPorCTO = new Map(); // Para debug: rastrear qual CTO tem qual caminho
     for (const cto of ctos) {
       const caminhoKey = getCaminhoRedeKey(cto);
+      const ctoId = cto.id_cto || cto.id || 'NO_ID';
       // Verificar se o caminho é válido (não é N/A e não está vazio)
       // Formato da chave: CIDADE|POP|CHASSE|PLACA|OLT (5 partes separadas por |)
       if (caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||' && caminhoKey.split('|').length === 5) {
         caminhosUnicos.add(caminhoKey);
+        // Rastrear qual CTO tem qual caminho (para debug)
+        if (!caminhosPorCTO.has(caminhoKey)) {
+          caminhosPorCTO.set(caminhoKey, []);
+        }
+        caminhosPorCTO.get(caminhoKey).push({ id: ctoId, nome: cto.nome });
+      } else {
+        console.warn(`⚠️ Caminho inválido para CTO ${ctoId} (${cto.nome}): "${caminhoKey}"`);
       }
+    }
+    
+    console.log(`📊 Caminhos únicos coletados: ${caminhosUnicos.size}`);
+    for (const [caminho, ctosList] of caminhosPorCTO.entries()) {
+      console.log(`   - ${caminho}: ${ctosList.length} CTO(s) - ${ctosList.map(c => `${c.nome} (${c.id})`).join(', ')}`);
     }
     
     // Verificar se os caminhos mudaram
@@ -636,12 +652,24 @@
       // Preparar array de caminhos para a requisição batch
       // IMPORTANTE: A chave é gerada como CIDADE|POP|CHASSE|PLACA|OLT
       // Onde CHASSE = cto.olt, PLACA = cto.slot, OLT = cto.pon
-      // Mas o backend espera olt, slot, pon nessa ordem
+      // O backend espera: { cidade, pop, olt, slot, pon }
+      // Onde: olt = CHASSE (cto.olt), slot = PLACA (cto.slot), pon = OLT (cto.pon)
+      // E o backend gera a chave como: cidade|pop|olt|slot|pon
       const caminhosArray = caminhosParaCalcular.map(caminhoKey => {
         const [cidade, pop, chasse, placa, olt] = caminhoKey.split('|');
         // Mapear corretamente: chasse -> olt, placa -> slot, olt -> pon
-        return { cidade, pop, olt: chasse, slot: placa, pon: olt };
+        // O backend vai gerar a chave como: cidade|pop|olt|slot|pon
+        // Mas precisamos garantir que a chave do frontend corresponda
+        return { 
+          cidade: cidade.trim(), 
+          pop: pop.trim(), 
+          olt: chasse.trim(),  // CHASSE vai para olt no backend
+          slot: placa.trim(),  // PLACA vai para slot no backend
+          pon: olt.trim()       // OLT vai para pon no backend
+        };
       });
+      
+      console.log(`📤 Enviando ${caminhosArray.length} caminhos para o backend:`, caminhosArray.map(c => `${c.cidade}|${c.pop}|${c.olt}|${c.slot}|${c.pon}`));
       
       // Fazer uma única requisição POST com todos os caminhos
       const url = getApiUrl('/api/ctos/caminhos-rede-batch');
@@ -669,15 +697,67 @@
         const newTotals = new Map(caminhoRedeTotals);
         const newCTOsTotals = new Map(caminhoRedeCTOsTotals);
         
+        // Criar um mapa: chave do backend -> chave do frontend
+        // O backend gera a chave como: cidade|pop|olt|slot|pon
+        // O frontend usa: cidade|pop|chasse|placa|olt
+        // Onde: olt (backend) = chasse (frontend), slot (backend) = placa (frontend), pon (backend) = olt (frontend)
+        const chavesBackendParaFrontend = new Map();
         for (const caminhoKey of caminhosParaCalcular) {
-          const resultado = data.resultados[caminhoKey];
+          const [cidade, pop, chasse, placa, olt] = caminhoKey.split('|');
+          // O backend gera: cidade|pop|olt|slot|pon
+          // Onde olt=chasse, slot=placa, pon=olt
+          const chaveBackend = `${cidade.trim()}|${pop.trim()}|${chasse.trim()}|${placa.trim()}|${olt.trim()}`;
+          chavesBackendParaFrontend.set(chaveBackend, caminhoKey);
+        }
+        
+        console.log(`📥 Chaves recebidas do backend:`, Object.keys(data.resultados));
+        console.log(`📋 Mapeamento frontend->backend:`, Array.from(chavesBackendParaFrontend.entries()));
+        
+        for (const caminhoKey of caminhosParaCalcular) {
+          // Primeiro tentar encontrar pela chave exata do frontend
+          let resultado = data.resultados[caminhoKey];
+          
+          // Se não encontrou, tentar pela chave que o backend gera
+          if (!resultado) {
+            const [cidade, pop, chasse, placa, olt] = caminhoKey.split('|');
+            // O backend gera: cidade|pop|olt|slot|pon (onde olt=chasse, slot=placa, pon=olt)
+            const chaveBackend = `${cidade.trim()}|${pop.trim()}|${chasse.trim()}|${placa.trim()}|${olt.trim()}`;
+            resultado = data.resultados[chaveBackend];
+            
+            if (resultado) {
+              console.log(`🔄 Chave encontrada usando formato do backend: "${caminhoKey}" -> "${chaveBackend}"`);
+            }
+          }
+          
+          // Se ainda não encontrou, tentar por comparação de partes
+          if (!resultado) {
+            const chavesDisponiveis = Object.keys(data.resultados);
+            const [cidade, pop, chasse, placa, olt] = caminhoKey.split('|');
+            const chaveEncontrada = chavesDisponiveis.find(chave => {
+              const partesChave = chave.split('|');
+              // Comparar: cidade, pop, e depois verificar se olt=chasse, slot=placa, pon=olt
+              if (partesChave.length !== 5) return false;
+              return partesChave[0].trim() === cidade.trim() &&
+                     partesChave[1].trim() === pop.trim() &&
+                     partesChave[2].trim() === chasse.trim() &&
+                     partesChave[3].trim() === placa.trim() &&
+                     partesChave[4].trim() === olt.trim();
+            });
+            if (chaveEncontrada) {
+              resultado = data.resultados[chaveEncontrada];
+              console.log(`🔄 Chave encontrada por comparação de partes: "${caminhoKey}" -> "${chaveEncontrada}"`);
+            }
+          }
+          
           if (resultado && resultado.total_portas !== undefined) {
             newTotals.set(caminhoKey, resultado.total_portas);
             // Armazenar também o total de CTOs
             newCTOsTotals.set(caminhoKey, resultado.total_ctos || 0);
             console.log(`✅ ${caminhoKey}: ${resultado.total_portas} portas (${resultado.total_ctos} CTOs)`);
           } else {
-            console.warn(`⚠️ Sem resultado para ${caminhoKey}`);
+            console.warn(`⚠️ Sem resultado para ${caminhoKey}. Chaves disponíveis no backend:`, Object.keys(data.resultados));
+            // Tentar buscar diretamente no backend usando os valores da CTO
+            console.warn(`   Tentando buscar manualmente para: cidade=${caminhoKey.split('|')[0]}, pop=${caminhoKey.split('|')[1]}, chasse=${caminhoKey.split('|')[2]}, placa=${caminhoKey.split('|')[3]}, olt=${caminhoKey.split('|')[4]}`);
             newTotals.set(caminhoKey, 0);
             newCTOsTotals.set(caminhoKey, 0);
           }
@@ -724,8 +804,14 @@
     }
     const caminhoKey = getCaminhoRedeKey(cto);
     const total = caminhoRedeTotals.get(caminhoKey) || 0;
-    if (total === 0 && caminhoKey && !caminhoKey.includes('N/A')) {
-      console.warn(`⚠️ getCaminhoRedeTotal: Total 0 para caminho "${caminhoKey}". Map tem ${caminhoRedeTotals.size} chaves:`, Array.from(caminhoRedeTotals.keys()));
+    if (total === 0 && caminhoKey && !caminhoKey.includes('N/A') && caminhoKey !== '||||') {
+      // Verificar se a chave existe no Map
+      const hasKey = caminhoRedeTotals.has(caminhoKey);
+      console.warn(`⚠️ getCaminhoRedeTotal: Total 0 para caminho "${caminhoKey}" (CTO: ${cto.nome}). Chave existe no Map: ${hasKey}. Map tem ${caminhoRedeTotals.size} chaves:`, Array.from(caminhoRedeTotals.keys()));
+      // Se a chave não existe, pode ser que o cálculo ainda não foi feito
+      if (!hasKey && !caminhosCarregando) {
+        console.log(`🔄 Chave não encontrada e não está carregando. CTO: ${cto.nome}, Caminho: ${caminhoKey}`);
+      }
     }
     return total;
   }
@@ -753,7 +839,7 @@
     
     if (useVisualOrder) {
       // Lógica 1: Todas marcadas - usar ordem visual (ordem do array ctos)
-    let markerNumber = 1;
+      let markerNumber = 1;
       for (const cto of ctos) {
         const ctoKey = getCTOKey(cto);
         const isVisible = ctoVisibility.get(ctoKey) !== false;
@@ -761,8 +847,12 @@
         if (isVisible) {
           // Validar coordenadas
           if (cto.latitude && cto.longitude && !isNaN(cto.latitude) && !isNaN(cto.longitude)) {
-            ctoToNumber.set(cto, markerNumber);
-            markerNumber++;
+            // Garantir que cada CTO (mesmo objeto) tenha um número único
+            // Mesmo que haja CTOs com o mesmo nome, cada objeto é único
+            if (!ctoToNumber.has(cto)) {
+              ctoToNumber.set(cto, markerNumber);
+              markerNumber++;
+            }
           }
         }
       }
@@ -798,8 +888,11 @@
         // Atribuir números sequenciais baseados na ordem de marcação
         let markerNumber = 1;
         for (const { cto } of markedCTOs) {
-          ctoToNumber.set(cto, markerNumber);
-          markerNumber++;
+          // Garantir que cada CTO (mesmo objeto) tenha um número único
+          if (!ctoToNumber.has(cto)) {
+            ctoToNumber.set(cto, markerNumber);
+            markerNumber++;
+          }
         }
       } else {
         // Se não há ordem de marcação ativada, usar ordem visual como fallback
@@ -811,8 +904,11 @@
           if (isVisible) {
             // Validar coordenadas
             if (cto.latitude && cto.longitude && !isNaN(cto.latitude) && !isNaN(cto.longitude)) {
-              ctoToNumber.set(cto, markerNumber);
-              markerNumber++;
+              // Garantir que cada CTO (mesmo objeto) tenha um número único
+              if (!ctoToNumber.has(cto)) {
+                ctoToNumber.set(cto, markerNumber);
+                markerNumber++;
+              }
             }
           }
         }
@@ -1891,6 +1987,9 @@
       });
 
       // Separar CTOs pesquisadas (TODAS, incluindo com coordenadas duplicadas) e próximas
+      // IMPORTANTE: Manter TODAS as CTOs pesquisadas, mesmo que tenham o mesmo nome
+      // - Se têm mesmas coordenadas: serão agrupadas no mapa (comportamento normal)
+      // - Se têm coordenadas diferentes: serão plotadas separadamente em suas respectivas coordenadas
       const searchedCTOs = searchedCTOsList.map(({ cto }) => cto); // TODAS as pesquisadas, na ordem que foram pesquisadas
       const nearbyCTOs = [];
       
@@ -1900,7 +1999,9 @@
       }
 
       // Resultado final: TODAS as CTOs pesquisadas primeiro (na ordem pesquisada), depois próximas
-      // IMPORTANTE: Todas as CTOs pesquisadas aparecem, mesmo com coordenadas duplicadas
+      // IMPORTANTE: Todas as CTOs pesquisadas aparecem, mesmo com coordenadas duplicadas ou mesmo nome
+      // O mapa agrupa apenas por coordenadas, então CTOs com mesmo nome mas coordenadas diferentes
+      // serão plotadas separadamente em suas respectivas posições
       ctos = [...searchedCTOs, ...nearbyCTOs];
       
       // Expandir tabela automaticamente quando houver resultados
@@ -1953,6 +2054,10 @@
       console.log(`📋 CTOs pesquisadas na lista: ${searchedCTOsList.length}, CTOs pesquisadas no resultado: ${searchedCTOs.length}, CTOs próximas: ${nearbyCTOs.length}`);
       console.log(`📝 Nomes das CTOs pesquisadas:`, searchedCTOs.map(cto => cto.nome).join(', '));
       console.log(`🔍 Verificação: Array ctos tem ${ctos.length} elementos`);
+      
+      // Forçar recálculo dos totais após adicionar todas as CTOs
+      // Isso garante que os totais sejam calculados para todas as CTOs, incluindo duplicatas
+      await calculateCaminhoRedeTotals();
       
       // Verificar se há duplicatas
       const uniqueKeys = new Set();
@@ -2616,7 +2721,10 @@
       const lng = parseFloat(cto.longitude).toFixed(6);
       const positionKey = `${lat},${lng}`;
       
-      // Agrupar CTOs por posição
+      // IMPORTANTE: Agrupar CTOs APENAS por coordenadas (lat/lng), NÃO por nome
+      // - CTOs com mesmo nome e mesmas coordenadas: serão agrupadas em um marcador (comportamento normal)
+      // - CTOs com mesmo nome mas coordenadas diferentes: serão plotadas separadamente em suas respectivas coordenadas
+      // Isso garante que CTOs duplicadas (mesmo nome, diferentes caminhos de rede) sejam visualizadas corretamente
       if (!ctosByPosition.has(positionKey)) {
         ctosByPosition.set(positionKey, { position: { lat: parseFloat(lat), lng: parseFloat(lng) }, ctos: [], numbers: [] });
       }
