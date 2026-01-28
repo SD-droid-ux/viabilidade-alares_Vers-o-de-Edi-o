@@ -368,20 +368,20 @@
   }
   
   // Função para obter o valor de uma célula baseado em rowIndex e colIndex
+  // Nova ordem: 0=Checkbox, 1=N°, 2=CTO, 3=Status, 4=Cidade, 5=POP, 6=CHASSE, 7=PLACA, 8=OLT, 9=ID CTO, 10=Data Criação, 11=Portas Total, 12=Ocupadas, 13=Disponíveis, 14=Ocupação, 15=Latitude, 16=Longitude
   function getCellValue(rowIndex, colIndex, cto) {
     switch(colIndex) {
       case 0: return ''; // Checkbox - vazio (não copiar)
-      case 1: return (ctoNumbers.get(cto) || '-').toString(); // #
+      case 1: return (ctoNumbers.get(cto) || '-').toString(); // N°
       case 2: return cto.nome || ''; // CTO
-      case 3: return (cto.latitude || '').toString(); // Latitude
-      case 4: return (cto.longitude || '').toString(); // Longitude
-      case 5: return cto.cidade || 'N/A'; // Cidade
-      case 6: return cto.pop || 'N/A'; // POP
-      case 7: return cto.olt || 'N/A'; // CHASSE (usa campo olt)
-      case 8: return cto.slot || 'N/A'; // PLACA (usa campo slot)
-      case 9: return cto.pon || 'N/A'; // OLT (usa campo pon)
-      case 10: return (cto.id_cto || cto.id || 'N/A').toString(); // ID CTO
-      case 11: {
+      case 3: return cto.status_cto || 'N/A'; // Status
+      case 4: return cto.cidade || 'N/A'; // Cidade
+      case 5: return cto.pop || 'N/A'; // POP
+      case 6: return cto.olt || 'N/A'; // CHASSE (usa campo olt)
+      case 7: return cto.slot || 'N/A'; // PLACA (usa campo slot)
+      case 8: return cto.pon || 'N/A'; // OLT (usa campo pon)
+      case 9: return (cto.id_cto || cto.id || 'N/A').toString(); // ID CTO
+      case 10: {
         // Data de Criação - formatar se existir
         const dataCriacao = cto.data_criacao || cto.data_cadastro || cto.created_at || '';
         if (!dataCriacao) return 'N/A';
@@ -420,11 +420,12 @@
         // Se não conseguiu formatar, retornar como está
         return String(dataCriacao);
       }
-      case 12: return (cto.vagas_total || 0).toString(); // Portas Total
-      case 13: return (cto.clientes_conectados || 0).toString(); // Ocupadas
-      case 14: return ((cto.vagas_total || 0) - (cto.clientes_conectados || 0)).toString(); // Disponíveis
-      case 15: return `${parseFloat(cto.pct_ocup || 0).toFixed(1)}%`; // Ocupação
-      case 16: return cto.status_cto || 'N/A'; // Status
+      case 11: return (cto.vagas_total || 0).toString(); // Portas Total
+      case 12: return (cto.clientes_conectados || 0).toString(); // Ocupadas
+      case 13: return ((cto.vagas_total || 0) - (cto.clientes_conectados || 0)).toString(); // Disponíveis
+      case 14: return `${parseFloat(cto.pct_ocup || 0).toFixed(1)}%`; // Ocupação
+      case 15: return (cto.latitude || '').toString(); // Latitude
+      case 16: return (cto.longitude || '').toString(); // Longitude
       default: return '';
     }
   }
@@ -5816,20 +5817,20 @@
                     </th>
                     <th class:selected={selectedColumns.includes(1)} on:click={(e) => handleColumnHeaderClick(e, 1)}>N°</th>
                     <th class:selected={selectedColumns.includes(2)} on:click={(e) => handleColumnHeaderClick(e, 2)}>CTO</th>
-                    <th class:selected={selectedColumns.includes(3)} on:click={(e) => handleColumnHeaderClick(e, 3)}>Latitude</th>
-                    <th class:selected={selectedColumns.includes(4)} on:click={(e) => handleColumnHeaderClick(e, 4)}>Longitude</th>
-                    <th class:selected={selectedColumns.includes(5)} on:click={(e) => handleColumnHeaderClick(e, 5)}>Cidade</th>
-                    <th class:selected={selectedColumns.includes(6)} on:click={(e) => handleColumnHeaderClick(e, 6)}>POP</th>
-                    <th class:selected={selectedColumns.includes(7)} on:click={(e) => handleColumnHeaderClick(e, 7)}>CHASSE</th>
-                    <th class:selected={selectedColumns.includes(8)} on:click={(e) => handleColumnHeaderClick(e, 8)}>PLACA</th>
-                    <th class:selected={selectedColumns.includes(9)} on:click={(e) => handleColumnHeaderClick(e, 9)}>OLT</th>
-                    <th class:selected={selectedColumns.includes(10)} on:click={(e) => handleColumnHeaderClick(e, 10)}>ID CTO</th>
-                    <th class:selected={selectedColumns.includes(11)} on:click={(e) => handleColumnHeaderClick(e, 11)}>Data de Criação</th>
-                    <th class:selected={selectedColumns.includes(12)} on:click={(e) => handleColumnHeaderClick(e, 12)}>Portas Total</th>
-                    <th class:selected={selectedColumns.includes(13)} on:click={(e) => handleColumnHeaderClick(e, 13)}>Ocupadas</th>
-                    <th class:selected={selectedColumns.includes(14)} on:click={(e) => handleColumnHeaderClick(e, 14)}>Disponíveis</th>
-                    <th class:selected={selectedColumns.includes(15)} on:click={(e) => handleColumnHeaderClick(e, 15)}>Ocupação</th>
-                    <th class:selected={selectedColumns.includes(16)} on:click={(e) => handleColumnHeaderClick(e, 16)}>Status</th>
+                    <th class:selected={selectedColumns.includes(3)} on:click={(e) => handleColumnHeaderClick(e, 3)}>Status</th>
+                    <th class:selected={selectedColumns.includes(4)} on:click={(e) => handleColumnHeaderClick(e, 4)}>Cidade</th>
+                    <th class:selected={selectedColumns.includes(5)} on:click={(e) => handleColumnHeaderClick(e, 5)}>POP</th>
+                    <th class:selected={selectedColumns.includes(6)} on:click={(e) => handleColumnHeaderClick(e, 6)}>CHASSE</th>
+                    <th class:selected={selectedColumns.includes(7)} on:click={(e) => handleColumnHeaderClick(e, 7)}>PLACA</th>
+                    <th class:selected={selectedColumns.includes(8)} on:click={(e) => handleColumnHeaderClick(e, 8)}>OLT</th>
+                    <th class:selected={selectedColumns.includes(9)} on:click={(e) => handleColumnHeaderClick(e, 9)}>ID CTO</th>
+                    <th class:selected={selectedColumns.includes(10)} on:click={(e) => handleColumnHeaderClick(e, 10)}>Data de Criação</th>
+                    <th class:selected={selectedColumns.includes(11)} on:click={(e) => handleColumnHeaderClick(e, 11)}>Portas Total</th>
+                    <th class:selected={selectedColumns.includes(12)} on:click={(e) => handleColumnHeaderClick(e, 12)}>Ocupadas</th>
+                    <th class:selected={selectedColumns.includes(13)} on:click={(e) => handleColumnHeaderClick(e, 13)}>Disponíveis</th>
+                    <th class:selected={selectedColumns.includes(14)} on:click={(e) => handleColumnHeaderClick(e, 14)}>Ocupação</th>
+                    <th class:selected={selectedColumns.includes(15)} on:click={(e) => handleColumnHeaderClick(e, 15)}>Latitude</th>
+                    <th class:selected={selectedColumns.includes(16)} on:click={(e) => handleColumnHeaderClick(e, 16)}>Longitude</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -5874,22 +5875,22 @@
                       </td>
                       <td class="numeric" class:cell-selected={selectedCells.includes(cellKey1) || selectedRows.includes(rowIndex) || selectedColumns.includes(1)} on:click={(e) => handleCellClick(e, rowIndex, 1)}>{ctoNumbers.get(cto) || '-'}</td>
                       <td class="cto-name-cell" class:cell-selected={selectedCells.includes(cellKey2) || selectedRows.includes(rowIndex) || selectedColumns.includes(2)} on:click={(e) => handleCellClick(e, rowIndex, 2)}><strong>{cto.nome || ''}</strong></td>
-                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey3) || selectedRows.includes(rowIndex) || selectedColumns.includes(3)} on:click={(e) => handleCellClick(e, rowIndex, 3)}>{cto.latitude || ''}</td>
-                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey4) || selectedRows.includes(rowIndex) || selectedColumns.includes(4)} on:click={(e) => handleCellClick(e, rowIndex, 4)}>{cto.longitude || ''}</td>
-                      <td class:cell-selected={selectedCells.includes(cellKey5) || selectedRows.includes(rowIndex) || selectedColumns.includes(5)} on:click={(e) => handleCellClick(e, rowIndex, 5)}>{cto.cidade || 'N/A'}</td>
-                      <td class:cell-selected={selectedCells.includes(cellKey6) || selectedRows.includes(rowIndex) || selectedColumns.includes(6)} on:click={(e) => handleCellClick(e, rowIndex, 6)}>{cto.pop || 'N/A'}</td>
-                      <td class:cell-selected={selectedCells.includes(cellKey7) || selectedRows.includes(rowIndex) || selectedColumns.includes(7)} on:click={(e) => handleCellClick(e, rowIndex, 7)}>{cto.olt || 'N/A'}</td>
-                      <td class:cell-selected={selectedCells.includes(cellKey8) || selectedRows.includes(rowIndex) || selectedColumns.includes(8)} on:click={(e) => handleCellClick(e, rowIndex, 8)}>{cto.slot || 'N/A'}</td>
-                      <td class:cell-selected={selectedCells.includes(cellKey9) || selectedRows.includes(rowIndex) || selectedColumns.includes(9)} on:click={(e) => handleCellClick(e, rowIndex, 9)}>{cto.pon || 'N/A'}</td>
-                      <td class:cell-selected={selectedCells.includes(cellKey10) || selectedRows.includes(rowIndex) || selectedColumns.includes(10)} on:click={(e) => handleCellClick(e, rowIndex, 10)}>{cto.id_cto || cto.id || 'N/A'}</td>
-                      <td class:cell-selected={selectedCells.includes(cellKey11) || selectedRows.includes(rowIndex) || selectedColumns.includes(11)} on:click={(e) => handleCellClick(e, rowIndex, 11)}>{formatDataCriacao(cto)}</td>
-                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey12) || selectedRows.includes(rowIndex) || selectedColumns.includes(12)} on:click={(e) => handleCellClick(e, rowIndex, 12)}>{cto.vagas_total || 0}</td>
-                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey13) || selectedRows.includes(rowIndex) || selectedColumns.includes(13)} on:click={(e) => handleCellClick(e, rowIndex, 13)}>{cto.clientes_conectados || 0}</td>
-                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey14) || selectedRows.includes(rowIndex) || selectedColumns.includes(14)} on:click={(e) => handleCellClick(e, rowIndex, 14)}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
-                      <td class:cell-selected={selectedCells.includes(cellKey15) || selectedRows.includes(rowIndex) || selectedColumns.includes(15)} on:click={(e) => handleCellClick(e, rowIndex, 15)}>
+                      <td class:cell-selected={selectedCells.includes(cellKey3) || selectedRows.includes(rowIndex) || selectedColumns.includes(3)} on:click={(e) => handleCellClick(e, rowIndex, 3)}>{cto.status_cto || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey4) || selectedRows.includes(rowIndex) || selectedColumns.includes(4)} on:click={(e) => handleCellClick(e, rowIndex, 4)}>{cto.cidade || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey5) || selectedRows.includes(rowIndex) || selectedColumns.includes(5)} on:click={(e) => handleCellClick(e, rowIndex, 5)}>{cto.pop || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey6) || selectedRows.includes(rowIndex) || selectedColumns.includes(6)} on:click={(e) => handleCellClick(e, rowIndex, 6)}>{cto.olt || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey7) || selectedRows.includes(rowIndex) || selectedColumns.includes(7)} on:click={(e) => handleCellClick(e, rowIndex, 7)}>{cto.slot || 'N/A'}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey8) || selectedRows.includes(rowIndex) || selectedColumns.includes(8)} on:click={(e) => handleCellClick(e, rowIndex, 8)}>{cto.pon || 'N/A'}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey9) || selectedRows.includes(rowIndex) || selectedColumns.includes(9)} on:click={(e) => handleCellClick(e, rowIndex, 9)}>{cto.id_cto || cto.id || 'N/A'}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey10) || selectedRows.includes(rowIndex) || selectedColumns.includes(10)} on:click={(e) => handleCellClick(e, rowIndex, 10)}>{formatDataCriacao(cto)}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey11) || selectedRows.includes(rowIndex) || selectedColumns.includes(11)} on:click={(e) => handleCellClick(e, rowIndex, 11)}>{cto.vagas_total || 0}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey12) || selectedRows.includes(rowIndex) || selectedColumns.includes(12)} on:click={(e) => handleCellClick(e, rowIndex, 12)}>{cto.clientes_conectados || 0}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey13) || selectedRows.includes(rowIndex) || selectedColumns.includes(13)} on:click={(e) => handleCellClick(e, rowIndex, 13)}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
+                      <td class:cell-selected={selectedCells.includes(cellKey14) || selectedRows.includes(rowIndex) || selectedColumns.includes(14)} on:click={(e) => handleCellClick(e, rowIndex, 14)}>
                         <span class="occupation-badge {occupationClass}">{pctOcup.toFixed(1)}%</span>
                       </td>
-                      <td class:cell-selected={selectedCells.includes(cellKey16) || selectedRows.includes(rowIndex) || selectedColumns.includes(16)} on:click={(e) => handleCellClick(e, rowIndex, 16)}>{cto.status_cto || 'N/A'}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey15) || selectedRows.includes(rowIndex) || selectedColumns.includes(15)} on:click={(e) => handleCellClick(e, rowIndex, 15)}>{cto.latitude || ''}</td>
+                      <td class="numeric" class:cell-selected={selectedCells.includes(cellKey16) || selectedRows.includes(rowIndex) || selectedColumns.includes(16)} on:click={(e) => handleCellClick(e, rowIndex, 16)}>{cto.longitude || ''}</td>
                     </tr>
                   {/each}
                 </tbody>
