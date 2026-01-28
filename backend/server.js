@@ -959,7 +959,8 @@ app.get('/api/ctos/nearby', async (req, res) => {
             is_condominio: false, // Garantir que não é prédio
             condominio_data: null,
             status_cto_condominio: null,
-            status_cto: row.status_cto || '' // Incluir status da CTO
+            status_cto: row.status_cto || '', // Incluir status da CTO
+            data_criacao: row.data_cadastro || row.data_criacao || row.created_at || ''
           });
         }
         
