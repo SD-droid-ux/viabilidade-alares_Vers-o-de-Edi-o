@@ -367,24 +367,6 @@
     }
   }
   
-  // Menu da tabela (InfoWindow)
-  let tableMenuInfoWindow = null;
-  let tableMenuPosition = { x: 0, y: 0 };
-  
-  function openTableMenuInfoWindow(e) {
-    e.stopPropagation();
-    const button = e.currentTarget;
-    const rect = button.getBoundingClientRect();
-    tableMenuPosition = {
-      x: rect.right + 10,
-      y: rect.top
-    };
-    tableMenuInfoWindow = tableMenuInfoWindow ? null : 'open';
-  }
-  
-  function closeTableMenuInfoWindow() {
-    tableMenuInfoWindow = null;
-  }
 
   // Reactive statements para estilos
   $: sidebarWidthStyle = `${sidebarWidth}px`;
@@ -5568,14 +5550,6 @@
             <h3>Tabela de Equipamentos Encontrados - {ctosRua.length} Equipamentos Encontrados</h3>
             <div class="table-header-buttons">
               <button 
-                class="minimize-button table-menu-button" 
-                on:click={openTableMenuInfoWindow}
-                aria-label="Menu da tabela"
-                title="Menu"
-              >
-                <span class="vertical-dots"></span>
-              </button>
-              <button 
                 class="minimize-button" 
                 disabled={isResizingSidebar || isResizingMapTable}
                 on:click={async () => {
@@ -6627,30 +6601,6 @@
     align-items: center;
   }
 
-  .vertical-dots {
-    font-size: 0.875rem;
-    line-height: 0.5;
-    color: #7B68EE;
-    font-weight: bold;
-    display: inline-block;
-    letter-spacing: 0;
-    opacity: 0.7;
-  }
-
-  .table-menu-button:hover .vertical-dots {
-    opacity: 1;
-  }
-
-  .vertical-dots::before {
-    content: '•';
-    display: block;
-  }
-
-  .vertical-dots::after {
-    content: '•\A•';
-    white-space: pre;
-    display: block;
-  }
 
   .table-wrapper {
     overflow-y: auto;
