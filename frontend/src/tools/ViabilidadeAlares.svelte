@@ -565,12 +565,42 @@
       const containerHeight = containerRect.height;
       
       // Calcular o máximo de altura garantindo que a lista sempre fique visível
+      // Usar cálculo baseado na altura total do container, igual ao AnaliseCobertura.svelte
       let maxHeight;
       if (isListMinimized) {
-        // Quando a lista está minimizada, calcular baseado na altura total do container
-        // Espaço necessário: 60px (lista) + 8px (handle) + 12px (gap) = 80px
-        // O mapa pode ocupar até containerHeight - 80px, garantindo que a lista fique no final
-        maxHeight = Math.max(containerHeight - 80, 300);
+        // Quando a lista está minimizada, calcular baseado na posição real dela
+        // Isso garante que ela sempre fique visível no final da tela
+        const listElement = document.querySelector('.results-list-container.minimized, .empty-state.minimized');
+        if (listElement) {
+          // Obter posições relativas ao container
+          const listRect = listElement.getBoundingClientRect();
+          const containerTop = containerRect.top;
+          const listTop = listRect.top;
+          
+          // Calcular altura máxima baseado na posição da lista
+          // Altura máxima = posição da lista - topo do container - gap
+          const gap = 12; // 0.75rem = 12px (gap entre elementos)
+          const calculatedMaxHeight = listTop - containerTop - gap;
+          
+          // Também calcular limite fixo como fallback
+          const minSpaceForList = 90; // 60px lista + 8px handle + 12px gap + 10px margem
+          const fixedMaxHeight = containerHeight - minSpaceForList;
+          
+          // Usar o MENOR valor entre os dois cálculos para garantir que a lista não saia da tela
+          maxHeight = Math.max(Math.min(calculatedMaxHeight, fixedMaxHeight), 300);
+          
+          // Verificação adicional: garantir que a lista não saia da viewport
+          const viewportHeight = window.innerHeight;
+          if (listRect.bottom > viewportHeight) {
+            // Se a lista está saindo da viewport, reduzir o maxHeight
+            const overflow = listRect.bottom - viewportHeight;
+            maxHeight = Math.max(maxHeight - overflow - 20, 300); // 20px de margem extra de segurança
+          }
+        } else {
+          // Fallback: usar cálculo fixo se não encontrar a lista
+          const minSpaceForList = 90; // Mesmo valor usado no AnaliseCobertura.svelte
+          maxHeight = Math.max(containerHeight - minSpaceForList, 300);
+        }
       } else {
         // Quando a lista está expandida, deixar espaço mínimo para ela
         maxHeight = Math.max(containerHeight - 200, 300);
