@@ -126,6 +126,11 @@
   // Reactive statements para estilos
   $: sidebarWidthStyle = `${sidebarWidth}px`;
   $: mapHeightStyle = `${mapHeightPixels}px`;
+  $: mapContainerStyle = isMapMinimized 
+    ? 'height: 60px; flex: 0 0 auto; min-height: 60px;'
+    : isListMinimized 
+      ? 'flex: 1 1 auto; min-height: 300px;'
+      : `height: ${mapHeightPixels}px; flex: 0 0 auto; min-height: ${mapHeightPixels}px;`;
 
   // Substitua pela sua chave do Google Maps
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'SUA_CHAVE_AQUI';
@@ -547,10 +552,16 @@
     const deltaY = clientY - resizeStartY;
     const newHeight = resizeStartMapHeight + deltaY;
     
+    // Se a lista estiver minimizada, não permitir redimensionamento manual
+    // (o mapa vai usar flex: 1 automaticamente)
+    if (isListMinimized) {
+      return;
+    }
+    
     const container = document.querySelector('.main-area');
     const containerHeight = container ? container.getBoundingClientRect().height : 800;
     
-    const minSpaceForList = isListMinimized ? 90 : 200;
+    const minSpaceForList = 200;
     const maxHeight = Math.max(containerHeight - minSpaceForList, 300);
     const clampedHeight = Math.max(300, Math.min(maxHeight, newHeight));
     
@@ -5153,7 +5164,7 @@
     <!-- Área Principal (Mapa e Lista) -->
     <main class="main-area">
       <!-- Mapa -->
-      <div class="map-container" class:minimized={isMapMinimized} style="height: {isMapMinimized ? '60px' : mapHeightStyle}; flex: 0 0 auto; min-height: {isMapMinimized ? '60px' : mapHeightStyle};">
+      <div class="map-container" class:minimized={isMapMinimized} style={mapContainerStyle}>
         <div class="map-header">
           <h3>Mapa</h3>
           <button 
@@ -5230,6 +5241,7 @@
       </div>
 
       <!-- Handle de redimensionamento horizontal (mapa/lista) -->
+      {#if !isListMinimized}
       <div 
         class="resize-handle resize-handle-horizontal"
         on:mousedown|stopPropagation={startResizeMapTable}
@@ -5240,6 +5252,7 @@
         tabindex="0"
       >
       </div>
+      {/if}
 
       <!-- Lista de CTOs -->
       {#if ctos.length > 0}
@@ -5249,7 +5262,18 @@
             <button 
               class="minimize-button" 
               disabled={isResizingSidebar || isResizingMapTable}
-              on:click={() => isListMinimized = !isListMinimized}
+              on:click={async () => {
+                isListMinimized = !isListMinimized;
+                // Quando expandir ou minimizar a lista, redimensionar o mapa
+                if (map && google?.maps) {
+                  await tick();
+                  setTimeout(() => {
+                    if (map && google.maps) {
+                      google.maps.event.trigger(map, 'resize');
+                    }
+                  }, 100);
+                }
+              }}
               aria-label={isListMinimized ? 'Expandir lista' : 'Minimizar lista'}
               title={isListMinimized ? 'Expandir' : 'Minimizar'}
             >
@@ -5309,7 +5333,18 @@
             <button 
               class="minimize-button" 
               disabled={isResizingSidebar || isResizingMapTable}
-              on:click={() => isListMinimized = !isListMinimized}
+              on:click={async () => {
+                isListMinimized = !isListMinimized;
+                // Quando expandir ou minimizar a lista, redimensionar o mapa
+                if (map && google?.maps) {
+                  await tick();
+                  setTimeout(() => {
+                    if (map && google.maps) {
+                      google.maps.event.trigger(map, 'resize');
+                    }
+                  }, 100);
+                }
+              }}
               aria-label={isListMinimized ? 'Expandir lista' : 'Minimizar lista'}
               title={isListMinimized ? 'Expandir' : 'Minimizar'}
             >
