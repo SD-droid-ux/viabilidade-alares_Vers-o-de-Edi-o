@@ -339,6 +339,43 @@
         // Data de Criação - formatar se existir (formato: MM/YYYY)
         const dataCriacao = cto.data_criacao || cto.data_cadastro || cto.created_at || '';
         if (!dataCriacao) return 'N/A';
+        
+        // Se for string, verificar se já está no formato MM/YYYY
+        if (typeof dataCriacao === 'string') {
+          // Verificar se já está no formato MM/YYYY (ex: "04/2023")
+          const mmYYYYMatch = dataCriacao.match(/^(\d{1,2})\/(\d{4})$/);
+          if (mmYYYYMatch) {
+            const mes = mmYYYYMatch[1].padStart(2, '0');
+            const ano = mmYYYYMatch[2];
+            return `${mes}/${ano}`;
+          }
+          
+          // Tentar formato YYYY-MM (ex: "2023-04")
+          const yyyyMMMatch = dataCriacao.match(/^(\d{4})-(\d{1,2})/);
+          if (yyyyMMMatch) {
+            const ano = yyyyMMMatch[1];
+            const mes = yyyyMMMatch[2].padStart(2, '0');
+            return `${mes}/${ano}`;
+          }
+          
+          // Tentar formato YYYY-MM-DD (ex: "2023-04-15")
+          const yyyyMMDDMatch = dataCriacao.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+          if (yyyyMMDDMatch) {
+            const ano = yyyyMMDDMatch[1];
+            const mes = yyyyMMDDMatch[2].padStart(2, '0');
+            return `${mes}/${ano}`;
+          }
+          
+          // Tentar formato DD/MM/YYYY (ex: "15/04/2023")
+          const ddMMYYYYMatch = dataCriacao.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+          if (ddMMYYYYMatch) {
+            const mes = ddMMYYYYMatch[2].padStart(2, '0');
+            const ano = ddMMYYYYMatch[3];
+            return `${mes}/${ano}`;
+          }
+        }
+        
+        // Tentar converter para Date se não for string ou se não bateu com nenhum padrão
         try {
           const data = new Date(dataCriacao);
           if (!isNaN(data.getTime())) {
@@ -350,21 +387,9 @@
         } catch (e) {
           // Ignorar erro
         }
-        // Se não conseguir converter, tentar extrair mês/ano da string original
-        if (typeof dataCriacao === 'string') {
-          // Tentar padrões comuns: YYYY-MM, MM/YYYY, etc.
-          const match = dataCriacao.match(/(\d{1,2})\/(\d{4})|(\d{4})-(\d{1,2})/);
-          if (match) {
-            if (match[1] && match[2]) {
-              // Formato MM/YYYY
-              return `${match[1].padStart(2, '0')}/${match[2]}`;
-            } else if (match[3] && match[4]) {
-              // Formato YYYY-MM
-              return `${match[4].padStart(2, '0')}/${match[3]}`;
-            }
-          }
-        }
-        return dataCriacao || 'N/A';
+        
+        // Se não conseguiu formatar, retornar como está
+        return String(dataCriacao);
       }
       case 12: return (cto.vagas_total || 0).toString(); // Portas Total
       case 13: return (cto.clientes_conectados || 0).toString(); // Ocupadas
@@ -2936,6 +2961,43 @@
   function formatDataCriacao(cto) {
     const dataCriacao = cto.data_criacao || cto.data_cadastro || cto.created_at || '';
     if (!dataCriacao) return 'N/A';
+    
+    // Se for string, verificar se já está no formato MM/YYYY
+    if (typeof dataCriacao === 'string') {
+      // Verificar se já está no formato MM/YYYY (ex: "04/2023")
+      const mmYYYYMatch = dataCriacao.match(/^(\d{1,2})\/(\d{4})$/);
+      if (mmYYYYMatch) {
+        const mes = mmYYYYMatch[1].padStart(2, '0');
+        const ano = mmYYYYMatch[2];
+        return `${mes}/${ano}`;
+      }
+      
+      // Tentar formato YYYY-MM (ex: "2023-04")
+      const yyyyMMMatch = dataCriacao.match(/^(\d{4})-(\d{1,2})/);
+      if (yyyyMMMatch) {
+        const ano = yyyyMMMatch[1];
+        const mes = yyyyMMMatch[2].padStart(2, '0');
+        return `${mes}/${ano}`;
+      }
+      
+      // Tentar formato YYYY-MM-DD (ex: "2023-04-15")
+      const yyyyMMDDMatch = dataCriacao.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (yyyyMMDDMatch) {
+        const ano = yyyyMMDDMatch[1];
+        const mes = yyyyMMDDMatch[2].padStart(2, '0');
+        return `${mes}/${ano}`;
+      }
+      
+      // Tentar formato DD/MM/YYYY (ex: "15/04/2023")
+      const ddMMYYYYMatch = dataCriacao.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (ddMMYYYYMatch) {
+        const mes = ddMMYYYYMatch[2].padStart(2, '0');
+        const ano = ddMMYYYYMatch[3];
+        return `${mes}/${ano}`;
+      }
+    }
+    
+    // Tentar converter para Date se não for string ou se não bateu com nenhum padrão
     try {
       const data = new Date(dataCriacao);
       if (!isNaN(data.getTime())) {
@@ -2947,21 +3009,9 @@
     } catch (e) {
       // Ignorar erro
     }
-    // Se não conseguir converter, tentar extrair mês/ano da string original
-    if (typeof dataCriacao === 'string') {
-      // Tentar padrões comuns: YYYY-MM, MM/YYYY, etc.
-      const match = dataCriacao.match(/(\d{1,2})\/(\d{4})|(\d{4})-(\d{1,2})/);
-      if (match) {
-        if (match[1] && match[2]) {
-          // Formato MM/YYYY
-          return `${match[1].padStart(2, '0')}/${match[2]}`;
-        } else if (match[3] && match[4]) {
-          // Formato YYYY-MM
-          return `${match[4].padStart(2, '0')}/${match[3]}`;
-        }
-      }
-    }
-    return dataCriacao;
+    
+    // Se não conseguiu formatar, retornar como está (pode ser que já esteja no formato correto)
+    return String(dataCriacao);
   }
 
   function formatPercentage(value) {
