@@ -1065,7 +1065,7 @@ app.get('/api/ctos/nearby', async (req, res) => {
 // ============================================
 
 // Rota para calcular polígonos de cobertura (processamento assíncrono)
-// Rota para calcular polígonos de cobertura (GRID - manual)
+// Rota para calcular polígonos de cobertura (INCREMENTAL - manual)
 app.post('/api/coverage/calculate', async (req, res) => {
   try {
     // Garantir headers CORS
@@ -1077,7 +1077,7 @@ app.post('/api/coverage/calculate', async (req, res) => {
     }
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     
-    console.log('🗺️ [API] Iniciando cálculo de polígonos de cobertura (GRID)...');
+    console.log('🗺️ [API] Iniciando cálculo de polígonos de cobertura (INCREMENTAL)...');
     
     if (!supabase || !isSupabaseAvailable()) {
       return res.status(503).json({ 
@@ -1108,7 +1108,12 @@ app.post('/api/coverage/calculate', async (req, res) => {
     }
     
     // Gerar ID único para este cálculo
-    const calculationId = `calc_grid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const calculationId = `calc_inc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Contar total de CTOs
+    const { count: totalCTOs } = await supabase
+      .from('ctos')
+      .select('*', { count: 'exact', head: true });
     
     // Inicializar progresso global
     uploadProgress = {
@@ -1120,148 +1125,93 @@ app.post('/api/coverage/calculate', async (req, res) => {
       processedRows: 0,
       importedRows: 0,
       calculationId: calculationId,
-      totalCTOs: 0,
+      totalCTOs: totalCTOs || 0,
       processedCTOs: 0
     };
     
     // Retornar resposta imediata e processar em background
     res.json({
       success: true,
-      message: 'Cálculo iniciado em background (GRID). Use GET /api/upload-progress para verificar progresso.',
+      message: 'Cálculo iniciado em background (INCREMENTAL). Use GET /api/upload-progress para verificar progresso.',
       status: 'processing',
       calculation_id: calculationId
     });
     
-    // Processar em background usando Grid
+    // Processar em background usando abordagem incremental
     (async () => {
       try {
         console.log(`🔄 [API] Processando polígonos em background (ID: ${calculationId})...`);
-        console.log(`🗺️ [API] Usando abordagem GRID para cálculo rápido`);
+        console.log(`🗺️ [API] Usando abordagem INCREMENTAL (lotes pequenos)`);
         
-        // Configuração do grid: 15x15 = 225 células
-        const gridRows = 15;
-        const gridCols = 15;
-        const totalCells = gridRows * gridCols;
+        const batchSize = 250; // Lotes pequenos para evitar timeout
+        let isComplete = false;
+        let batchNumber = 0;
         
-        // Buscar células do grid
-        const { data: gridCells, error: gridError } = await supabase.rpc('get_brazil_grid_cells', {
-          p_rows: gridRows,
-          p_cols: gridCols
-        });
-        
-        if (gridError) {
-          console.error('❌ [API] Erro ao buscar células do grid:', gridError);
-          uploadProgress.stage = 'error';
-          uploadProgress.message = 'Erro ao buscar células do grid';
-          throw gridError;
-        }
-        
-        if (!gridCells || gridCells.length === 0) {
-          console.error('❌ [API] Nenhuma célula do grid retornada');
-          uploadProgress.stage = 'error';
-          uploadProgress.message = 'Nenhuma célula do grid retornada';
-          throw new Error('Nenhuma célula do grid retornada');
-        }
-        
-        console.log(`📊 [API] Grid criado: ${gridRows}x${gridCols} = ${totalCells} células`);
-        
-        // Contar total de CTOs
-        const { count: totalCTOs } = await supabase
-          .from('ctos')
-          .select('*', { count: 'exact', head: true });
-        
-        uploadProgress.totalCTOs = totalCTOs || 0;
-        
-        // Processar cada célula
-        let processedCells = 0;
-        let totalCTOsInGrid = 0;
-        
-        for (let i = 0; i < gridCells.length; i++) {
-          const cell = gridCells[i];
+        // Loop: processar lotes até completar
+        while (!isComplete) {
+          batchNumber++;
           
           try {
-            const { data: cellResult, error: cellError } = await supabase.rpc('process_coverage_grid_cell', {
+            const { data: batchResult, error: batchError } = await supabase.rpc('process_coverage_batch', {
               p_calculation_id: calculationId,
-              p_min_lat: cell.min_lat,
-              p_max_lat: cell.max_lat,
-              p_min_lng: cell.min_lng,
-              p_max_lng: cell.max_lng,
-              p_cell_index: cell.cell_index
+              p_batch_size: batchSize
             });
             
-            if (cellError) {
-              // Se for timeout, tentar novamente uma vez
-              if (cellError.message && cellError.message.includes('timeout')) {
-                console.warn(`⚠️ [API] Timeout na célula ${cell.cell_index}, tentando novamente...`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                
-                try {
-                  const { data: retryResult, error: retryError } = await supabase.rpc('process_coverage_grid_cell', {
-                    p_calculation_id: calculationId,
-                    p_min_lat: cell.min_lat,
-                    p_max_lat: cell.max_lat,
-                    p_min_lng: cell.min_lng,
-                    p_max_lng: cell.max_lng,
-                    p_cell_index: cell.cell_index
-                  });
-                  
-                  if (retryError) {
-                    console.warn(`⚠️ [API] Erro ao processar célula ${cell.cell_index} (após retry):`, retryError.message);
-                    continue;
-                  }
-                  
-                  if (retryResult && retryResult.length > 0 && retryResult[0].success) {
-                    processedCells++;
-                    totalCTOsInGrid += retryResult[0].processed_ctos || 0;
-                    
-                    const progressPercent = Math.round((processedCells / totalCells) * 100);
-                    uploadProgress.calculationPercent = progressPercent;
-                    uploadProgress.processedCTOs = totalCTOsInGrid;
-                    uploadProgress.message = `Calculando área de cobertura... ${progressPercent}% (${processedCells}/${totalCells} células)`;
-                    
-                    if (processedCells % 10 === 0 || processedCells === totalCells) {
-                      console.log(`📦 [API] Célula ${cell.cell_index}/${totalCells}: ${retryResult[0].processed_ctos} CTOs (${progressPercent}%) [RETRY OK]`);
-                    }
-                    continue;
-                  }
-                } catch (retryErr) {
-                  console.warn(`⚠️ [API] Erro no retry da célula ${cell.cell_index}:`, retryErr.message);
-                  continue;
-                }
-              } else {
-                console.warn(`⚠️ [API] Erro ao processar célula ${cell.cell_index}:`, cellError.message);
-                continue;
-              }
+            if (batchError) {
+              console.error(`❌ [API] Erro ao processar lote ${batchNumber}:`, batchError);
+              uploadProgress.stage = 'error';
+              uploadProgress.message = `Erro ao processar lote: ${batchError.message}`;
+              throw batchError;
             }
             
-            if (cellResult && cellResult.length > 0 && cellResult[0].success) {
-              processedCells++;
-              totalCTOsInGrid += cellResult[0].processed_ctos || 0;
-              
-              const progressPercent = Math.round((processedCells / totalCells) * 100);
-              uploadProgress.calculationPercent = progressPercent;
-              uploadProgress.processedCTOs = totalCTOsInGrid;
-              uploadProgress.message = `Calculando área de cobertura... ${progressPercent}% (${processedCells}/${totalCells} células)`;
-              
-              if (processedCells % 10 === 0 || processedCells === totalCells) {
-                console.log(`📦 [API] Célula ${cell.cell_index}/${totalCells}: ${cellResult[0].processed_ctos} CTOs (${progressPercent}%)`);
-              }
+            if (!batchResult || batchResult.length === 0) {
+              console.error(`❌ [API] Resposta vazia do lote ${batchNumber}`);
+              uploadProgress.stage = 'error';
+              uploadProgress.message = 'Resposta vazia do processamento';
+              throw new Error('Resposta vazia do processamento');
             }
             
-            await new Promise(resolve => setTimeout(resolve, 200));
-          } catch (cellErr) {
-            console.warn(`⚠️ [API] Erro ao processar célula ${cell.cell_index}:`, cellErr.message);
-            continue;
+            const result = batchResult[0];
+            
+            if (!result.success) {
+              console.error(`❌ [API] Erro no lote ${batchNumber}:`, result.message);
+              uploadProgress.stage = 'error';
+              uploadProgress.message = result.message || 'Erro ao processar lote';
+              throw new Error(result.message || 'Erro ao processar lote');
+            }
+            
+            // Atualizar progresso
+            uploadProgress.processedCTOs = result.processed_ctos || 0;
+            uploadProgress.totalCTOs = result.total_ctos || totalCTOs || 0;
+            uploadProgress.calculationPercent = Math.round(result.progress_percent || 0);
+            uploadProgress.message = result.message || `Calculando área de cobertura... ${Math.round(result.progress_percent || 0)}%`;
+            
+            isComplete = result.is_complete || false;
+            
+            // Log a cada 10 lotes ou quando completo
+            if (batchNumber % 10 === 0 || isComplete) {
+              console.log(`📦 [API] Lote ${batchNumber}: ${result.processed_ctos}/${result.total_ctos} CTOs (${Math.round(result.progress_percent || 0)}%)`);
+            }
+            
+            // Pequeno delay entre lotes para não sobrecarregar
+            if (!isComplete) {
+              await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            
+          } catch (batchErr) {
+            console.error(`❌ [API] Erro no lote ${batchNumber}:`, batchErr);
+            uploadProgress.stage = 'error';
+            uploadProgress.message = `Erro: ${batchErr.message}`;
+            throw batchErr;
           }
         }
         
-        console.log(`✅ [API] Todas as células processadas: ${processedCells}/${totalCells}`);
-        console.log(`🎉 [API] Finalizando cálculo (unindo células)...`);
+        console.log(`✅ [API] Todos os lotes processados: ${batchNumber} lotes`);
+        console.log(`🎉 [API] Finalizando cálculo...`);
         
-        // Finalizar: unir todas as células
-        const { data: finalData, error: finalError } = await supabase.rpc('finalize_coverage_grid', {
+        // Finalizar: salvar polígono final
+        const { data: finalData, error: finalError } = await supabase.rpc('finalize_coverage_calculation', {
           p_calculation_id: calculationId,
-          p_total_cells: totalCells,
           p_simplification_tolerance: 0.0001
         });
         
@@ -1277,13 +1227,13 @@ app.post('/api/coverage/calculate', async (req, res) => {
           uploadProgress.stage = 'completed';
           uploadProgress.calculationPercent = 100;
           uploadProgress.message = 'Área de cobertura criada com sucesso!';
-          console.log(`✅ [API] ===== POLÍGONOS CALCULADOS COM SUCESSO (GRID)! =====`);
+          console.log(`✅ [API] ===== POLÍGONOS CALCULADOS COM SUCESSO (INCREMENTAL)! =====`);
           console.log(`   - Polygon ID: ${finalResult.polygon_id}`);
           console.log(`   - Total CTOs: ${finalResult.total_ctos}`);
           console.log(`   - Área: ${finalResult.area_km2?.toFixed(2)} km²`);
           console.log(`   - Versão: ${finalResult.version || 'N/A'}`);
           console.log(`   - Tempo: ${finalResult.processing_time_seconds?.toFixed(2)}s`);
-          console.log(`   - Células processadas: ${processedCells}/${totalCells}`);
+          console.log(`   - Lotes processados: ${batchNumber}`);
           console.log(`✅ [API] ==========================================`);
         } else {
           console.error('❌ [API] Erro ao finalizar - resposta inválida:', finalData);
