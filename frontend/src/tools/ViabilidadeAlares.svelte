@@ -6315,6 +6315,25 @@
             disabled={isResizingSidebar || isResizingMapTable}
             on:click={async () => {
               isMapMinimized = !isMapMinimized;
+              
+              // Limpar estilos inline para respeitar o estado reativo
+              const mapElement = document.querySelector('.map-container');
+              if (mapElement) {
+                if (isMapMinimized) {
+                  // Quando minimizar, garantir que os estilos inline sejam removidos
+                  // para que o CSS reativo funcione corretamente
+                  mapElement.style.height = '';
+                  mapElement.style.minHeight = '';
+                  mapElement.style.maxHeight = '';
+                  mapElement.style.flex = '';
+                } else {
+                  // Quando expandir, aplicar altura atual
+                  mapElement.style.height = `${mapHeightPixels}px`;
+                  mapElement.style.minHeight = `${mapHeightPixels}px`;
+                  mapElement.style.flex = '0 0 auto';
+                }
+              }
+              
               if (!isMapMinimized && map && google?.maps) {
                 await tick();
                 setTimeout(() => {
@@ -6327,7 +6346,7 @@
             aria-label={isMapMinimized ? 'Expandir mapa' : 'Minimizar mapa'}
             title={isMapMinimized ? 'Expandir' : 'Minimizar'}
           >
-            {isMapMinimized ? '⬆️' : '⬇️'}
+            {isMapMinimized ? '⬇️' : '⬆️'}
           </button>
         </div>
         <div id="map" class="map" class:hidden={isMapMinimized}></div>
@@ -6407,6 +6426,21 @@
                 disabled={isResizingSidebar || isResizingMapTable}
                 on:click={async () => {
                   isListMinimized = !isListMinimized;
+                  
+                  // Limpar estilos inline para respeitar o estado reativo
+                  const listElement = document.querySelector('.results-table-container, .empty-state');
+                  if (listElement) {
+                    if (isListMinimized) {
+                      // Quando minimizar, garantir que os estilos inline sejam removidos
+                      listElement.style.flex = '';
+                      listElement.style.minHeight = '';
+                    } else {
+                      // Quando expandir, aplicar estilos padrão
+                      listElement.style.flex = '1 1 auto';
+                      listElement.style.minHeight = '200px';
+                    }
+                  }
+                  
                   if (map && google?.maps) {
                     await tick();
                     setTimeout(() => {
@@ -6552,6 +6586,21 @@
                 disabled={isResizingSidebar || isResizingMapTable}
                 on:click={async () => {
                   isListMinimized = !isListMinimized;
+                  
+                  // Limpar estilos inline para respeitar o estado reativo
+                  const listElement = document.querySelector('.results-table-container, .empty-state');
+                  if (listElement) {
+                    if (isListMinimized) {
+                      // Quando minimizar, garantir que os estilos inline sejam removidos
+                      listElement.style.flex = '';
+                      listElement.style.minHeight = '';
+                    } else {
+                      // Quando expandir, aplicar estilos padrão
+                      listElement.style.flex = '1 1 auto';
+                      listElement.style.minHeight = '200px';
+                    }
+                  }
+                  
                   if (map && google?.maps) {
                     await tick();
                     setTimeout(() => {
@@ -7385,9 +7434,11 @@
   }
 
   .map-container.minimized {
-    min-height: 60px;
-    max-height: 60px;
+    min-height: 60px !important;
+    max-height: 60px !important;
+    height: 60px !important;
     flex: 0 0 auto !important;
+    overflow: hidden;
   }
 
   .map-header {
