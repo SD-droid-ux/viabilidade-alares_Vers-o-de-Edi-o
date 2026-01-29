@@ -5746,10 +5746,10 @@ app.post('/api/upload-base', (req, res, next) => {
                 try {
                   // Gerar ID único para este cálculo
                   const calculationId = `calc_auto_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                // OTIMIZAÇÃO AGRESSIVA: Batch_size muito maior para processar rápido
-                // Com query otimizada (ST_UnaryUnion + ST_Collect), podemos processar muito mais
-                // Meta: < 2 minutos total para 218k CTOs
-                const batchSize = 10000;  // Aumentado drasticamente para 10000
+                // OTIMIZAÇÃO: Batch_size balanceado para evitar timeout mas manter velocidade
+                // Com query otimizada (ST_UnaryUnion + ST_Collect), podemos processar mais
+                // Meta: < 2 minutos total para 218k CTOs, mas sem timeout
+                const batchSize = 3000;  // Reduzido para 3000 para evitar timeout do Supabase
                   
                   console.log(`🆔 [Background] Calculation ID: ${calculationId}`);
                   console.log(`📦 [Background] Usando batch_size: ${batchSize} para evitar timeout`);
@@ -5838,7 +5838,8 @@ app.post('/api/upload-base', (req, res, next) => {
                     }
                     
                     // Delay mínimo - query otimizada processa muito rápido
-                    await new Promise(resolve => setTimeout(resolve, 10));
+                    // Delay pequeno para evitar sobrecarga do Supabase (aumentado para evitar timeout)
+                    await new Promise(resolve => setTimeout(resolve, 200));
                   } catch (batchErr) {
                     console.error(`❌ [Background] Erro no lote ${attempts}:`, batchErr);
                     lastError = batchErr;
