@@ -2420,6 +2420,7 @@
   async function drawRealRoute(cto, index) {
     return new Promise((resolve, reject) => {
       const directionsService = new google.maps.DirectionsService();
+      const ctoKey = getCTOKey(cto);
 
       // Parsear coordenadas da CTO com precisão (garantir que são números válidos)
       const ctoLat = parseFloat(cto.latitude);
@@ -2547,6 +2548,40 @@
                 zIndex: 500 + index
               });
               routes.push(routePolyline);
+              const actualRouteIndex = routes.length - 1;
+              
+              // Anexar chave da CTO na polyline (para controle por chave, sem depender de coordenadas)
+              try { routePolyline.__ctoKey = ctoKey; } catch (_) {}
+
+              // Armazenar dados da rota para edição (mesmo no fallback)
+              routeData.push({
+                polyline: routePolyline,
+                ctoIndex: index,
+                routeIndex: actualRouteIndex,
+                ctoKey,
+                cto: cto,
+                originalPath: [...fallbackPath]
+              });
+
+              // Clique na rota
+              routePolyline.addListener('click', (event) => {
+                handleRouteClick(actualRouteIndex, event);
+              });
+
+              // Listeners de edição: sempre anexar; só salvam quando editingRoutes estiver ativo
+              routePolyline.addListener('set_at', () => {
+                if (!editingRoutes) return;
+                saveRouteEdit(index);
+              });
+              routePolyline.addListener('insert_at', () => {
+                if (!editingRoutes) return;
+                saveRouteEdit(index);
+              });
+              routePolyline.addListener('remove_at', () => {
+                if (!editingRoutes) return;
+                saveRouteEdit(index);
+              });
+
               resolve();
               return;
             }
@@ -2581,12 +2616,16 @@
             // Adicionar rota ao array ANTES de criar listeners para garantir índice correto
             routes.push(routePolyline);
             const actualRouteIndex = routes.length - 1; // Índice da rota no array routes
+
+            // Anexar chave da CTO na polyline (para controle por chave, sem depender de coordenadas)
+            try { routePolyline.__ctoKey = ctoKey; } catch (_) {}
             
             // Armazenar dados da rota para edição
             routeData.push({
               polyline: routePolyline,
               ctoIndex: index, // Índice da CTO no array ctos
               routeIndex: actualRouteIndex, // Índice da rota no array routes (NOVO)
+              ctoKey,
               cto: cto,
               originalPath: [...filteredPath] // Cópia do path original
             });
@@ -2597,19 +2636,20 @@
               handleRouteClick(actualRouteIndex, event);
             });
 
-            // Adicionar listeners para salvar alterações quando a rota for editada
-            // Usar ctoIndex (não routeIndex) para saveRouteEdit
-            if (editingRouteIndex === actualRouteIndex) {
-              routePolyline.addListener('set_at', () => {
-                saveRouteEdit(index); // index é o ctoIndex
-              });
-              routePolyline.addListener('insert_at', () => {
-                saveRouteEdit(index);
-              });
-              routePolyline.addListener('remove_at', () => {
-                saveRouteEdit(index);
-              });
-            }
+            // Listeners de edição: sempre anexar; só salvam quando editingRoutes estiver ativo
+            // (assim TODAS as rotas ficam editáveis no modo global, inclusive após recriar)
+            routePolyline.addListener('set_at', () => {
+              if (!editingRoutes) return;
+              saveRouteEdit(index); // index é o ctoIndex
+            });
+            routePolyline.addListener('insert_at', () => {
+              if (!editingRoutes) return;
+              saveRouteEdit(index);
+            });
+            routePolyline.addListener('remove_at', () => {
+              if (!editingRoutes) return;
+              saveRouteEdit(index);
+            });
             resolve();
           } else {
             // Melhorar tratamento de erros com diferentes status codes
@@ -2657,6 +2697,37 @@
               zIndex: 500 + index
             });
             routes.push(routePolyline);
+            const actualRouteIndex = routes.length - 1;
+
+            try { routePolyline.__ctoKey = ctoKey; } catch (_) {}
+
+            // Armazenar dados da rota para edição (mesmo no fallback)
+            routeData.push({
+              polyline: routePolyline,
+              ctoIndex: index,
+              routeIndex: actualRouteIndex,
+              ctoKey,
+              cto: cto,
+              originalPath: [...fallbackPath]
+            });
+
+            routePolyline.addListener('click', (event) => {
+              handleRouteClick(actualRouteIndex, event);
+            });
+
+            routePolyline.addListener('set_at', () => {
+              if (!editingRoutes) return;
+              saveRouteEdit(index);
+            });
+            routePolyline.addListener('insert_at', () => {
+              if (!editingRoutes) return;
+              saveRouteEdit(index);
+            });
+            routePolyline.addListener('remove_at', () => {
+              if (!editingRoutes) return;
+              saveRouteEdit(index);
+            });
+
             resolve();
           }
         }
@@ -3329,22 +3400,9 @@
         // Encontrar marcador associado a esta CTO
         const ctoMarker = markers.find((marker) => {
           if (!marker) return false;
-          // Só considerar marcadores que realmente estão no mapa (evita "fantasmas" no array markers)
+          if (marker === clientMarker) return false;
           if (marker.getMap && marker.getMap() !== map) return false;
-          // Verificar se o marcador está na mesma posição da CTO
-          const markerPos = marker.getPosition();
-          if (!markerPos) return false;
-          
-          const markerLat = markerPos.lat();
-          const markerLng = markerPos.lng();
-          const ctoLat = parseFloat(cto.latitude);
-          const ctoLng = parseFloat(cto.longitude);
-          
-          // Comparar coordenadas (com tolerância de 0.0001 graus ≈ 11 metros)
-          const latDiff = Math.abs(markerLat - ctoLat);
-          const lngDiff = Math.abs(markerLng - ctoLng);
-          
-          return latDiff < 0.0001 && lngDiff < 0.0001;
+          return marker.__ctoKey === ctoKey;
         });
         
         if (ctoMarker) {
@@ -3352,13 +3410,7 @@
         }
         
         // Encontrar rota associada a esta CTO
-        const routeInfo = routeData.find(rd => {
-          const rdCto = rd.cto;
-          if (!rdCto) return false;
-          
-          const rdCtoKey = getCTOKey(rdCto);
-          return rdCtoKey === ctoKey;
-        });
+        const routeInfo = routeData.find(rd => rd && rd.ctoKey === ctoKey);
         
         if (routeInfo && routeInfo.polyline) {
           routesToRemove.push(routeInfo.polyline);
@@ -3417,26 +3469,11 @@
         const markerExists = markers.some(marker => {
           if (!marker) return false;
           if (marker === clientMarker) return false; // Ignorar marcador do cliente
-          // Só contar marcadores que realmente estão no mapa
           if (marker.getMap && marker.getMap() !== map) return false;
-          const markerPos = marker.getPosition();
-          if (!markerPos) return false;
-          
-          const markerLat = markerPos.lat();
-          const markerLng = markerPos.lng();
-          
-          const latDiff = Math.abs(markerLat - ctoLat);
-          const lngDiff = Math.abs(markerLng - ctoLng);
-          
-          return latDiff < 0.0001 && lngDiff < 0.0001;
+          return marker.__ctoKey === ctoKey;
         });
         
-        const routeExists = routeData.some(rd => {
-          const rdCto = rd.cto;
-          if (!rdCto) return false;
-          const rdCtoKey = getCTOKey(rdCto);
-          return rdCtoKey === ctoKey;
-        });
+        const routeExists = routeData.some(rd => rd && rd.ctoKey === ctoKey);
         
         // Se não existe marcador, criar
         if (!markerExists) {
@@ -3482,20 +3519,12 @@
       
       if (isNaN(ctoLat) || isNaN(ctoLng)) continue;
       
-      // Encontrar o marcador correspondente a esta CTO
+      // Encontrar o marcador correspondente a esta CTO (por chave, sem depender de coordenadas)
       const ctoMarker = markers.find(marker => {
+        if (!marker) return false;
         if (marker === clientMarker) return false; // Ignorar marcador do cliente
-        
-        const markerPos = marker.getPosition();
-        if (!markerPos) return false;
-        
-        const markerLat = markerPos.lat();
-        const markerLng = markerPos.lng();
-        
-        const latDiff = Math.abs(markerLat - ctoLat);
-        const lngDiff = Math.abs(markerLng - ctoLng);
-        
-        return latDiff < 0.0001 && lngDiff < 0.0001;
+        if (marker.getMap && marker.getMap() !== map) return false;
+        return marker.__ctoKey === ctoKey;
       });
       
       if (ctoMarker) {
@@ -3527,6 +3556,7 @@
     
     const ctoLat = parseFloat(cto.latitude);
     const ctoLng = parseFloat(cto.longitude);
+    const ctoKey = getCTOKey(cto);
     
     if (isNaN(ctoLat) || isNaN(ctoLng)) return;
     
@@ -3612,6 +3642,9 @@
       zIndex: 1000 + index,
       optimized: false
     });
+
+    // Anexar chave estável da CTO no marcador (evita depender de comparação por coordenadas)
+    try { ctoMarker.__ctoKey = ctoKey; } catch (_) {}
     
     markers.push(ctoMarker);
   }
@@ -3852,6 +3885,9 @@
           zIndex: 1000 + markerNumber,
           optimized: false // Garantir que todos os marcadores sejam renderizados
         });
+
+        // Anexar chave estável da CTO no marcador (evita depender de comparação por coordenadas)
+        try { ctoMarker.__ctoKey = getCTOKey(cto); } catch (_) {}
 
         // Verificar se o marcador foi criado com sucesso
         if (ctoMarker && ctoMarker.getMap()) {
