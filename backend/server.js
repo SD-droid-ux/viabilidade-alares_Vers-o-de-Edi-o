@@ -2856,7 +2856,7 @@ app.get('/api/base-last-modified', async (req, res) => {
       if (hasData) {
         const { data, error } = await supabase
           .from('upload_history')
-          .select('uploaded_at')
+          .select('uploaded_at, created_at')
           .order('uploaded_at', { ascending: false })
           .limit(1);
 
@@ -2864,8 +2864,28 @@ app.get('/api/base-last-modified', async (req, res) => {
           console.warn('⚠️ [API] Erro ao buscar lastModified do Supabase:', error.message);
           // Fallback para arquivo local se Supabase falhar
         } else if (data && data.length > 0) {
-          lastModified = data[0].uploaded_at;
+          // Usar uploaded_at se disponível, senão usar created_at como fallback
+          lastModified = data[0].uploaded_at || data[0].created_at;
           console.log('✅ [API] LastModified do Supabase:', lastModified);
+        }
+        
+        // Se ainda não tem lastModified mas tem dados, usar data atual como fallback
+        if (!lastModified && hasData) {
+          // Buscar última CTO inserida para usar sua data de criação
+          const { data: lastCto, error: ctoError } = await supabase
+            .from('ctos')
+            .select('created_at')
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          if (!ctoError && lastCto && lastCto.length > 0 && lastCto[0].created_at) {
+            lastModified = lastCto[0].created_at;
+            console.log('✅ [API] LastModified usando created_at da última CTO:', lastModified);
+          } else {
+            // Último fallback: usar data atual
+            lastModified = new Date().toISOString();
+            console.log('⚠️ [API] LastModified não encontrado, usando data atual como fallback');
+          }
         }
       }
     }
@@ -2897,12 +2917,14 @@ app.get('/api/base-last-modified', async (req, res) => {
       return res.json({ success: true, hasData: false, message: 'Não consta nenhuma base de dados', total_ctos: 0 });
     }
 
-    if (lastModified) {
-      res.json({ success: true, lastModified, hasData: true, total_ctos: totalCTOs });
-    } else {
-      // Se tem dados mas não tem lastModified, ainda retornar sucesso indicando que há dados
-      res.json({ success: true, hasData: true, message: 'Base de dados existe mas data de atualização não disponível', total_ctos: totalCTOs });
+    // Se tem dados mas não tem lastModified, usar data atual como fallback
+    if (!lastModified) {
+      lastModified = new Date().toISOString();
+      console.log('⚠️ [API] LastModified não encontrado, usando data atual como fallback:', lastModified);
     }
+
+    // Sempre retornar lastModified quando há dados
+    res.json({ success: true, lastModified, hasData: true, total_ctos: totalCTOs });
   } catch (err) {
     console.error('❌ [API] Erro ao obter lastModified:', err);
     
