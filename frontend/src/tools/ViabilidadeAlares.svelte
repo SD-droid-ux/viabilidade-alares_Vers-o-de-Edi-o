@@ -2557,17 +2557,24 @@
               const actualRouteIndex = routes.length - 1;
               
               // Anexar chave da CTO na polyline (para controle por chave, sem depender de coordenadas)
-              try { routePolyline.__ctoKey = ctoKey; } catch (_) {}
+              // CRÍTICO: Cada CTO tem sua própria rota única, identificada por ctoKey (não coordenadas)
+              try { 
+                routePolyline.__ctoKey = ctoKey;
+                console.log(`🔑 ctoKey ${ctoKey} anexado à rota fallback ${actualRouteIndex} para CTO ${cto.nome}`);
+              } catch (e) {
+                console.error(`❌ Erro ao anexar ctoKey à rota fallback:`, e);
+              }
 
               // Armazenar dados da rota para edição (mesmo no fallback)
               routeData.push({
                 polyline: routePolyline,
                 ctoIndex: index,
                 routeIndex: actualRouteIndex,
-                ctoKey,
+                ctoKey, // Chave única da CTO (baseada em ID, não coordenadas)
                 cto: cto,
                 originalPath: [...fallbackPath]
               });
+              console.log(`📝 RouteData criado (fallback): ctoKey=${ctoKey}, ctoNome=${cto.nome}, routeIndex=${actualRouteIndex}`);
 
               // Clique na rota
               routePolyline.addListener('click', (event) => {
@@ -2626,17 +2633,24 @@
             const actualRouteIndex = routes.length - 1; // Índice da rota no array routes
 
             // Anexar chave da CTO na polyline (para controle por chave, sem depender de coordenadas)
-            try { routePolyline.__ctoKey = ctoKey; } catch (_) {}
+            // CRÍTICO: Cada CTO tem sua própria rota única, identificada por ctoKey (não coordenadas)
+            try { 
+              routePolyline.__ctoKey = ctoKey;
+              console.log(`🔑 ctoKey ${ctoKey} anexado à rota ${actualRouteIndex} para CTO ${cto.nome}`);
+            } catch (e) {
+              console.error(`❌ Erro ao anexar ctoKey à rota:`, e);
+            }
             
             // Armazenar dados da rota para edição
             routeData.push({
               polyline: routePolyline,
               ctoIndex: index, // Índice da CTO no array ctos
-              routeIndex: actualRouteIndex, // Índice da rota no array routes (NOVO)
-              ctoKey,
+              routeIndex: actualRouteIndex, // Índice da rota no array routes
+              ctoKey, // Chave única da CTO (baseada em ID, não coordenadas)
               cto: cto,
               originalPath: [...filteredPath] // Cópia do path original
             });
+            console.log(`📝 RouteData criado: ctoKey=${ctoKey}, ctoNome=${cto.nome}, routeIndex=${actualRouteIndex}`);
 
             // Adicionar listener de clique na rota para mostrar popup
             // Usar o índice correto da rota no array routes
@@ -2709,17 +2723,24 @@
             routes.push(routePolyline);
             const actualRouteIndex = routes.length - 1;
 
-            try { routePolyline.__ctoKey = ctoKey; } catch (_) {}
+            // CRÍTICO: Cada CTO tem sua própria rota única, identificada por ctoKey (não coordenadas)
+            try { 
+              routePolyline.__ctoKey = ctoKey;
+              console.log(`🔑 ctoKey ${ctoKey} anexado à rota fallback 2 ${actualRouteIndex} para CTO ${cto.nome}`);
+            } catch (e) {
+              console.error(`❌ Erro ao anexar ctoKey à rota fallback 2:`, e);
+            }
 
             // Armazenar dados da rota para edição (mesmo no fallback)
             routeData.push({
               polyline: routePolyline,
               ctoIndex: index,
               routeIndex: actualRouteIndex,
-              ctoKey,
+              ctoKey, // Chave única da CTO (baseada em ID, não coordenadas)
               cto: cto,
               originalPath: [...fallbackPath]
             });
+            console.log(`📝 RouteData criado (fallback 2): ctoKey=${ctoKey}, ctoNome=${cto.nome}, routeIndex=${actualRouteIndex}`);
 
             routePolyline.addListener('click', (event) => {
               console.log(`🖱️ Clique na rota fallback 2 ${actualRouteIndex} (CTO: ${cto.nome}, ctoKey: ${ctoKey})`);
@@ -3022,20 +3043,36 @@
     }
     
     // Encontrar routeInfo usando a polyline diretamente (mais confiável que usar índice)
+    // CRÍTICO: Usar polyline para garantir que encontramos a rota correta, mesmo com coordenadas iguais
     let routeInfo = routeData.find(rd => rd && rd.polyline === route);
     
     // Se não encontrou por polyline, tentar encontrar por ctoKey (fallback)
+    // Isso garante que mesmo se houver algum problema, ainda encontra a rota correta
     if (!routeInfo && route.__ctoKey) {
-      routeInfo = routeData.find(rd => rd && rd.ctoKey === route.__ctoKey && rd.polyline.getMap && rd.polyline.getMap() === map);
+      console.log(`🔍 RouteInfo não encontrada por polyline, tentando por ctoKey: ${route.__ctoKey}`);
+      routeInfo = routeData.find(rd => {
+        if (!rd || rd.ctoKey !== route.__ctoKey) return false;
+        // Verificar se está no mapa
+        if (!rd.polyline || !rd.polyline.getMap) return false;
+        return rd.polyline.getMap() === map;
+      });
     }
     
     if (!routeInfo) {
       console.error(`❌ handleRouteClick: RouteInfo não encontrada para rota ${routeIndex}. routeData.length: ${routeData.length}, ctoKey: ${route.__ctoKey || 'N/A'}`);
+      console.log(`🔍 Routes disponíveis:`, routes.map((r, idx) => ({ idx, ctoKey: r.__ctoKey || 'N/A' })));
+      console.log(`🔍 RouteData disponível:`, routeData.map(rd => ({ ctoKey: rd.ctoKey, ctoNome: rd.cto?.nome, polylineExists: !!rd.polyline, onMap: rd.polyline?.getMap?.() === map })));
       return;
     }
     
+    // Verificar se a routeInfo encontrada corresponde realmente a esta rota
+    if (routeInfo.polyline !== route) {
+      console.warn(`⚠️ RouteInfo encontrada mas polyline não corresponde! routeInfo.ctoKey: ${routeInfo.ctoKey}, route.__ctoKey: ${route.__ctoKey}`);
+    }
+    
     selectedRouteIndex = routeIndex;
-    console.log(`✅ Popup aberto para rota ${routeIndex} (CTO: ${routeInfo.cto?.nome}, ctoKey: ${routeInfo.ctoKey}, número: ${ctoNumbers.get(routeInfo.cto) || 'N/A'})`);
+    const ctoNumber = routeInfo.cto ? (ctoNumbers.get(routeInfo.cto) || 'N/A') : 'N/A';
+    console.log(`✅ Popup aberto para rota ${routeIndex} (CTO: ${routeInfo.cto?.nome}, ctoKey: ${routeInfo.ctoKey}, número: ${ctoNumber})`);
     
     // Posicionar popup próximo ao ponto de clique na tela
     if (event && event.domEvent) {
@@ -3442,18 +3479,22 @@
           markersToRemove.push(ctoMarker);
         }
         
-        // Encontrar rota associada a esta CTO
-        // Verificar se a rota existe E está realmente no mapa (não apenas em routeData)
+        // Encontrar rota associada a esta CTO específica usando ctoKey
+        // CRÍTICO: Usar APENAS ctoKey, nunca coordenadas (múltiplas CTOs podem ter mesma coordenada)
         const routeInfo = routeData.find(rd => {
           if (!rd || rd.ctoKey !== ctoKey) return false;
           // Verificar se a polyline está realmente no mapa
           const polyline = rd.polyline;
-          return polyline && polyline.getMap && polyline.getMap() === map;
+          if (!polyline || !polyline.getMap) return false;
+          return polyline.getMap() === map;
         });
         
         if (routeInfo && routeInfo.polyline) {
+          console.log(`🗑️ Removendo rota da CTO ${cto.nome} (${ctoKey}) - rota específica desta CTO`);
           routesToRemove.push(routeInfo.polyline);
-          // Remover do routeData também (será removido novamente no loop abaixo, mas isso garante consistência)
+          // Marcar para remoção do routeData também (será removido no loop abaixo)
+        } else {
+          console.log(`⚠️ Rota não encontrada para CTO ${cto.nome} (${ctoKey}) - pode já ter sido removida`);
         }
       }
     }
@@ -3486,13 +3527,17 @@
         selectedRouteIndex = null;
       }
       
-      // Remover do routeData também (usar ctoKey para encontrar)
+      // Remover do routeData também (usar polyline para encontrar - mais confiável)
+      // CRÍTICO: Remover apenas a entrada específica desta rota, não outras rotas com mesma coordenada
       const routeInfoToRemove = routeData.find(rd => rd && rd.polyline === route);
       if (routeInfoToRemove) {
         const routeDataIndex = routeData.findIndex(rd => rd === routeInfoToRemove);
         if (routeDataIndex !== -1) {
+          console.log(`🗑️ Removendo routeData[${routeDataIndex}] para CTO ${routeInfoToRemove.cto?.nome} (${routeInfoToRemove.ctoKey})`);
           routeData.splice(routeDataIndex, 1);
         }
+      } else {
+        console.warn(`⚠️ RouteInfo não encontrado em routeData para rota removida no índice ${routeIndex}`);
       }
       
       routes.splice(routeIndex, 1);
@@ -3527,11 +3572,14 @@
         });
         
         // Verificar se a rota existe E está no mapa (não apenas em routeData)
+        // CRÍTICO: Usar APENAS ctoKey para identificar rotas, nunca coordenadas
+        // Múltiplas CTOs podem ter a mesma coordenada, mas cada uma DEVE ter sua própria rota única
         const routeExists = routeData.some(rd => {
           if (!rd || rd.ctoKey !== ctoKey) return false;
           // Verificar se a polyline está realmente no mapa
           const polyline = rd.polyline;
-          return polyline && polyline.getMap && polyline.getMap() === map;
+          if (!polyline || !polyline.getMap) return false;
+          return polyline.getMap() === map;
         });
         
         // Se não existe marcador, criar
@@ -3545,12 +3593,15 @@
         }
         
         // Se não existe rota no mapa e a CTO precisa de rota, criar
+        // IMPORTANTE: Cada CTO tem sua própria rota, mesmo que compartilhe coordenadas com outras
         if (!routeExists && !cto.is_condominio && cto.distancia_metros && cto.distancia_metros > 0 && cto.distancia_real) {
           const ctoIndex = ctos.findIndex(c => getCTOKey(c) === ctoKey);
           if (ctoIndex !== -1) {
-            console.log(`📍 Criando rota para CTO ${cto.nome} (${ctoKey}) que estava faltando no mapa`);
+            console.log(`📍 Criando rota ÚNICA para CTO ${cto.nome} (${ctoKey}) - mesmo que outras CTOs tenham mesma coordenada`);
             await drawRealRoute(ctos[ctoIndex], ctoIndex);
           }
+        } else if (routeExists) {
+          console.log(`✓ Rota já existe para CTO ${cto.nome} (${ctoKey}) - rota específica desta CTO`);
         }
       }
     }
@@ -3723,27 +3774,8 @@
 
     // Desenhar rotas e marcadores para cada CTO
 
-    // Agrupar CTOs por coordenadas para detectar duplicatas
-    const coordinateGroups = {};
-    for (let i = 0; i < ctos.length; i++) {
-      const cto = ctos[i];
-      if (isNaN(cto.latitude) || isNaN(cto.longitude) || 
-          cto.latitude === null || cto.longitude === null ||
-          cto.latitude === undefined || cto.longitude === undefined) {
-        continue;
-      }
-      
-      // Criar chave única para coordenadas (arredondar para evitar diferenças mínimas)
-      const latRounded = Math.round(cto.latitude * 1000000) / 1000000;
-      const lngRounded = Math.round(cto.longitude * 1000000) / 1000000;
-      const coordKey = `${latRounded},${lngRounded}`;
-      
-      if (!coordinateGroups[coordKey]) {
-        coordinateGroups[coordKey] = [];
-      }
-      coordinateGroups[coordKey].push({ index: i, cto });
-    }
-
+    // IMPORTANTE: Cada CTO tem sua própria rota única, mesmo que compartilhem coordenadas
+    // Usamos ctoKey (baseado em ID) para identificar rotas, nunca coordenadas
     // Não precisamos mais de markerNumber, usamos ctoNumbers.get(cto) que já está calculado
 
     // OTIMIZAÇÃO DE PERFORMANCE: Separar rotas de marcadores
