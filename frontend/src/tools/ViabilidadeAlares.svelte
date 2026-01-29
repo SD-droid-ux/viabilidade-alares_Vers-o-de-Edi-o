@@ -717,7 +717,7 @@
   $: sidebarWidthStyle = `${sidebarWidth}px`;
   $: mapHeightStyle = `${mapHeightPixels}px`;
   $: mapContainerStyle = isMapMinimized 
-    ? 'height: 60px; flex: 0 0 auto; min-height: 60px; max-height: 60px;'
+    ? 'flex: 0 0 auto;'
     : `height: ${mapHeightPixels}px; flex: 0 0 auto; min-height: ${mapHeightPixels}px;`;
 
   // Substitua pela sua chave do Google Maps
@@ -7457,11 +7457,31 @@
 
   .map-container.minimized {
     min-height: 60px !important;
-    max-height: 60px !important;
-    height: 60px !important;
+    height: auto !important;
     flex: 0 0 auto !important;
     overflow: hidden !important;
-    padding: 0 !important;
+  }
+  
+  .map-container.minimized .map-header {
+    flex-shrink: 0 !important;
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    display: flex !important;
+    visibility: visible !important;
+    padding: 1rem 1.5rem !important;
+    background: #f9fafb !important;
+    border-bottom: none !important;
+  }
+  
+  .map-container.minimized .map-header h3 {
+    display: block !important;
+    visibility: visible !important;
+  }
+  
+  .map-container.minimized .map-header .minimize-button {
+    display: block !important;
+    visibility: visible !important;
   }
   
   .map-container.minimized .map {
@@ -7470,6 +7490,13 @@
     height: 0 !important;
     min-height: 0 !important;
     overflow: hidden !important;
+  }
+  
+  .map-container.minimized .map-header {
+    display: flex !important;
+    visibility: visible !important;
+    height: auto !important;
+    min-height: auto !important;
   }
 
   .map-header {
@@ -7490,6 +7517,22 @@
 
   .map-container.minimized .map-header {
     border-bottom: none;
+    display: flex !important;
+    visibility: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+    padding: 1rem 1.5rem !important;
+    background: #f9fafb !important;
+  }
+  
+  .map-container.minimized .map-header h3 {
+    display: block !important;
+    visibility: visible !important;
+  }
+  
+  .map-container.minimized .map-header .minimize-button {
+    display: block !important;
+    visibility: visible !important;
   }
 
   .map {
