@@ -1517,7 +1517,7 @@
               console.error('❌ [Upload] Erro ao verificar progresso:', pollErr);
               // Continuar tentando
             }
-          }, 500); // Verificar a cada 500ms para atualização suave
+          }, 2000); // Verificar a cada 2 segundos (suficiente para atualização suave sem sobrecarregar)
           
           // Timeout de segurança (5 minutos)
           setTimeout(() => {
