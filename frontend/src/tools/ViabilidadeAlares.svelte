@@ -8016,7 +8016,7 @@
     cursor: pointer;
     transition: all 0.3s;
     box-shadow: 0 4px 6px rgba(123, 104, 238, 0.3);
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.50rem;
   }
 
   .search-button:hover:not(:disabled) {
