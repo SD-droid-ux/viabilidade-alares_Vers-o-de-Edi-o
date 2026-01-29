@@ -64,6 +64,12 @@
   let loadingChangeRole = false; // Estado de carregamento do modal
   let totalCTOsLoaded = 0; // Total de CTOs carregadas (para exibir na mensagem)
   
+  // Variáveis para cálculo de mancha (separado do upload)
+  let calculatingCoverage = false;
+  let coverageMessage = '';
+  let coverageSuccess = false;
+  let coveragePollInterval = null;
+  
   // Variáveis para progresso do upload e cálculo
   let uploadProgress = {
     stage: 'idle', // 'idle', 'deleting', 'uploading', 'calculating', 'completed', 'error'
@@ -209,6 +215,10 @@
         clearInterval(uploadPollInterval);
         uploadPollInterval = null;
       }
+      if (coveragePollInterval) {
+        clearInterval(coveragePollInterval);
+        coveragePollInterval = null;
+      }
     };
   });
   
@@ -218,6 +228,11 @@
       console.log('🛑 [Polling] Limpando polling - não há upload em andamento');
       clearInterval(uploadPollInterval);
       uploadPollInterval = null;
+    }
+    if (!calculatingCoverage && coveragePollInterval) {
+      console.log('🛑 [Polling] Limpando polling de cobertura - não há cálculo em andamento');
+      clearInterval(coveragePollInterval);
+      coveragePollInterval = null;
     }
   }
 
@@ -1318,6 +1333,114 @@
   }
 
 
+  // Função para criar mancha de cobertura
+  async function handleCreateCoverage() {
+    if (calculatingCoverage || uploadingBase) {
+      return;
+    }
+    
+    if (!baseDataExists) {
+      coverageMessage = '⚠️ É necessário carregar uma base de dados primeiro!';
+      coverageSuccess = false;
+      return;
+    }
+    
+    calculatingCoverage = true;
+    coverageMessage = 'Iniciando cálculo da mancha de cobertura...';
+    coverageSuccess = false;
+    
+    // Limpar qualquer polling anterior
+    if (coveragePollInterval) {
+      clearInterval(coveragePollInterval);
+      coveragePollInterval = null;
+    }
+    
+    // Inicializar progresso
+    uploadProgress = {
+      stage: 'calculating',
+      uploadPercent: 100,
+      calculationPercent: 0,
+      message: 'Iniciando cálculo da mancha de cobertura...',
+      totalRows: 0,
+      processedRows: 0,
+      importedRows: 0,
+      totalCTOs: 0,
+      processedCTOs: 0
+    };
+    
+    try {
+      const apiUrl = getApiUrl('/api/coverage/calculate');
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Erro HTTP: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        coverageMessage = 'Cálculo iniciado! Aguardando processamento...';
+        
+        // Iniciar polling do progresso
+        coveragePollInterval = setInterval(async () => {
+          try {
+            const progressRes = await fetch(getApiUrl('/api/upload-progress'));
+            if (progressRes.ok) {
+              const progressData = await progressRes.json();
+              if (progressData.success) {
+                uploadProgress = { ...progressData.progress };
+                coverageMessage = uploadProgress.message || 'Calculando área de cobertura...';
+                
+                if (uploadProgress.stage === 'completed') {
+                  clearInterval(coveragePollInterval);
+                  coveragePollInterval = null;
+                  calculatingCoverage = false;
+                  coverageSuccess = true;
+                  coverageMessage = '✅ Área de cobertura criada com sucesso!';
+                  
+                  // Recarregar dados
+                  if (onReloadCTOs) {
+                    try {
+                      await onReloadCTOs();
+                    } catch (err) {
+                      console.error('Erro ao recarregar CTOs:', err);
+                    }
+                  }
+                } else if (uploadProgress.stage === 'error') {
+                  clearInterval(coveragePollInterval);
+                  coveragePollInterval = null;
+                  calculatingCoverage = false;
+                  coverageSuccess = false;
+                  coverageMessage = `❌ Erro: ${uploadProgress.message || 'Erro ao calcular área de cobertura'}`;
+                }
+              }
+            }
+          } catch (err) {
+            console.error('Erro ao buscar progresso:', err);
+          }
+        }, 2000);
+      } else {
+        throw new Error(data.error || 'Erro ao iniciar cálculo');
+      }
+    } catch (err) {
+      console.error('Erro ao criar mancha de cobertura:', err);
+      calculatingCoverage = false;
+      coverageSuccess = false;
+      coverageMessage = `❌ Erro ao criar mancha de cobertura: ${err.message}`;
+      
+      if (coveragePollInterval) {
+        clearInterval(coveragePollInterval);
+        coveragePollInterval = null;
+      }
+    }
+  }
+  
   // Função para fazer upload da nova base de dados
   async function handleBaseUpload(event) {
     const file = event.target.files[0];
@@ -1484,8 +1607,6 @@
                     uploadMessage = 'Deletando base de dados antiga e polígonos...';
                   } else if (progressData.stage === 'uploading') {
                     uploadMessage = `Carregando base de dados... ${progressData.uploadPercent}%`;
-                  } else if (progressData.stage === 'calculating') {
-                    uploadMessage = `Calculando área de cobertura... ${Math.round(progressData.calculationPercent)}%`;
                   } else if (progressData.stage === 'completed') {
                     // Processo completo!
                     clearInterval(uploadPollInterval);
@@ -1493,7 +1614,7 @@
                     uploadingBase = false;
                     uploadSuccess = true;
                     totalCTOsLoaded = progressData.totalCTOs || progressData.importedRows || 0;
-                    uploadMessage = `✅ Base de dados carregada com sucesso! (${totalCTOsLoaded} CTOs carregadas)\n✅ Área de cobertura criada com sucesso!`;
+                    uploadMessage = `✅ Base de dados carregada com sucesso! (${totalCTOsLoaded} CTOs carregadas)`;
                     
                     // Recarregar dados
                     await loadBaseLastModified();
@@ -1834,6 +1955,56 @@
             </div>
           {/if}
           
+          <!-- Botão para criar mancha de cobertura -->
+          <div style="margin-top: 1.5rem;">
+            <button 
+              on:click={handleCreateCoverage}
+              disabled={calculatingCoverage || uploadingBase || !baseDataExists}
+              title={!baseDataExists ? 'É necessário carregar uma base de dados primeiro' : 'Criar nova mancha de cobertura baseada nas CTOs atuais'}
+              style="width: 100%; padding: 0.75rem; background: {calculatingCoverage || uploadingBase || !baseDataExists ? '#ccc' : 'linear-gradient(135deg, #7B68EE 0%, #6495ED 100%)'}; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: {calculatingCoverage || uploadingBase || !baseDataExists ? 'not-allowed' : 'pointer'}; transition: all 0.3s; box-shadow: {calculatingCoverage || uploadingBase || !baseDataExists ? 'none' : '0 4px 6px rgba(123, 104, 238, 0.3)'}; opacity: {calculatingCoverage || uploadingBase || !baseDataExists ? '0.6' : '1'};"
+              on:mouseenter={(e) => {
+                if (!calculatingCoverage && !uploadingBase && baseDataExists) {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 12px rgba(123, 104, 238, 0.4)';
+                }
+              }}
+              on:mouseleave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = calculatingCoverage || uploadingBase || !baseDataExists ? 'none' : '0 4px 6px rgba(123, 104, 238, 0.3)';
+              }}
+            >
+              {#if calculatingCoverage}
+                ⏳ Criando Mancha de Cobertura...
+              {:else}
+                🗺️ Criar Nova Mancha de Cobertura
+              {/if}
+            </button>
+          </div>
+          
+          {#if calculatingCoverage}
+            <div class="upload-status" style="margin-top: 1rem;">
+              <div class="loading-spinner"></div>
+              <span>{coverageMessage || 'Calculando área de cobertura...'}</span>
+            </div>
+            
+            {#if uploadProgress.stage === 'calculating'}
+              <div class="progress-container" style="margin-top: 1rem;">
+                <div class="progress-bar-wrapper">
+                  <div class="progress-label">Calculando área de cobertura: {Math.round(uploadProgress.calculationPercent)}%</div>
+                  <div class="progress-bar">
+                    <div class="progress-fill" style="width: {uploadProgress.calculationPercent}%;"></div>
+                  </div>
+                </div>
+              </div>
+            {/if}
+          {/if}
+          
+          {#if coverageMessage && !calculatingCoverage}
+            <div class="upload-message" class:success={coverageSuccess} class:error={!coverageSuccess} style="margin-top: 1rem;">
+              {coverageMessage}
+            </div>
+          {/if}
+          
           {#if baseDataExists && baseLastModified}
             <p class="last-modified-text">
               Última atualização: {baseLastModified.toLocaleDateString('pt-BR', { 
@@ -1857,27 +2028,16 @@
               <span>{uploadMessage || 'Validando e atualizando base de dados...'}</span>
             </div>
             
-            {#if uploadProgress.stage === 'uploading' || uploadProgress.stage === 'calculating'}
-              <div class="progress-container" style="margin-top: 1rem;">
                 {#if uploadProgress.stage === 'uploading'}
-                  <div class="progress-bar-wrapper">
-                    <div class="progress-label">Carregando base de dados: {uploadProgress.uploadPercent}%</div>
-                    <div class="progress-bar">
-                      <div class="progress-fill" style="width: {uploadProgress.uploadPercent}%;"></div>
+                  <div class="progress-container" style="margin-top: 1rem;">
+                    <div class="progress-bar-wrapper">
+                      <div class="progress-label">Carregando base de dados: {uploadProgress.uploadPercent}%</div>
+                      <div class="progress-bar">
+                        <div class="progress-fill" style="width: {uploadProgress.uploadPercent}%;"></div>
+                      </div>
                     </div>
                   </div>
                 {/if}
-                
-                {#if uploadProgress.stage === 'calculating' && uploadProgress.uploadPercent >= 100}
-                  <div class="progress-bar-wrapper" style="margin-top: 0.5rem;">
-                    <div class="progress-label">Calculando área de cobertura: {Math.round(uploadProgress.calculationPercent)}%</div>
-                    <div class="progress-bar">
-                      <div class="progress-fill" style="width: {uploadProgress.calculationPercent}%;"></div>
-                    </div>
-                  </div>
-                {/if}
-              </div>
-            {/if}
           {/if}
 
           {#if uploadMessage}
@@ -3290,4 +3450,3 @@
       0 4px 6px rgba(244, 67, 54, 0.3);
   }
 </style>
-
