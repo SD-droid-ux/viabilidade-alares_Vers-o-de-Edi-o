@@ -82,6 +82,59 @@ app.use((req, res, next) => {
   next();
 });
 
+// Função auxiliar para deletar todos os polígonos de cobertura
+async function deleteAllCoveragePolygons() {
+  try {
+    if (!supabase || !isSupabaseAvailable()) {
+      console.warn('⚠️ [Polygons] Supabase não disponível - não é possível deletar polígonos');
+      return { success: false, error: 'Supabase não disponível' };
+    }
+
+    console.log('🗑️ [Polygons] Deletando todos os polígonos de cobertura...');
+    
+    // Verificar quantos polígonos existem
+    const { count: countBefore } = await supabase
+      .from('coverage_polygons')
+      .select('*', { count: 'exact', head: true });
+    
+    console.log(`📊 [Polygons] Polígonos existentes antes da deleção: ${countBefore || 0}`);
+    
+    if (countBefore && countBefore > 0) {
+      // Deletar todos os polígonos
+      const { error: deleteError, count: deleteCount } = await supabase
+        .from('coverage_polygons')
+        .delete()
+        .gte('created_at', '1970-01-01T00:00:00Z'); // Condição sempre verdadeira
+      
+      if (deleteError) {
+        console.error('❌ [Polygons] Erro ao deletar polígonos:', deleteError);
+        return { success: false, error: deleteError.message };
+      }
+      
+      console.log(`✅ [Polygons] ${deleteCount || countBefore} polígono(s) deletado(s) com sucesso`);
+      
+      // Verificar que a deleção foi bem-sucedida
+      const { count: countAfter } = await supabase
+        .from('coverage_polygons')
+        .select('*', { count: 'exact', head: true });
+      
+      if (countAfter && countAfter > 0) {
+        console.warn(`⚠️ [Polygons] AINDA EXISTEM ${countAfter} polígonos após deleção!`);
+      } else {
+        console.log(`✅ [Polygons] Confirmação: Tabela coverage_polygons está vazia`);
+      }
+      
+      return { success: true, deletedCount: deleteCount || countBefore };
+    } else {
+      console.log(`ℹ️ [Polygons] Tabela coverage_polygons já está vazia, nada para deletar`);
+      return { success: true, deletedCount: 0 };
+    }
+  } catch (err) {
+    console.error('❌ [Polygons] Erro ao deletar polígonos:', err);
+    return { success: false, error: err.message };
+  }
+}
+
 // Função auxiliar para inserir entrada/saída no Supabase
 // Lida com nomes de tabelas que têm caracteres especiais
 async function inserirEntradaSaida(nomeProjetista, tipo = 'entrada') {
@@ -2711,6 +2764,16 @@ app.delete('/api/base/delete', requireAdmin, async (req, res) => {
 
     let deletedFromSupabase = false;
     let deletedCount = 0;
+
+    // Deletar polígonos de cobertura primeiro
+    console.log('🗑️ [API] Deletando polígonos de cobertura...');
+    const polygonDeleteResult = await deleteAllCoveragePolygons();
+    if (polygonDeleteResult.success) {
+      console.log(`✅ [API] Polígonos deletados: ${polygonDeleteResult.deletedCount || 0} polígono(s)`);
+    } else {
+      console.warn(`⚠️ [API] Aviso ao deletar polígonos: ${polygonDeleteResult.error}`);
+      // Continuar mesmo se falhar - não é crítico
+    }
 
     // Tentar deletar do Supabase primeiro
     if (supabase && isSupabaseAvailable()) {
@@ -5374,6 +5437,16 @@ app.post('/api/upload-base', (req, res, next) => {
           try {
             console.log('📤 [Background] ===== INICIANDO IMPORTAÇÃO SUPABASE =====');
             console.log('📤 [Background] Usando processamento em STREAMING (exceljs) para arquivos grandes...');
+            
+            // Deletar polígonos de cobertura primeiro (antes de deletar CTOs)
+            console.log('🗑️ [Background] Deletando polígonos de cobertura antigos...');
+            const polygonDeleteResult = await deleteAllCoveragePolygons();
+            if (polygonDeleteResult.success) {
+              console.log(`✅ [Background] Polígonos deletados: ${polygonDeleteResult.deletedCount || 0} polígono(s)`);
+            } else {
+              console.warn(`⚠️ [Background] Aviso ao deletar polígonos: ${polygonDeleteResult.error}`);
+              // Continuar mesmo se falhar - não é crítico
+            }
             
             // Deletar todas as CTOs existentes antes de importar
             console.log('🗑️ [Background] Limpando CTOs antigas do Supabase...');
