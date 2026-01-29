@@ -5635,10 +5635,10 @@ app.post('/api/upload-base', (req, res, next) => {
                 try {
                   // Gerar ID único para este cálculo
                   const calculationId = `calc_auto_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                // OTIMIZAÇÃO: Usar batch_size maior com query otimizada
-                // ST_UnaryUnion + ST_Collect é mais eficiente que ST_Union simples
-                // Permite processar mais CTOs por lote sem timeout
-                const batchSize = 2000;  // Aumentado para 2000 com query otimizada
+                // OTIMIZAÇÃO AGRESSIVA: Batch_size muito maior para processar rápido
+                // Com query otimizada (ST_UnaryUnion + ST_Collect), podemos processar muito mais
+                // Meta: < 2 minutos total para 218k CTOs
+                const batchSize = 10000;  // Aumentado drasticamente para 10000
                   
                   console.log(`🆔 [Background] Calculation ID: ${calculationId}`);
                   console.log(`📦 [Background] Usando batch_size: ${batchSize} para evitar timeout`);
@@ -5681,10 +5681,8 @@ app.post('/api/upload-base', (req, res, next) => {
                     
                     isComplete = result.is_complete;
                     
-                    // Log a cada 10 lotes ou quando completo
-                    if (attempts % 10 === 0 || isComplete) {
-                      console.log(`📦 [Background] Lote ${attempts}: ${result.processed_ctos}/${result.total_ctos} CTOs (${result.progress_percent?.toFixed(1)}%)`);
-                    }
+                    // Log a cada lote para feedback rápido (com batch_size grande, serão poucos lotes)
+                    console.log(`📦 [Background] Lote ${attempts}: ${result.processed_ctos}/${result.total_ctos} CTOs (${result.progress_percent?.toFixed(1)}%)`);
                     
                     if (isComplete) {
                       console.log(`🎉 [Background] Processamento completo! Finalizando cálculo...`);
@@ -5717,8 +5715,8 @@ app.post('/api/upload-base', (req, res, next) => {
                       break;
                     }
                     
-                    // Delay reduzido - query otimizada processa mais rápido
-                    await new Promise(resolve => setTimeout(resolve, 50));
+                    // Delay mínimo - query otimizada processa muito rápido
+                    await new Promise(resolve => setTimeout(resolve, 10));
                   } catch (batchErr) {
                     console.error(`❌ [Background] Erro no lote ${attempts}:`, batchErr);
                     lastError = batchErr;
