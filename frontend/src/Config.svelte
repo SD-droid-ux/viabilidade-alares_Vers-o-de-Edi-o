@@ -1421,7 +1421,7 @@
         // Se o backend indicou que está processando em background
         if (data.processing) {
           uploadSuccess = true; // Verde indicando que está tudo correto, é só aguardar
-          uploadMessage = data.message || 'Upload recebido! Validando e processando arquivo em background...';
+          uploadMessage = '📤 Carregando base de dados...';
           uploadingBase = true; // Manter flag de upload ativo
           
           // Limpar qualquer polling anterior
@@ -1448,12 +1448,73 @@
               
               // Verificar se a base foi atualizada (nova data de modificação)
               if (baseLastModified && baseLastModified.getTime() > timestampBeforeUpload) {
-                // Base foi atualizada! Parar polling e marcar como sucesso
-                clearInterval(uploadPollInterval);
-                uploadPollInterval = null;
-                uploadingBase = false;
-                uploadSuccess = true;
-                uploadMessage = 'Base de dados atualizada com sucesso!';
+                // Base foi atualizada! Verificar se polígonos foram calculados
+                uploadMessage = '✅ Base de dados carregada! Calculando área de cobertura...';
+                
+                // Aguardar um pouco e verificar se polígonos foram calculados
+                setTimeout(async () => {
+                  try {
+                    const statusRes = await fetch(getApiUrl('/api/coverage/polygon'));
+                    if (statusRes.ok) {
+                      const polygonData = await statusRes.json();
+                      if (polygonData && polygonData.success) {
+                        // Polígonos calculados!
+                        clearInterval(uploadPollInterval);
+                        uploadPollInterval = null;
+                        uploadingBase = false;
+                        uploadSuccess = true;
+                        uploadMessage = `✅ Base de dados carregada com sucesso! (${data.total_ctos || 'N/A'} CTOs carregadas)\n✅ Área de cobertura criada com sucesso!`;
+                      } else {
+                        // Ainda calculando polígonos
+                        uploadMessage = '✅ Base de dados carregada! ⏳ Calculando área de cobertura...';
+                        // Continuar verificando polígonos
+                        checkPolygonStatus();
+                      }
+                    } else {
+                      // Ainda calculando
+                      uploadMessage = '✅ Base de dados carregada! ⏳ Calculando área de cobertura...';
+                      checkPolygonStatus();
+                    }
+                  } catch (err) {
+                    console.error('Erro ao verificar polígonos:', err);
+                    uploadMessage = '✅ Base de dados carregada! ⏳ Calculando área de cobertura...';
+                    checkPolygonStatus();
+                  }
+                }, 2000);
+                
+                // Função para verificar status dos polígonos
+                const checkPolygonStatus = () => {
+                  const polygonCheckInterval = setInterval(async () => {
+                    try {
+                      const statusRes = await fetch(getApiUrl('/api/coverage/polygon'));
+                      if (statusRes.ok) {
+                        const polygonData = await statusRes.json();
+                        if (polygonData && polygonData.success) {
+                          clearInterval(polygonCheckInterval);
+                          clearInterval(uploadPollInterval);
+                          uploadPollInterval = null;
+                          uploadingBase = false;
+                          uploadSuccess = true;
+                          uploadMessage = `✅ Base de dados carregada com sucesso! (${data.total_ctos || 'N/A'} CTOs carregadas)\n✅ Área de cobertura criada com sucesso!`;
+                        }
+                      }
+                    } catch (err) {
+                        console.error('Erro ao verificar polígonos:', err);
+                      }
+                  }, 3000); // Verificar a cada 3 segundos
+                  
+                  // Timeout de 2 minutos para verificação de polígonos
+                  setTimeout(() => {
+                    clearInterval(polygonCheckInterval);
+                    if (uploadingBase) {
+                      uploadingBase = false;
+                      uploadSuccess = true;
+                      uploadMessage = `✅ Base de dados carregada com sucesso! (${data.total_ctos || 'N/A'} CTOs carregadas)\n⚠️ Área de cobertura ainda sendo calculada em background...`;
+                    }
+                  }, 120000); // 2 minutos
+                };
+                
+                return; // Parar polling de base
                 
                 // Recarregar os dados das CTOs
                 if (onReloadCTOs) {
