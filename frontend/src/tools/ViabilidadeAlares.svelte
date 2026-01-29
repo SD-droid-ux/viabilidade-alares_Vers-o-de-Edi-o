@@ -7274,6 +7274,11 @@
     font-size: 0.875rem;
   }
 
+  .map-header .minimize-button {
+    position: relative;
+    z-index: 10001;
+  }
+  
   .minimize-button {
     background: transparent;
     border: 1px solid rgba(123, 104, 238, 0.3);
@@ -7453,6 +7458,7 @@
     flex-direction: column;
     overflow: hidden;
     position: relative;
+    isolation: isolate;
   }
 
   .map-container.minimized {
@@ -7472,6 +7478,8 @@
     padding: 1rem 1.5rem !important;
     background: #f9fafb !important;
     border-bottom: none !important;
+    position: relative !important;
+    z-index: 10000 !important;
   }
   
   .map-container.minimized .map-header h3 {
@@ -7506,6 +7514,8 @@
     padding: 1rem 1.5rem;
     border-bottom: 1px solid #e5e7eb;
     background: #f9fafb;
+    position: relative;
+    z-index: 10000;
   }
 
   .map-header h3 {
@@ -7513,6 +7523,8 @@
     color: #4c1d95;
     font-size: 1.25rem;
     font-weight: 600;
+    position: relative;
+    z-index: 10001;
   }
 
   .map-container.minimized .map-header {
@@ -7523,6 +7535,8 @@
     min-height: auto !important;
     padding: 1rem 1.5rem !important;
     background: #f9fafb !important;
+    position: relative !important;
+    z-index: 10000 !important;
   }
   
   .map-container.minimized .map-header h3 {
@@ -7540,6 +7554,8 @@
     min-height: 300px;
     width: 100%;
     height: 100%;
+    position: relative;
+    z-index: 1;
   }
 
   .map.hidden {
