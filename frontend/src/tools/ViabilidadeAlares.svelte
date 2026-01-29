@@ -6318,24 +6318,46 @@
               
               // Limpar estilos inline para respeitar o estado reativo
               const mapElement = document.querySelector('.map-container');
+              const mapDiv = document.getElementById('map');
+              
               if (mapElement) {
                 if (isMapMinimized) {
-                  // Quando minimizar, garantir que os estilos inline sejam removidos
+                  // Quando minimizar, garantir que TODOS os estilos inline sejam removidos
                   // para que o CSS reativo funcione corretamente
                   mapElement.style.height = '';
                   mapElement.style.minHeight = '';
                   mapElement.style.maxHeight = '';
                   mapElement.style.flex = '';
+                  mapElement.style.overflow = 'hidden';
+                  
+                  // Garantir que o elemento do mapa esteja completamente oculto
+                  if (mapDiv) {
+                    mapDiv.style.display = 'none';
+                    mapDiv.style.visibility = 'hidden';
+                    mapDiv.style.height = '0';
+                    mapDiv.style.overflow = 'hidden';
+                  }
                 } else {
-                  // Quando expandir, aplicar altura atual
+                  // Quando expandir, aplicar altura atual e restaurar visibilidade
                   mapElement.style.height = `${mapHeightPixels}px`;
                   mapElement.style.minHeight = `${mapHeightPixels}px`;
                   mapElement.style.flex = '0 0 auto';
+                  mapElement.style.overflow = '';
+                  
+                  // Restaurar visibilidade do elemento do mapa
+                  if (mapDiv) {
+                    mapDiv.style.display = '';
+                    mapDiv.style.visibility = '';
+                    mapDiv.style.height = '';
+                    mapDiv.style.overflow = '';
+                  }
                 }
               }
               
+              // Aguardar atualização do DOM
+              await tick();
+              
               if (!isMapMinimized && map && google?.maps) {
-                await tick();
                 setTimeout(() => {
                   if (map && google.maps) {
                     google.maps.event.trigger(map, 'resize');
@@ -7438,7 +7460,16 @@
     max-height: 60px !important;
     height: 60px !important;
     flex: 0 0 auto !important;
-    overflow: hidden;
+    overflow: hidden !important;
+    padding: 0 !important;
+  }
+  
+  .map-container.minimized .map {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
   }
 
   .map-header {
@@ -7469,7 +7500,11 @@
   }
 
   .map.hidden {
-    display: none;
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
   }
 
   .results-table-container {
