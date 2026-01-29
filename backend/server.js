@@ -492,6 +492,20 @@ const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutos de inatividade = offline
 let uploadInProgress = false;
 let uploadPromise = null; // Promise que resolve quando upload termina
 
+// Variáveis para rastrear progresso do upload e cálculo
+let uploadProgress = {
+  stage: 'idle', // 'idle', 'deleting', 'uploading', 'calculating', 'completed', 'error'
+  uploadPercent: 0,
+  calculationPercent: 0,
+  message: '',
+  totalRows: 0,
+  processedRows: 0,
+  importedRows: 0,
+  calculationId: null,
+  totalCTOs: 0,
+  processedCTOs: 0
+};
+
 // Sistema de locks para operações críticas (prevenir race conditions)
 const fileLocks = {
   projetistas: null,
@@ -2653,6 +2667,39 @@ app.get('/api/base.xlsx', async (req, res) => {
   }
 });
 
+// Endpoint para retornar progresso do upload e cálculo
+app.get('/api/upload-progress', async (req, res) => {
+  try {
+    // Garantir headers CORS
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    
+    res.json({
+      success: true,
+      ...uploadProgress
+    });
+  } catch (err) {
+    console.error('❌ [API] Erro na rota /api/upload-progress:', err);
+    const origin = req.headers.origin;
+    if (origin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    } else {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.status(500).json({ 
+      success: false, 
+      error: 'Erro interno', 
+      details: err.message 
+    });
+  }
+});
+
 // Rota para obter data da última atualização da base de dados
 app.get('/api/base-last-modified', async (req, res) => {
   try {
@@ -2670,6 +2717,7 @@ app.get('/api/base-last-modified', async (req, res) => {
 
     if (supabase && isSupabaseAvailable()) {
       // Primeiro verificar se existe dados na tabela ctos
+      let totalCTOs = 0;
       const { count, error: countError } = await supabase
         .from('ctos')
         .select('*', { count: 'exact', head: true });
@@ -2677,8 +2725,9 @@ app.get('/api/base-last-modified', async (req, res) => {
       if (countError) {
         console.warn('⚠️ [API] Erro ao contar CTOs do Supabase:', countError.message);
       } else {
-        hasData = (count || 0) > 0;
-        console.log(`📊 [API] Total de CTOs no Supabase: ${count || 0}`);
+        totalCTOs = count || 0;
+        hasData = totalCTOs > 0;
+        console.log(`📊 [API] Total de CTOs no Supabase: ${totalCTOs}`);
       }
 
       // Se houver dados, tentar obter a data da última modificação
@@ -2723,14 +2772,14 @@ app.get('/api/base-last-modified', async (req, res) => {
 
     // Se não há dados na tabela ctos (ou arquivo local), retornar indicando isso
     if (!hasData) {
-      return res.json({ success: true, hasData: false, message: 'Não consta nenhuma base de dados' });
+      return res.json({ success: true, hasData: false, message: 'Não consta nenhuma base de dados', total_ctos: 0 });
     }
 
     if (lastModified) {
-      res.json({ success: true, lastModified, hasData: true });
+      res.json({ success: true, lastModified, hasData: true, total_ctos: totalCTOs });
     } else {
       // Se tem dados mas não tem lastModified, ainda retornar sucesso indicando que há dados
-      res.json({ success: true, hasData: true, message: 'Base de dados existe mas data de atualização não disponível' });
+      res.json({ success: true, hasData: true, message: 'Base de dados existe mas data de atualização não disponível', total_ctos: totalCTOs });
     }
   } catch (err) {
     console.error('❌ [API] Erro ao obter lastModified:', err);
@@ -5009,7 +5058,7 @@ async function validateExcelColumns(filePath) {
   }
 }
 
-async function processExcelStreaming(filePath, supabaseClient) {
+async function processExcelStreaming(filePath, supabaseClient, progressCallback = null) {
   let totalRows = 0;
   let totalValid = 0;
   let totalInvalid = 0;
@@ -5198,6 +5247,22 @@ async function processExcelStreaming(filePath, supabaseClient) {
           totalInvalid++;
         }
         
+        // Atualizar progresso a cada 1000 linhas processadas
+        // Como não sabemos o total antes, usamos uma estimativa baseada na taxa de processamento
+        if (processedRows % 1000 === 0 && progressCallback) {
+          // Estimar progresso baseado na taxa de processamento (ajustar conforme necessário)
+          // Para arquivos grandes, assumir que ainda há mais linhas
+          const estimatedTotal = Math.max(totalRows, processedRows * 1.2); // Estimativa conservadora
+          const uploadPercent = Math.min(95, Math.round((processedRows / estimatedTotal) * 100));
+          progressCallback({
+            processedRows,
+            totalRows: estimatedTotal,
+            importedRows,
+            uploadPercent,
+            message: `Carregando base de dados... ${uploadPercent}%`
+          });
+        }
+        
         // Log de progresso a cada 20000 linhas (menos frequente = mais rápido)
         if (processedRows % 20000 === 0) {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -5217,6 +5282,17 @@ async function processExcelStreaming(filePath, supabaseClient) {
     const avgRate = totalRows > 0 ? (importedRows / (totalTime / 60)).toFixed(0) : 0;
     console.log(`📊 [Streaming] Processamento concluído: ${totalRows} linhas, ${totalValid} válidas, ${totalInvalid} inválidas`);
     console.log(`✅ [Streaming] ${importedRows} CTOs importadas no Supabase em ${totalTime}s (média: ~${avgRate} CTOs/min)`);
+    
+    // Atualizar progresso final
+    if (progressCallback) {
+      progressCallback({
+        processedRows: totalRows,
+        totalRows: totalRows,
+        importedRows,
+        uploadPercent: 100,
+        message: 'Base de dados carregada!'
+      });
+    }
     
     return {
       totalRows,
@@ -5438,6 +5514,20 @@ app.post('/api/upload-base', (req, res, next) => {
     uploadInProgress = true;
     console.log('⏸️ [Upload] Flag de upload ativada - requisições /api/users/online serão pausadas');
     
+    // Inicializar progresso
+    uploadProgress = {
+      stage: 'deleting',
+      uploadPercent: 0,
+      calculationPercent: 0,
+      message: 'Deletando base de dados antiga e polígonos...',
+      totalRows: 0,
+      processedRows: 0,
+      importedRows: 0,
+      calculationId: null,
+      totalCTOs: 0,
+      processedCTOs: 0
+    };
+    
     (async () => {
       let tempFileDeleted = false;
       try {
@@ -5458,6 +5548,8 @@ app.post('/api/upload-base', (req, res, next) => {
             console.log('📤 [Background] Usando processamento em STREAMING (exceljs) para arquivos grandes...');
             
             // Deletar polígonos de cobertura primeiro (antes de deletar CTOs)
+            uploadProgress.stage = 'deleting';
+            uploadProgress.message = 'Deletando polígonos de cobertura...';
             console.log('🗑️ [Background] Deletando polígonos de cobertura antigos...');
             const polygonDeleteResult = await deleteAllCoveragePolygons();
             if (polygonDeleteResult.success) {
@@ -5466,6 +5558,8 @@ app.post('/api/upload-base', (req, res, next) => {
               console.warn(`⚠️ [Background] Aviso ao deletar polígonos: ${polygonDeleteResult.error}`);
               // Continuar mesmo se falhar - não é crítico
             }
+            
+            uploadProgress.message = 'Deletando CTOs antigas...';
             
             // Limpar registros antigos de cálculo em progresso (se existirem)
             try {
@@ -5594,9 +5688,26 @@ app.post('/api/upload-base', (req, res, next) => {
             }
             
             // Processar usando streaming (exceljs) - NÃO carrega arquivo inteiro na memória
-            const result = await processExcelStreaming(tempFilePath, supabase);
+            // Callback para atualizar progresso
+            const progressCallback = (progress) => {
+              uploadProgress.processedRows = progress.processedRows;
+              uploadProgress.totalRows = progress.totalRows;
+              uploadProgress.importedRows = progress.importedRows;
+              uploadProgress.uploadPercent = progress.uploadPercent;
+              uploadProgress.message = progress.message;
+            };
+            
+            const result = await processExcelStreaming(tempFilePath, supabase, progressCallback);
             totalRows = result.totalRows;
             importedRows = result.importedRows;
+            
+            // Atualizar progresso final do upload
+            uploadProgress.uploadPercent = 100;
+            uploadProgress.processedRows = totalRows;
+            uploadProgress.totalRows = totalRows;
+            uploadProgress.importedRows = importedRows;
+            uploadProgress.totalCTOs = importedRows;
+            uploadProgress.message = 'Base de dados carregada com sucesso!';
             
             if (importedRows > 0) {
               supabaseImported = true;
@@ -5681,6 +5792,13 @@ app.post('/api/upload-base', (req, res, next) => {
                     
                     isComplete = result.is_complete;
                     
+                    // Atualizar progresso do cálculo
+                    uploadProgress.calculationPercent = result.progress_percent || 0;
+                    uploadProgress.processedCTOs = result.processed_ctos || 0;
+                    uploadProgress.totalCTOs = result.total_ctos || importedRows;
+                    uploadProgress.calculationId = calculationId;
+                    uploadProgress.message = `Calculando área de cobertura... ${Math.round(uploadProgress.calculationPercent)}%`;
+                    
                     // Log a cada lote para feedback rápido (com batch_size grande, serão poucos lotes)
                     console.log(`📦 [Background] Lote ${attempts}: ${result.processed_ctos}/${result.total_ctos} CTOs (${result.progress_percent?.toFixed(1)}%)`);
                     
@@ -5700,6 +5818,10 @@ app.post('/api/upload-base', (req, res, next) => {
                       
                       if (finalData && finalData.length > 0 && finalData[0].success) {
                         const finalResult = finalData[0];
+                        // Atualizar progresso final
+                        uploadProgress.stage = 'completed';
+                        uploadProgress.calculationPercent = 100;
+                        uploadProgress.message = 'Área de cobertura criada com sucesso!';
                         console.log(`✅ [Background] ===== POLÍGONOS CALCULADOS COM SUCESSO! =====`);
                         console.log(`   - Polygon ID: ${finalResult.polygon_id}`);
                         console.log(`   - Total CTOs: ${finalResult.total_ctos}`);
