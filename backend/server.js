@@ -1184,46 +1184,60 @@ app.post('/api/coverage/calculate', async (req, res) => {
                   throw batchError;
                 }
               }
-            
-            if (!batchResult || batchResult.length === 0) {
-              console.error(`❌ [API] Resposta vazia do lote ${batchNumber}`);
-              uploadProgress.stage = 'error';
-              uploadProgress.message = 'Resposta vazia do processamento';
-              throw new Error('Resposta vazia do processamento');
+              
+              if (!batchResult || batchResult.length === 0) {
+                console.error(`❌ [API] Resposta vazia do lote ${batchNumber}`);
+                uploadProgress.stage = 'error';
+                uploadProgress.message = 'Resposta vazia do processamento';
+                throw new Error('Resposta vazia do processamento');
+              }
+              
+              const result = batchResult[0];
+              
+              if (!result.success) {
+                console.error(`❌ [API] Erro no lote ${batchNumber}:`, result.message);
+                uploadProgress.stage = 'error';
+                uploadProgress.message = result.message || 'Erro ao processar lote';
+                throw new Error(result.message || 'Erro ao processar lote');
+              }
+              
+              // Sucesso! Marcar como processado
+              batchSuccess = true;
+              
+              // Atualizar progresso
+              uploadProgress.processedCTOs = result.processed_ctos || 0;
+              uploadProgress.totalCTOs = result.total_ctos || totalCTOs || 0;
+              uploadProgress.calculationPercent = Math.round(result.progress_percent || 0);
+              uploadProgress.message = result.message || `Calculando área de cobertura... ${Math.round(result.progress_percent || 0)}%`;
+              
+              isComplete = result.is_complete || false;
+              
+              // Log a cada 2 lotes ou quando completo (com 10k CTOs por lote, são poucos lotes)
+              if (batchNumber % 2 === 0 || isComplete) {
+                console.log(`📦 [API] Lote ${batchNumber}: ${result.processed_ctos}/${result.total_ctos} CTOs (${Math.round(result.progress_percent || 0)}%)`);
+              }
+              
+            } catch (batchErr) {
+              // Se não é timeout ou já tentou todas as vezes, lançar erro
+              if (retryCount >= maxRetries || (batchErr.code !== '57014' && !batchErr.message?.includes('timeout'))) {
+                console.error(`❌ [API] Erro no lote ${batchNumber}:`, batchErr);
+                uploadProgress.stage = 'error';
+                uploadProgress.message = `Erro: ${batchErr.message}`;
+                throw batchErr;
+              }
+              // Se for timeout e ainda tem tentativas, continuar loop de retry
+              retryCount++;
+              if (retryCount <= maxRetries) {
+                console.warn(`⚠️ [API] Erro no lote ${batchNumber}, tentando novamente (tentativa ${retryCount}/${maxRetries})...`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                continue;
+              }
             }
-            
-            const result = batchResult[0];
-            
-            if (!result.success) {
-              console.error(`❌ [API] Erro no lote ${batchNumber}:`, result.message);
-              uploadProgress.stage = 'error';
-              uploadProgress.message = result.message || 'Erro ao processar lote';
-              throw new Error(result.message || 'Erro ao processar lote');
-            }
-            
-            // Atualizar progresso
-            uploadProgress.processedCTOs = result.processed_ctos || 0;
-            uploadProgress.totalCTOs = result.total_ctos || totalCTOs || 0;
-            uploadProgress.calculationPercent = Math.round(result.progress_percent || 0);
-            uploadProgress.message = result.message || `Calculando área de cobertura... ${Math.round(result.progress_percent || 0)}%`;
-            
-            isComplete = result.is_complete || false;
-            
-            // Log a cada 20 lotes ou quando completo (reduzido para não poluir logs)
-            if (batchNumber % 20 === 0 || isComplete) {
-              console.log(`📦 [API] Lote ${batchNumber}: ${result.processed_ctos}/${result.total_ctos} CTOs (${Math.round(result.progress_percent || 0)}%)`);
-            }
-            
-            // Pequeno delay entre lotes para não sobrecarregar (aumentado)
-            if (!isComplete) {
-              await new Promise(resolve => setTimeout(resolve, 500));
-            }
-            
-          } catch (batchErr) {
-            console.error(`❌ [API] Erro no lote ${batchNumber}:`, batchErr);
-            uploadProgress.stage = 'error';
-            uploadProgress.message = `Erro: ${batchErr.message}`;
-            throw batchErr;
+          }
+          
+          // Pequeno delay entre lotes para não sobrecarregar
+          if (!isComplete) {
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
         }
         
