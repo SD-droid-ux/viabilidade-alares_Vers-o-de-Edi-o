@@ -339,6 +339,13 @@
     }
   }
   
+  // Fechar popup se a rota selecionada não existir mais
+  $: {
+    if (selectedRouteIndex !== null && (selectedRouteIndex >= routes.length || !routes[selectedRouteIndex])) {
+      selectedRouteIndex = null;
+    }
+  }
+  
   function calculateCTONumbers() {
     const numbers = new Map();
     let counter = 1;
@@ -3450,10 +3457,18 @@
       if (editingRouteIndex === routeIndex) {
         finishEditingRoute(routeIndex);
       }
+      // Se a rota que está sendo removida tinha o popup aberto, fechar o popup
+      if (selectedRouteIndex === routeIndex) {
+        selectedRouteIndex = null;
+      }
       routes.splice(routeIndex, 1);
       // Ajustar editingRouteIndex se necessário (se removemos uma rota antes da que está sendo editada)
       if (editingRouteIndex !== null && editingRouteIndex > routeIndex) {
         editingRouteIndex--;
+      }
+      // Ajustar selectedRouteIndex se necessário (se removemos uma rota antes da que está selecionada)
+      if (selectedRouteIndex !== null && selectedRouteIndex > routeIndex) {
+        selectedRouteIndex--;
       }
     });
     
@@ -5540,9 +5555,18 @@
       const viAlaDisplay = currentVIALA ? ` - ${currentVIALA}` : '';
       const numeroALADisplay = reportForm.numeroALA || '';
       
-      // Filtrar apenas CTOs de rua para o relatório (ANTES de usar no HTML)
+      // Filtrar apenas CTOs de rua que estão marcadas (visíveis) para o relatório (ANTES de usar no HTML)
       // IMPORTANTE: Calcular ANTES de usar na template string para evitar erro "Cannot access before initialization"
-      const ctosRuaReport = ctos.filter(cto => !cto.is_condominio || cto.is_condominio === false);
+      const ctosRuaReport = ctos.filter(cto => {
+        // Excluir prédios
+        if (cto.is_condominio) return false;
+        
+        // Verificar se está marcada (visível) na tabela
+        const ctoKey = getCTOKey(cto);
+        const isVisible = ctoVisibility.get(ctoKey) !== false;
+        
+        return isVisible;
+      });
       
       let htmlContent = `
         <html>
@@ -6112,11 +6136,9 @@
         <div id="map" class="map" class:hidden={isMapMinimized}></div>
         
         <!-- Popup de informações da rota -->
-        {#if selectedRouteIndex !== null}
-          {@const routeInfo = routeData.find(rd => {
-            const route = routes[selectedRouteIndex];
-            return rd.polyline === route;
-          })}
+        {#if selectedRouteIndex !== null && selectedRouteIndex < routes.length}
+          {@const route = routes[selectedRouteIndex]}
+          {@const routeInfo = route ? routeData.find(rd => rd.polyline === route) : null}
           {@const cto = routeInfo ? routeInfo.cto : null}
           {@const ctoIndex = routeInfo ? routeInfo.ctoIndex : selectedRouteIndex}
           {@const ctoNumber = cto ? (ctoNumbers.get(cto) || 'N/A') : 'N/A'}
