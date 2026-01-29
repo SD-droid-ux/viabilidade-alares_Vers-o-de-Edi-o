@@ -2385,13 +2385,12 @@
       // Atribuir ao array final (prédios + até 5 CTOs de rua)
       ctos = todasCTOs;
       
-      // Inicializar visibilidade de todas as CTOs como verdadeira (todas visíveis por padrão)
+      // Inicializar visibilidade de TODAS as CTOs como verdadeira (todas visíveis por padrão)
+      // IMPORTANTE: Usar ctos (array final) e não apenas ctosRua, para incluir prédios também
       ctoVisibility.clear();
-      for (const cto of ctosRua) {
+      for (const cto of ctos) {
         const ctoKey = getCTOKey(cto);
-        if (!ctoVisibility.has(ctoKey)) {
-          ctoVisibility.set(ctoKey, true); // Todas visíveis por padrão
-        }
+        ctoVisibility.set(ctoKey, true); // Todas visíveis por padrão
       }
       ctoVisibility = ctoVisibility; // Forçar reatividade
       ctoNumbersVersion++; // Forçar atualização da numeração
@@ -3650,7 +3649,13 @@
   }
 
   async function drawRoutesAndMarkers() {
-    if (!map || !clientCoords || ctos.length === 0) return;
+    if (!map || !clientCoords || ctos.length === 0) {
+      console.warn(`⚠️ drawRoutesAndMarkers: Condições não atendidas. map: ${!!map}, clientCoords: ${!!clientCoords}, ctos.length: ${ctos.length}`);
+      return;
+    }
+
+    console.log(`🗺️ drawRoutesAndMarkers: Iniciando desenho de ${ctos.length} CTOs`);
+    console.log(`📊 ctoVisibility Map size: ${ctoVisibility.size}`);
 
     const bounds = new google.maps.LatLngBounds();
     bounds.extend(clientCoords);
@@ -3729,11 +3734,14 @@
       bounds.extend(originalPosition);
 
       // Verificar visibilidade da CTO
+      // IMPORTANTE: Se não existe no Map, considerar como visível (padrão)
       const ctoKey = getCTOKey(cto);
-      const isVisible = ctoVisibility.get(ctoKey) !== false;
+      const visibilityValue = ctoVisibility.get(ctoKey);
+      const isVisible = visibilityValue !== false; // true ou undefined = visível, false = não visível
       
       // Se não estiver visível, pular esta CTO
       if (!isVisible) {
+        console.log(`⏭️ CTO ${cto.nome} (${ctoKey}) está marcada como não visível, pulando...`);
         continue;
       }
       
@@ -3761,6 +3769,7 @@
     console.log(`✅ [Performance] Todas as rotas calculadas!`);
 
     // ETAPA 2: Criar todos os marcadores (já que rotas estão prontas)
+    console.log(`📍 Criando ${ctosParaMarcadores.length} marcadores...`);
     for (const { cto, index, originalPosition, ctoLat, ctoLng, isPredio } of ctosParaMarcadores) {
 
       // Adicionar marcador da CTO
@@ -3882,17 +3891,24 @@
             fontSize: '14px',
             fontWeight: 'bold'
           } : undefined),
-          zIndex: 1000 + markerNumber,
+          zIndex: 1000 + index, // Usar index em vez de markerNumber (que não existe neste escopo)
           optimized: false // Garantir que todos os marcadores sejam renderizados
         });
 
         // Anexar chave estável da CTO no marcador (evita depender de comparação por coordenadas)
-        try { ctoMarker.__ctoKey = getCTOKey(cto); } catch (_) {}
+        const ctoKey = getCTOKey(cto);
+        try { ctoMarker.__ctoKey = ctoKey; } catch (_) {}
 
         // Verificar se o marcador foi criado com sucesso
-        if (ctoMarker && ctoMarker.getMap()) {
+        // IMPORTANTE: Adicionar ao array sempre que o marcador foi criado, mesmo que getMap() ainda não esteja disponível
+        if (ctoMarker) {
+          // Garantir que o marcador está no mapa (pode ter sido criado sem map por engano)
+          if (!ctoMarker.getMap()) {
+            ctoMarker.setMap(map);
+          }
           markers.push(ctoMarker);
           markerCreated = true;
+          console.log(`✅ Marcador criado para CTO: ${cto.nome} (${ctoKey}), total de marcadores: ${markers.length}`);
 
           // Não precisa incrementar markerNumber, pois usamos ctoNumbers.get(cto) que já está calculado
 
@@ -4309,9 +4325,12 @@
     }
 
     const ctoMarkersCount = markers.filter(m => m !== clientMarker).length;
+    console.log(`✅ drawRoutesAndMarkers concluído: ${ctoMarkersCount} marcadores criados de ${ctos.length} CTOs`);
 
     if (ctoMarkersCount !== ctos.length) {
       console.warn(`⚠️ ATENÇÃO: Esperado ${ctos.length} marcadores, mas apenas ${ctoMarkersCount} foram criados!`);
+      console.log(`📋 CTOs esperadas:`, ctos.map(c => `${c.nome} (${getCTOKey(c)})`));
+      console.log(`📍 Marcadores criados:`, markers.filter(m => m !== clientMarker).map(m => `${m.__ctoKey || 'SEM_CHAVE'}`));
     }
 
     // Ajustar zoom para mostrar todos os pontos com padding mínimo para maximizar visibilidade
