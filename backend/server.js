@@ -5742,118 +5742,120 @@ app.post('/api/upload-base', (req, res, next) => {
               console.log(`🗺️ [Background] CTOs importadas: ${importedRows}, iniciando cálculo em background...`);
               
               // Processar em background sem bloquear (fire and forget)
+              // NOVA ABORDAGEM: Grid - divide Brasil em células, processa cada uma separadamente
               (async () => {
                 try {
                   // Gerar ID único para este cálculo
-                  const calculationId = `calc_auto_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                // OTIMIZAÇÃO: Batch_size extremamente conservador para evitar timeout
-                // ST_UnaryUnion de buffers sobrepostos pode ser muito pesado
-                // Com 218k CTOs, priorizar confiabilidade absoluta
-                const batchSize = 250;  // Reduzido para 250 para garantir que não dê timeout mesmo com buffers sobrepostos
+                  const calculationId = `calc_grid_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                   
                   console.log(`🆔 [Background] Calculation ID: ${calculationId}`);
-                  console.log(`📦 [Background] Usando batch_size: ${batchSize} para evitar timeout`);
+                  console.log(`🗺️ [Background] Usando abordagem GRID para cálculo rápido`);
                   console.log(`⏳ [Background] Processamento iniciado em background (não bloqueia upload)`);
                   
-                  // Processar cálculo de forma assíncrona (não bloqueia)
-                let isComplete = false;
-                let attempts = 0;
-                const maxAttempts = 1000;
-                let lastError = null;
-                
-                while (!isComplete && attempts < maxAttempts) {
-                  attempts++;
+                  // Configuração do grid: 15x15 = 225 células (otimizado para velocidade)
+                  const gridRows = 15;
+                  const gridCols = 15;
+                  const totalCells = gridRows * gridCols;
                   
-                  try {
-                    const { data, error } = await supabase.rpc('process_coverage_batch', {
-                      p_calculation_id: calculationId,
-                      p_batch_size: batchSize
-                    });
+                  // Buscar células do grid
+                  const { data: gridCells, error: gridError } = await supabase.rpc('get_brazil_grid_cells', {
+                    p_rows: gridRows,
+                    p_cols: gridCols
+                  });
+                  
+                  if (gridError) {
+                    console.error('❌ [Background] Erro ao buscar células do grid:', gridError);
+                    throw gridError;
+                  }
+                  
+                  if (!gridCells || gridCells.length === 0) {
+                    console.error('❌ [Background] Nenhuma célula do grid retornada');
+                    throw new Error('Nenhuma célula do grid retornada');
+                  }
+                  
+                  console.log(`📊 [Background] Grid criado: ${gridRows}x${gridCols} = ${totalCells} células`);
+                  
+                  // Processar cada célula
+                  let processedCells = 0;
+                  let totalCTOsInGrid = 0;
+                  
+                  for (let i = 0; i < gridCells.length; i++) {
+                    const cell = gridCells[i];
                     
-                    if (error) {
-                      console.error(`❌ [Background] Erro ao processar lote ${attempts}:`, error);
-                      lastError = error;
-                      break;
-                    }
-                    
-                    if (!data || data.length === 0) {
-                      console.error(`❌ [Background] Nenhum resultado retornado do lote ${attempts}`);
-                      lastError = new Error('Nenhum resultado retornado');
-                      break;
-                    }
-                    
-                    const result = data[0];
-                    
-                    if (!result.success) {
-                      console.error(`❌ [Background] Erro no lote ${attempts}:`, result.message);
-                      lastError = new Error(result.message);
-                      break;
-                    }
-                    
-                    isComplete = result.is_complete;
-                    
-                    // Atualizar progresso do cálculo
-                    uploadProgress.calculationPercent = result.progress_percent || 0;
-                    uploadProgress.processedCTOs = result.processed_ctos || 0;
-                    uploadProgress.totalCTOs = result.total_ctos || importedRows;
-                    uploadProgress.calculationId = calculationId;
-                    uploadProgress.message = `Calculando área de cobertura... ${Math.round(uploadProgress.calculationPercent)}%`;
-                    
-                    // Log a cada lote para feedback rápido (com batch_size grande, serão poucos lotes)
-                    console.log(`📦 [Background] Lote ${attempts}: ${result.processed_ctos}/${result.total_ctos} CTOs (${result.progress_percent?.toFixed(1)}%)`);
-                    
-                    if (isComplete) {
-                      console.log(`🎉 [Background] Processamento completo! Finalizando cálculo...`);
-                      
-                      const { data: finalData, error: finalError } = await supabase.rpc('finalize_coverage_calculation', {
+                    try {
+                      const { data: cellResult, error: cellError } = await supabase.rpc('process_coverage_grid_cell', {
                         p_calculation_id: calculationId,
-                        p_simplification_tolerance: 0.0001
+                        p_min_lat: cell.min_lat,
+                        p_max_lat: cell.max_lat,
+                        p_min_lng: cell.min_lng,
+                        p_max_lng: cell.max_lng,
+                        p_cell_index: cell.cell_index
                       });
                       
-                      if (finalError) {
-                        console.error('❌ [Background] Erro ao finalizar cálculo:', finalError);
-                        lastError = finalError;
-                        break;
+                      if (cellError) {
+                        console.warn(`⚠️ [Background] Erro ao processar célula ${cell.cell_index}:`, cellError.message);
+                        continue; // Continuar com próxima célula
                       }
                       
-                      if (finalData && finalData.length > 0 && finalData[0].success) {
-                        const finalResult = finalData[0];
-                        // Atualizar progresso final
-                        uploadProgress.stage = 'completed';
-                        uploadProgress.calculationPercent = 100;
-                        uploadProgress.message = 'Área de cobertura criada com sucesso!';
-                        console.log(`✅ [Background] ===== POLÍGONOS CALCULADOS COM SUCESSO! =====`);
-                        console.log(`   - Polygon ID: ${finalResult.polygon_id}`);
-                        console.log(`   - Total CTOs: ${finalResult.total_ctos}`);
-                        console.log(`   - Área: ${finalResult.area_km2?.toFixed(2)} km²`);
-                        console.log(`   - Versão: ${finalResult.version || 'N/A'}`);
-                        console.log(`   - Tempo: ${finalResult.processing_time_seconds?.toFixed(2)}s`);
-                        console.log(`✅ [Background] ==========================================`);
-                      } else {
-                        console.error('❌ [Background] Erro ao finalizar - resposta inválida:', finalData);
-                        lastError = new Error('Resposta inválida ao finalizar');
+                      if (cellResult && cellResult.length > 0 && cellResult[0].success) {
+                        processedCells++;
+                        totalCTOsInGrid += cellResult[0].processed_ctos || 0;
+                        
+                        // Atualizar progresso
+                        const progressPercent = Math.round((processedCells / totalCells) * 100);
+                        uploadProgress.calculationPercent = progressPercent;
+                        uploadProgress.processedCTOs = totalCTOsInGrid;
+                        uploadProgress.totalCTOs = importedRows;
+                        uploadProgress.calculationId = calculationId;
+                        uploadProgress.message = `Calculando área de cobertura... ${progressPercent}% (${processedCells}/${totalCells} células)`;
+                        
+                        // Log a cada 10 células ou na última
+                        if (processedCells % 10 === 0 || processedCells === totalCells) {
+                          console.log(`📦 [Background] Célula ${cell.cell_index}/${totalCells}: ${cellResult[0].processed_ctos} CTOs (${progressPercent}%)`);
+                        }
                       }
                       
-                      break;
+                      // Pequeno delay entre células para não sobrecarregar
+                      await new Promise(resolve => setTimeout(resolve, 50));
+                    } catch (cellErr) {
+                      console.warn(`⚠️ [Background] Erro ao processar célula ${cell.cell_index}:`, cellErr.message);
+                      continue; // Continuar com próxima célula
                     }
-                    
-                    // Delay entre lotes para evitar sobrecarga do Supabase (aumentado para dar mais tempo)
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                  } catch (batchErr) {
-                    console.error(`❌ [Background] Erro no lote ${attempts}:`, batchErr);
-                    lastError = batchErr;
-                    break;
                   }
-                }
-                
-                if (!isComplete && attempts >= maxAttempts) {
-                  console.error(`❌ [Background] Limite de tentativas atingido (${maxAttempts})`);
-                  if (lastError) {
-                    console.error(`❌ [Background] Último erro:`, lastError);
+                  
+                  console.log(`✅ [Background] Todas as células processadas: ${processedCells}/${totalCells}`);
+                  console.log(`🎉 [Background] Finalizando cálculo (unindo células)...`);
+                  
+                  // Finalizar: unir todas as células
+                  const { data: finalData, error: finalError } = await supabase.rpc('finalize_coverage_grid', {
+                    p_calculation_id: calculationId,
+                    p_total_cells: totalCells,
+                    p_simplification_tolerance: 0.0001
+                  });
+                  
+                  if (finalError) {
+                    console.error('❌ [Background] Erro ao finalizar cálculo:', finalError);
+                    throw finalError;
                   }
-                } else if (isComplete) {
-                  console.log(`✅ [Background] Cálculo de polígonos concluído com sucesso!`);
-                }
+                  
+                  if (finalData && finalData.length > 0 && finalData[0].success) {
+                    const finalResult = finalData[0];
+                    // Atualizar progresso final
+                    uploadProgress.stage = 'completed';
+                    uploadProgress.calculationPercent = 100;
+                    uploadProgress.message = 'Área de cobertura criada com sucesso!';
+                    console.log(`✅ [Background] ===== POLÍGONOS CALCULADOS COM SUCESSO (GRID)! =====`);
+                    console.log(`   - Polygon ID: ${finalResult.polygon_id}`);
+                    console.log(`   - Total CTOs: ${finalResult.total_ctos}`);
+                    console.log(`   - Área: ${finalResult.area_km2?.toFixed(2)} km²`);
+                    console.log(`   - Versão: ${finalResult.version || 'N/A'}`);
+                    console.log(`   - Tempo: ${finalResult.processing_time_seconds?.toFixed(2)}s`);
+                    console.log(`   - Células processadas: ${processedCells}/${totalCells}`);
+                    console.log(`✅ [Background] ==========================================`);
+                  } else {
+                    console.error('❌ [Background] Erro ao finalizar - resposta inválida:', finalData);
+                    throw new Error('Resposta inválida ao finalizar');
+                  }
               } catch (coverageErr) {
                 console.error('❌ [Background] ===== ERRO AO INICIAR CÁLCULO DE POLÍGONOS =====');
                 console.error('❌ [Background] Erro:', coverageErr);
