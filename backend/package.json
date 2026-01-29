@@ -13,7 +13,8 @@
     "multer": "^2.0.0",
     "@supabase/supabase-js": "^2.39.0",
     "exceljs": "^4.4.0",
-    "@turf/turf": "^6.5.0"
+    "@turf/turf": "^6.5.0",
+    "martinez-polygon-clipping": "^0.7.5"
   }
 }
 
