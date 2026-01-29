@@ -3043,6 +3043,11 @@
 
   // Função para fechar o popup de rota
   function closeRoutePopup() {
+    // Se uma rota estiver sendo editada e o popup fechado for da mesma rota, finalizar a edição
+    if (editingRouteIndex !== null && selectedRouteIndex !== null && editingRouteIndex === selectedRouteIndex) {
+      finishEditingRoute(editingRouteIndex);
+    }
+    
     selectedRouteIndex = null;
     isDraggingRoutePopup = false;
     // Remover listeners globais se estiverem ativos
