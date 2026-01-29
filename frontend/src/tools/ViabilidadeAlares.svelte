@@ -2571,8 +2571,10 @@
 
               // Clique na rota
               routePolyline.addListener('click', (event) => {
+                console.log(`🖱️ Clique na rota fallback ${actualRouteIndex} (CTO: ${cto.nome}, ctoKey: ${ctoKey})`);
                 handleRouteClick(actualRouteIndex, event);
               });
+              console.log(`✅ Listener de clique adicionado à rota fallback ${actualRouteIndex} para CTO ${cto.nome} (${ctoKey})`);
 
               // Listeners de edição: sempre anexar; só salvam quando editingRoutes estiver ativo
               routePolyline.addListener('set_at', () => {
@@ -2639,8 +2641,10 @@
             // Adicionar listener de clique na rota para mostrar popup
             // Usar o índice correto da rota no array routes
             routePolyline.addListener('click', (event) => {
+              console.log(`🖱️ Clique na rota ${actualRouteIndex} (CTO: ${cto.nome}, ctoKey: ${ctoKey})`);
               handleRouteClick(actualRouteIndex, event);
             });
+            console.log(`✅ Listener de clique adicionado à rota ${actualRouteIndex} para CTO ${cto.nome} (${ctoKey})`);
 
             // Listeners de edição: sempre anexar; só salvam quando editingRoutes estiver ativo
             // (assim TODAS as rotas ficam editáveis no modo global, inclusive após recriar)
@@ -2718,8 +2722,10 @@
             });
 
             routePolyline.addListener('click', (event) => {
+              console.log(`🖱️ Clique na rota fallback 2 ${actualRouteIndex} (CTO: ${cto.nome}, ctoKey: ${ctoKey})`);
               handleRouteClick(actualRouteIndex, event);
             });
+            console.log(`✅ Listener de clique adicionado à rota fallback 2 ${actualRouteIndex} para CTO ${cto.nome} (${ctoKey})`);
 
             routePolyline.addListener('set_at', () => {
               if (!editingRoutes) return;
@@ -3003,17 +3009,33 @@
 
   // Função para lidar com clique em uma rota
   function handleRouteClick(routeIndex, event) {
-    const routeInfo = routeData.find(rd => {
-      const route = routes[routeIndex];
-      return rd.polyline === route;
-    });
+    // Verificar se o routeIndex é válido
+    if (routeIndex === null || routeIndex === undefined || routeIndex < 0 || routeIndex >= routes.length) {
+      console.warn(`⚠️ handleRouteClick: routeIndex inválido: ${routeIndex}, routes.length: ${routes.length}`);
+      return;
+    }
+    
+    const route = routes[routeIndex];
+    if (!route) {
+      console.warn(`⚠️ handleRouteClick: Rota não encontrada no índice ${routeIndex}`);
+      return;
+    }
+    
+    // Encontrar routeInfo usando a polyline diretamente (mais confiável que usar índice)
+    let routeInfo = routeData.find(rd => rd && rd.polyline === route);
+    
+    // Se não encontrou por polyline, tentar encontrar por ctoKey (fallback)
+    if (!routeInfo && route.__ctoKey) {
+      routeInfo = routeData.find(rd => rd && rd.ctoKey === route.__ctoKey && rd.polyline.getMap && rd.polyline.getMap() === map);
+    }
     
     if (!routeInfo) {
-      console.warn(`Rota ${routeIndex} não encontrada em routeData`);
+      console.error(`❌ handleRouteClick: RouteInfo não encontrada para rota ${routeIndex}. routeData.length: ${routeData.length}, ctoKey: ${route.__ctoKey || 'N/A'}`);
       return;
     }
     
     selectedRouteIndex = routeIndex;
+    console.log(`✅ Popup aberto para rota ${routeIndex} (CTO: ${routeInfo.cto?.nome}, ctoKey: ${routeInfo.ctoKey}, número: ${ctoNumbers.get(routeInfo.cto) || 'N/A'})`);
     
     // Posicionar popup próximo ao ponto de clique na tela
     if (event && event.domEvent) {
@@ -3421,15 +3443,17 @@
         }
         
         // Encontrar rota associada a esta CTO
-        const routeInfo = routeData.find(rd => rd && rd.ctoKey === ctoKey);
+        // Verificar se a rota existe E está realmente no mapa (não apenas em routeData)
+        const routeInfo = routeData.find(rd => {
+          if (!rd || rd.ctoKey !== ctoKey) return false;
+          // Verificar se a polyline está realmente no mapa
+          const polyline = rd.polyline;
+          return polyline && polyline.getMap && polyline.getMap() === map;
+        });
         
         if (routeInfo && routeInfo.polyline) {
           routesToRemove.push(routeInfo.polyline);
-          // Remover do routeData também
-          const routeDataIndex = routeData.findIndex(rd => rd === routeInfo);
-          if (routeDataIndex !== -1) {
-            routeData.splice(routeDataIndex, 1);
-          }
+          // Remover do routeData também (será removido novamente no loop abaixo, mas isso garante consistência)
         }
       }
     }
@@ -3461,6 +3485,16 @@
       if (selectedRouteIndex === routeIndex) {
         selectedRouteIndex = null;
       }
+      
+      // Remover do routeData também (usar ctoKey para encontrar)
+      const routeInfoToRemove = routeData.find(rd => rd && rd.polyline === route);
+      if (routeInfoToRemove) {
+        const routeDataIndex = routeData.findIndex(rd => rd === routeInfoToRemove);
+        if (routeDataIndex !== -1) {
+          routeData.splice(routeDataIndex, 1);
+        }
+      }
+      
       routes.splice(routeIndex, 1);
       // Ajustar editingRouteIndex se necessário (se removemos uma rota antes da que está sendo editada)
       if (editingRouteIndex !== null && editingRouteIndex > routeIndex) {
@@ -3492,7 +3526,13 @@
           return marker.__ctoKey === ctoKey;
         });
         
-        const routeExists = routeData.some(rd => rd && rd.ctoKey === ctoKey);
+        // Verificar se a rota existe E está no mapa (não apenas em routeData)
+        const routeExists = routeData.some(rd => {
+          if (!rd || rd.ctoKey !== ctoKey) return false;
+          // Verificar se a polyline está realmente no mapa
+          const polyline = rd.polyline;
+          return polyline && polyline.getMap && polyline.getMap() === map;
+        });
         
         // Se não existe marcador, criar
         if (!markerExists) {
@@ -3504,10 +3544,11 @@
           }
         }
         
-        // Se não existe rota e a CTO precisa de rota, criar
+        // Se não existe rota no mapa e a CTO precisa de rota, criar
         if (!routeExists && !cto.is_condominio && cto.distancia_metros && cto.distancia_metros > 0 && cto.distancia_real) {
           const ctoIndex = ctos.findIndex(c => getCTOKey(c) === ctoKey);
           if (ctoIndex !== -1) {
+            console.log(`📍 Criando rota para CTO ${cto.nome} (${ctoKey}) que estava faltando no mapa`);
             await drawRealRoute(ctos[ctoIndex], ctoIndex);
           }
         }
