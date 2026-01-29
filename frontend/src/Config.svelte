@@ -283,14 +283,17 @@
   // Carregar data da última atualização da base
   async function loadBaseLastModified() {
     try {
+      console.log('🔄 [Frontend] Carregando data da última atualização...');
       const response = await fetch(getApiUrl('/api/base-last-modified'));
       const text = await response.text();
       if (text && text.trim() !== '') {
         const data = JSON.parse(text);
+        console.log('📥 [Frontend] Resposta do backend:', data);
         if (data.success) {
           // Verificar se há dados na base
           if (data.hasData === false) {
             // Não há dados na tabela ctos
+            console.log('⚠️ [Frontend] Não há dados na base');
             baseLastModified = null;
             baseDataExists = false;
             // Limpar localStorage
@@ -303,16 +306,22 @@
           }
           
           // Se há dados, atualizar baseDataExists
+          console.log('✅ [Frontend] Base de dados existe, atualizando...');
           baseDataExists = true;
           
           // Armazenar total de CTOs se disponível
           if (data.total_ctos !== undefined) {
             totalCTOsLoaded = data.total_ctos;
+            console.log(`📊 [Frontend] Total de CTOs: ${totalCTOsLoaded}`);
           }
           
           // Sempre atualizar lastModified quando há dados (backend sempre retorna)
           if (data.lastModified) {
-            baseLastModified = new Date(data.lastModified);
+            // Criar nova instância de Date para garantir reatividade do Svelte
+            const newDate = new Date(data.lastModified);
+            baseLastModified = newDate;
+            console.log(`📅 [Frontend] Data atualizada: ${baseLastModified.toLocaleString('pt-BR')}`);
+            console.log(`📅 [Frontend] baseDataExists: ${baseDataExists}, baseLastModified: ${baseLastModified}`);
             // Salvar no localStorage para próxima vez
             try {
               localStorage.setItem('baseLastModified', data.lastModified);
@@ -321,18 +330,26 @@
             }
           } else if (data.hasData === true) {
             // Fallback: se tem dados mas não tem lastModified, usar data atual
-            baseLastModified = new Date();
-            console.log('⚠️ [Base] LastModified não disponível, usando data atual como fallback');
+            const newDate = new Date();
+            baseLastModified = newDate;
+            console.log('⚠️ [Frontend] LastModified não disponível, usando data atual como fallback');
             try {
               localStorage.setItem('baseLastModified', baseLastModified.toISOString());
             } catch (err) {
               console.error('Erro ao salvar no localStorage:', err);
             }
           }
+          
+          // Forçar atualização reativa do Svelte
+          baseDataExists = baseDataExists; // Trigger reatividade
+        } else {
+          console.warn('⚠️ [Frontend] Resposta não foi bem-sucedida:', data);
         }
+      } else {
+        console.warn('⚠️ [Frontend] Resposta vazia do backend');
       }
     } catch (err) {
-      console.error('Erro ao carregar data de modificação:', err);
+      console.error('❌ [Frontend] Erro ao carregar data de modificação:', err);
       // Se falhar, manter dados do localStorage que já foram carregados
     }
   }
