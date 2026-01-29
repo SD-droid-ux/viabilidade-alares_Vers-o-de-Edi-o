@@ -1150,12 +1150,46 @@ app.post('/api/coverage/calculate', async (req, res) => {
       calculation_id: calculationId
     });
     
+    // Função auxiliar para validar e corrigir geometria
+    const validateAndFixGeometry = (geometry) => {
+      if (!geometry || !geometry.geometry) {
+        return null;
+      }
+      
+      try {
+        // 1. Limpar coordenadas duplicadas
+        let cleaned = turf.cleanCoords(geometry);
+        
+        // 2. Se ainda tiver problemas, usar buffer(0) para corrigir
+        try {
+          // Verificar se é válido tentando calcular área
+          turf.area(cleaned);
+        } catch (areaErr) {
+          // Se calcular área falhar, tentar corrigir com buffer(0)
+          try {
+            cleaned = turf.buffer(cleaned, 0, { units: 'kilometers' });
+          } catch (bufferErr) {
+            // Se buffer falhar, simplificar agressivamente
+            cleaned = turf.simplify(cleaned, { tolerance: 0.001, highQuality: true });
+          }
+        }
+        
+        // 3. Simplificar levemente para reduzir problemas de precisão
+        cleaned = turf.simplify(cleaned, { tolerance: 0.00001, highQuality: true });
+        
+        return cleaned;
+      } catch (err) {
+        console.warn(`⚠️ [API] Erro ao validar geometria:`, err.message);
+        return null;
+      }
+    };
+    
     // Processar em background - CÁLCULOS NO BACKEND (sem usar Supabase RPC)
     (async () => {
       const startTime = Date.now();
       let accumulatedPolygon = null; // Polígono acumulado (GeoJSON Feature)
       let processedCTOs = 0;
-        const batchSize = 1000; // Lotes de 1000 (limite seguro do Supabase para paginação)
+      const batchSize = 1000; // Lotes de 1000 (limite seguro do Supabase para paginação)
       const bufferRadiusMeters = 250; // Raio do buffer em metros
       const simplificationTolerance = 0.0001; // Tolerância de simplificação
       
@@ -1214,14 +1248,12 @@ app.post('/api/coverage/calculate', async (req, res) => {
               // Turf.js buffer usa unidades em quilômetros, então 250m = 0.25km
               let buffer = turf.buffer(point, bufferRadiusMeters / 1000, { units: 'kilometers' });
               
-              // Simplificar buffer imediatamente para reduzir problemas de precisão
+              // Validar e corrigir buffer antes de adicionar
               if (buffer && buffer.geometry) {
-                try {
-                  buffer = turf.simplify(buffer, { tolerance: 0.00001, highQuality: true });
-                } catch (simplifyErr) {
-                  // Se simplificar falhar, usar buffer original
+                const validatedBuffer = validateAndFixGeometry(buffer);
+                if (validatedBuffer) {
+                  buffers.push(validatedBuffer);
                 }
-                buffers.push(buffer);
               }
             } catch (bufferErr) {
               console.warn(`⚠️ [API] Erro ao criar buffer para CTO ${cto.id}:`, bufferErr.message);
@@ -1250,21 +1282,39 @@ app.post('/api/coverage/calculate', async (req, res) => {
               const group = buffers.slice(i, Math.min(i + groupSize, buffers.length));
               
               // Unir grupo
-              let groupUnion = group[0];
+              let groupUnion = validateAndFixGeometry(group[0]);
+              if (!groupUnion) {
+                console.warn(`⚠️ [API] Buffer inicial do grupo inválido, pulando grupo`);
+                continue;
+              }
+              
               for (let j = 1; j < group.length; j++) {
+                const validatedBuffer = validateAndFixGeometry(group[j]);
+                if (!validatedBuffer) {
+                  console.warn(`⚠️ [API] Buffer ${j} do grupo inválido, pulando`);
+                  continue;
+                }
+                
                 try {
-                  // Simplificar antes de unir para reduzir problemas de precisão
-                  const simplifiedGroup = turf.simplify(groupUnion, { tolerance: 0.00001, highQuality: true });
-                  const simplifiedBuffer = turf.simplify(group[j], { tolerance: 0.00001, highQuality: true });
-                  groupUnion = turf.union(simplifiedGroup, simplifiedBuffer);
-                } catch (unionErr) {
-                  // Se falhar, tentar sem simplificação
-                  try {
-                    groupUnion = turf.union(groupUnion, group[j]);
-                  } catch (retryErr) {
-                    console.warn(`⚠️ [API] Erro ao unir buffer ${j} no grupo ${Math.floor(i/groupSize) + 1} do lote ${batchNumber}:`, retryErr.message);
-                    // Pular este buffer e continuar
+                  // Validar geometrias antes de unir
+                  const validatedGroup = validateAndFixGeometry(groupUnion);
+                  if (!validatedGroup) {
+                    console.warn(`⚠️ [API] GroupUnion inválido, usando buffer atual`);
+                    groupUnion = validatedBuffer;
+                    continue;
                   }
+                  
+                  groupUnion = turf.union(validatedGroup, validatedBuffer);
+                  
+                  // Validar resultado da união
+                  groupUnion = validateAndFixGeometry(groupUnion);
+                  if (!groupUnion) {
+                    console.warn(`⚠️ [API] Resultado da união inválido, mantendo anterior`);
+                    // Manter groupUnion anterior
+                  }
+                } catch (unionErr) {
+                  console.warn(`⚠️ [API] Erro ao unir buffer ${j} no grupo ${Math.floor(i/groupSize) + 1} do lote ${batchNumber}:`, unionErr.message);
+                  // Pular este buffer e continuar
                 }
               }
               
@@ -1272,60 +1322,122 @@ app.post('/api/coverage/calculate', async (req, res) => {
             }
             
             // Unir todos os grupos
-            batchUnion = groups[0];
+            batchUnion = validateAndFixGeometry(groups[0]);
+            if (!batchUnion) {
+              console.warn(`⚠️ [API] Primeiro grupo inválido, tentando próximo`);
+              batchUnion = groups.length > 1 ? validateAndFixGeometry(groups[1]) : null;
+              if (!batchUnion) {
+                console.error(`❌ [API] Nenhum grupo válido no lote ${batchNumber}`);
+                offset += batchSize;
+                processedCTOs += ctosBatch.length;
+                continue;
+              }
+            }
+            
             for (let i = 1; i < groups.length; i++) {
+              const validatedGroup = validateAndFixGeometry(groups[i]);
+              if (!validatedGroup) {
+                console.warn(`⚠️ [API] Grupo ${i} inválido, pulando`);
+                continue;
+              }
+              
               try {
-                // Simplificar antes de unir grupos
-                const simplifiedBatch = turf.simplify(batchUnion, { tolerance: 0.00001, highQuality: true });
-                const simplifiedGroup = turf.simplify(groups[i], { tolerance: 0.00001, highQuality: true });
-                batchUnion = turf.union(simplifiedBatch, simplifiedGroup);
-              } catch (unionErr) {
-                // Se falhar, tentar sem simplificação
-                try {
-                  batchUnion = turf.union(batchUnion, groups[i]);
-                } catch (retryErr) {
-                  console.error(`❌ [API] Erro ao unir grupos no lote ${batchNumber}:`, retryErr.message);
-                  throw retryErr;
+                const validatedBatch = validateAndFixGeometry(batchUnion);
+                if (!validatedBatch) {
+                  console.warn(`⚠️ [API] BatchUnion inválido, usando grupo atual`);
+                  batchUnion = validatedGroup;
+                  continue;
                 }
+                
+                batchUnion = turf.union(validatedBatch, validatedGroup);
+                
+                // Validar resultado
+                batchUnion = validateAndFixGeometry(batchUnion);
+                if (!batchUnion) {
+                  console.warn(`⚠️ [API] Resultado da união de grupos inválido, mantendo anterior`);
+                  // Manter batchUnion anterior
+                }
+              } catch (unionErr) {
+                console.warn(`⚠️ [API] Erro ao unir grupo ${i} no lote ${batchNumber}:`, unionErr.message);
+                // Pular este grupo e continuar
               }
             }
           } else {
-            // Para poucos buffers, unir normalmente mas com simplificação
+            // Para poucos buffers, unir normalmente mas com validação
+            batchUnion = validateAndFixGeometry(batchUnion);
+            if (!batchUnion) {
+              console.warn(`⚠️ [API] BatchUnion inicial inválido no lote ${batchNumber}`);
+              offset += batchSize;
+              processedCTOs += ctosBatch.length;
+              continue;
+            }
+            
             for (let i = 1; i < buffers.length; i++) {
+              const validatedBuffer = validateAndFixGeometry(buffers[i]);
+              if (!validatedBuffer) {
+                console.warn(`⚠️ [API] Buffer ${i} inválido, pulando`);
+                continue;
+              }
+              
               try {
-                // Simplificar antes de unir para reduzir problemas de precisão
-                const simplifiedBatch = turf.simplify(batchUnion, { tolerance: 0.00001, highQuality: true });
-                const simplifiedBuffer = turf.simplify(buffers[i], { tolerance: 0.00001, highQuality: true });
-                batchUnion = turf.union(simplifiedBatch, simplifiedBuffer);
-              } catch (unionErr) {
-                // Se falhar, tentar sem simplificação
-                try {
-                  batchUnion = turf.union(batchUnion, buffers[i]);
-                } catch (retryErr) {
-                  console.warn(`⚠️ [API] Erro ao unir buffer ${i} no lote ${batchNumber}:`, retryErr.message);
-                  // Pular este buffer e continuar
+                const validatedBatch = validateAndFixGeometry(batchUnion);
+                if (!validatedBatch) {
+                  console.warn(`⚠️ [API] BatchUnion inválido, usando buffer atual`);
+                  batchUnion = validatedBuffer;
+                  continue;
                 }
+                
+                batchUnion = turf.union(validatedBatch, validatedBuffer);
+                
+                // Validar resultado
+                batchUnion = validateAndFixGeometry(batchUnion);
+                if (!batchUnion) {
+                  console.warn(`⚠️ [API] Resultado da união inválido, mantendo anterior`);
+                  // Manter batchUnion anterior
+                }
+              } catch (unionErr) {
+                console.warn(`⚠️ [API] Erro ao unir buffer ${i} no lote ${batchNumber}:`, unionErr.message);
+                // Pular este buffer e continuar
               }
             }
           }
           
           // 4. Unir com polígono acumulado
+          if (!batchUnion) {
+            console.warn(`⚠️ [API] BatchUnion inválido no lote ${batchNumber}, pulando união`);
+            offset += batchSize;
+            processedCTOs += ctosBatch.length;
+            continue;
+          }
+          
           if (accumulatedPolygon === null) {
-            accumulatedPolygon = batchUnion;
+            accumulatedPolygon = validateAndFixGeometry(batchUnion);
           } else {
             try {
-              accumulatedPolygon = turf.union(accumulatedPolygon, batchUnion);
-            } catch (unionErr) {
-              console.error(`❌ [API] Erro ao unir com polígono acumulado (lote ${batchNumber}):`, unionErr.message);
-              // Tentar simplificar antes de unir
-              try {
-                const simplifiedAccumulated = turf.simplify(accumulatedPolygon, { tolerance: simplificationTolerance, highQuality: true });
-                const simplifiedBatch = turf.simplify(batchUnion, { tolerance: simplificationTolerance, highQuality: true });
-                accumulatedPolygon = turf.union(simplifiedAccumulated, simplifiedBatch);
-              } catch (retryErr) {
-                console.error(`❌ [API] Erro mesmo após simplificação:`, retryErr.message);
-                throw retryErr;
+              const validatedAccumulated = validateAndFixGeometry(accumulatedPolygon);
+              const validatedBatch = validateAndFixGeometry(batchUnion);
+              
+              if (!validatedAccumulated || !validatedBatch) {
+                console.warn(`⚠️ [API] Geometrias inválidas para união no lote ${batchNumber}, pulando`);
+                offset += batchSize;
+                processedCTOs += ctosBatch.length;
+                continue;
               }
+              
+              accumulatedPolygon = turf.union(validatedAccumulated, validatedBatch);
+              
+              // Validar resultado
+              accumulatedPolygon = validateAndFixGeometry(accumulatedPolygon);
+              if (!accumulatedPolygon) {
+                console.warn(`⚠️ [API] Resultado da união acumulada inválido, mantendo anterior`);
+                // Manter accumulatedPolygon anterior
+              }
+            } catch (unionErr) {
+              console.warn(`⚠️ [API] Erro ao unir com polígono acumulado (lote ${batchNumber}):`, unionErr.message);
+              // Pular este lote e continuar (não quebrar o processo inteiro)
+              offset += batchSize;
+              processedCTOs += ctosBatch.length;
+              continue;
             }
           }
           
