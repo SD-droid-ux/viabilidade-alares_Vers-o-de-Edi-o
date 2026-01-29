@@ -2774,6 +2774,25 @@ app.delete('/api/base/delete', requireAdmin, async (req, res) => {
       console.warn(`⚠️ [API] Aviso ao deletar polígonos: ${polygonDeleteResult.error}`);
       // Continuar mesmo se falhar - não é crítico
     }
+    
+    // Limpar registros de cálculo em progresso (se existirem)
+    if (supabase && isSupabaseAvailable()) {
+      try {
+        console.log('🗑️ [API] Limpando registros de cálculo em progresso...');
+        const { error: clearProgressError } = await supabase
+          .from('coverage_calculation_progress')
+          .delete()
+          .neq('calculation_id', ''); // Deletar todos os registros
+        
+        if (clearProgressError) {
+          console.warn(`⚠️ [API] Aviso ao limpar progresso: ${clearProgressError.message}`);
+        } else {
+          console.log(`✅ [API] Registros de cálculo limpos`);
+        }
+      } catch (clearErr) {
+        console.warn(`⚠️ [API] Erro ao limpar progresso (não crítico):`, clearErr.message);
+      }
+    }
 
     // Tentar deletar do Supabase primeiro
     if (supabase && isSupabaseAvailable()) {
@@ -5448,6 +5467,23 @@ app.post('/api/upload-base', (req, res, next) => {
               // Continuar mesmo se falhar - não é crítico
             }
             
+            // Limpar registros antigos de cálculo em progresso (se existirem)
+            try {
+              console.log('🗑️ [Background] Limpando registros antigos de cálculo em progresso...');
+              const { error: clearProgressError } = await supabase
+                .from('coverage_calculation_progress')
+                .delete()
+                .neq('calculation_id', ''); // Deletar todos os registros
+              
+              if (clearProgressError) {
+                console.warn(`⚠️ [Background] Aviso ao limpar progresso antigo: ${clearProgressError.message}`);
+              } else {
+                console.log(`✅ [Background] Registros antigos de cálculo limpos`);
+              }
+            } catch (clearErr) {
+              console.warn(`⚠️ [Background] Erro ao limpar progresso antigo (não crítico):`, clearErr.message);
+            }
+            
             // Deletar todas as CTOs existentes antes de importar
             console.log('🗑️ [Background] Limpando CTOs antigas do Supabase...');
             
@@ -5590,91 +5626,110 @@ app.post('/api/upload-base', (req, res, next) => {
               // CALCULAR POLÍGONOS DE COBERTURA AUTOMATICAMENTE
               // ============================================
               // Após importar CTOs, recalcular polígonos de cobertura automaticamente (incremental)
-              console.log('🗺️ [Background] Iniciando cálculo automático de polígonos de cobertura (incremental)...');
+              console.log('🗺️ [Background] ===== INICIANDO CÁLCULO AUTOMÁTICO DE POLÍGONOS =====');
+              console.log(`🗺️ [Background] CTOs importadas: ${importedRows}, iniciando cálculo...`);
+              
               try {
                 // Gerar ID único para este cálculo
                 const calculationId = `calc_auto_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                 const batchSize = 5000;
                 
-                // Processar em background (não bloquear)
-                (async () => {
+                console.log(`🆔 [Background] Calculation ID: ${calculationId}`);
+                
+                // Processar cálculo de forma síncrona (aguardar conclusão)
+                let isComplete = false;
+                let attempts = 0;
+                const maxAttempts = 1000;
+                let lastError = null;
+                
+                while (!isComplete && attempts < maxAttempts) {
+                  attempts++;
+                  
                   try {
-                    let isComplete = false;
-                    let attempts = 0;
-                    const maxAttempts = 1000;
+                    const { data, error } = await supabase.rpc('process_coverage_batch', {
+                      p_calculation_id: calculationId,
+                      p_batch_size: batchSize
+                    });
                     
-                    while (!isComplete && attempts < maxAttempts) {
-                      attempts++;
+                    if (error) {
+                      console.error(`❌ [Background] Erro ao processar lote ${attempts}:`, error);
+                      lastError = error;
+                      break;
+                    }
+                    
+                    if (!data || data.length === 0) {
+                      console.error(`❌ [Background] Nenhum resultado retornado do lote ${attempts}`);
+                      lastError = new Error('Nenhum resultado retornado');
+                      break;
+                    }
+                    
+                    const result = data[0];
+                    
+                    if (!result.success) {
+                      console.error(`❌ [Background] Erro no lote ${attempts}:`, result.message);
+                      lastError = new Error(result.message);
+                      break;
+                    }
+                    
+                    isComplete = result.is_complete;
+                    
+                    // Log a cada 10 lotes ou quando completo
+                    if (attempts % 10 === 0 || isComplete) {
+                      console.log(`📦 [Background] Lote ${attempts}: ${result.processed_ctos}/${result.total_ctos} CTOs (${result.progress_percent?.toFixed(1)}%)`);
+                    }
+                    
+                    if (isComplete) {
+                      console.log(`🎉 [Background] Processamento completo! Finalizando cálculo...`);
                       
-                      const { data, error } = await supabase.rpc('process_coverage_batch', {
+                      const { data: finalData, error: finalError } = await supabase.rpc('finalize_coverage_calculation', {
                         p_calculation_id: calculationId,
-                        p_batch_size: batchSize
+                        p_simplification_tolerance: 0.0001
                       });
                       
-                      if (error) {
-                        console.error(`❌ [Background] Erro ao processar lote ${attempts}:`, error);
+                      if (finalError) {
+                        console.error('❌ [Background] Erro ao finalizar cálculo:', finalError);
+                        lastError = finalError;
                         break;
                       }
                       
-                      if (!data || data.length === 0) {
-                        console.error(`❌ [Background] Nenhum resultado retornado do lote ${attempts}`);
-                        break;
+                      if (finalData && finalData.length > 0 && finalData[0].success) {
+                        const finalResult = finalData[0];
+                        console.log(`✅ [Background] ===== POLÍGONOS CALCULADOS COM SUCESSO! =====`);
+                        console.log(`   - Polygon ID: ${finalResult.polygon_id}`);
+                        console.log(`   - Total CTOs: ${finalResult.total_ctos}`);
+                        console.log(`   - Área: ${finalResult.area_km2?.toFixed(2)} km²`);
+                        console.log(`   - Versão: ${finalResult.version || 'N/A'}`);
+                        console.log(`   - Tempo: ${finalResult.processing_time_seconds?.toFixed(2)}s`);
+                        console.log(`✅ [Background] ==========================================`);
+                      } else {
+                        console.error('❌ [Background] Erro ao finalizar - resposta inválida:', finalData);
+                        lastError = new Error('Resposta inválida ao finalizar');
                       }
                       
-                      const result = data[0];
-                      
-                      if (!result.success) {
-                        console.error(`❌ [Background] Erro no lote ${attempts}:`, result.message);
-                        break;
-                      }
-                      
-                      isComplete = result.is_complete;
-                      
-                      if (attempts % 10 === 0 || isComplete) {
-                        console.log(`📦 [Background] Lote ${attempts}: ${result.processed_ctos}/${result.total_ctos} CTOs (${result.progress_percent?.toFixed(1)}%)`);
-                      }
-                      
-                      if (isComplete) {
-                        console.log(`🎉 [Background] Processamento completo! Finalizando cálculo...`);
-                        
-                        const { data: finalData, error: finalError } = await supabase.rpc('finalize_coverage_calculation', {
-                          p_calculation_id: calculationId,
-                          p_simplification_tolerance: 0.0001
-                        });
-                        
-                        if (finalError) {
-                          console.error('❌ [Background] Erro ao finalizar cálculo:', finalError);
-                          return;
-                        }
-                        
-                        if (finalData && finalData.length > 0 && finalData[0].success) {
-                          const finalResult = finalData[0];
-                          console.log(`✅ [Background] Polígonos de cobertura calculados automaticamente!`);
-                          console.log(`   - ID: ${finalResult.polygon_id}`);
-                          console.log(`   - CTOs: ${finalResult.total_ctos}`);
-                          console.log(`   - Área: ${finalResult.area_km2?.toFixed(2)} km²`);
-                          console.log(`   - Tempo: ${finalResult.processing_time_seconds?.toFixed(2)}s`);
-                        } else {
-                          console.error('❌ [Background] Erro ao finalizar:', finalData);
-                        }
-                        
-                        break;
-                      }
-                      
-                      await new Promise(resolve => setTimeout(resolve, 100));
+                      break;
                     }
                     
-                    if (!isComplete && attempts >= maxAttempts) {
-                      console.error(`❌ [Background] Limite de tentativas atingido (${maxAttempts})`);
-                    }
-                  } catch (err) {
-                    console.error('❌ [Background] Erro no processamento em background:', err);
+                    // Pequeno delay entre lotes
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                  } catch (batchErr) {
+                    console.error(`❌ [Background] Erro no lote ${attempts}:`, batchErr);
+                    lastError = batchErr;
+                    break;
                   }
-                })();
+                }
                 
-                console.log('✅ [Background] Cálculo de polígonos iniciado em background (processamento incremental)');
+                if (!isComplete && attempts >= maxAttempts) {
+                  console.error(`❌ [Background] Limite de tentativas atingido (${maxAttempts})`);
+                  if (lastError) {
+                    console.error(`❌ [Background] Último erro:`, lastError);
+                  }
+                } else if (isComplete) {
+                  console.log(`✅ [Background] Cálculo de polígonos concluído com sucesso!`);
+                }
               } catch (coverageErr) {
-                console.error('❌ [Background] Erro ao iniciar cálculo de polígonos:', coverageErr);
+                console.error('❌ [Background] ===== ERRO AO INICIAR CÁLCULO DE POLÍGONOS =====');
+                console.error('❌ [Background] Erro:', coverageErr);
+                console.error('❌ [Background] Stack:', coverageErr.stack);
                 console.warn('⚠️ [Background] Polígonos não foram atualizados, mas CTOs foram importadas com sucesso');
               }
               
