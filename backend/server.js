@@ -1189,39 +1189,21 @@ app.post('/api/coverage/calculate', async (req, res) => {
       }
     };
     
-    // Contador para reduzir logs (não logar todas as falhas)
-    let martinezFallbackCount = 0;
-    
-    // Função auxiliar para fazer union usando Martinez (mais robusto que Turf.js)
+    // DESABILITADO: Martinez está falhando muito devido à simplificação agressiva
+    // Usando apenas Turf.js que funciona melhor com geometrias simplificadas
     const robustUnion = (poly1, poly2) => {
       try {
-        // Converter para formato Martinez
-        const martinez1 = geojsonToMartinez(poly1);
-        const martinez2 = geojsonToMartinez(poly2);
-        
-        if (!martinez1 || !martinez2) {
-          throw new Error('Geometria inválida para conversão (menos de 4 pontos)');
-        }
-        
-        // Fazer union com Martinez
-        const result = martinezUnion([martinez1], [martinez2]);
-        
-        // Converter de volta para GeoJSON
-        const geojson = martinezToGeojson(result);
-        
-        if (!geojson) {
-          throw new Error('Falha ao converter resultado Martinez');
-        }
-        
-        return geojson;
-      } catch (err) {
-        // Se Martinez falhar, tentar com Turf.js como fallback
-        martinezFallbackCount++;
-        // Logar apenas a cada 100 falhas para não sobrecarregar logs
-        if (martinezFallbackCount % 100 === 0) {
-          console.warn(`⚠️ [API] Martinez fallback usado ${martinezFallbackCount} vezes (usando Turf.js)`);
-        }
         return turf.union(poly1, poly2);
+      } catch (err) {
+        // Se Turf.js falhar, tentar simplificar antes de unir
+        try {
+          const simplified1 = turf.simplify(poly1, { tolerance: 0.0001, highQuality: true });
+          const simplified2 = turf.simplify(poly2, { tolerance: 0.0001, highQuality: true });
+          return turf.union(simplified1, simplified2);
+        } catch (retryErr) {
+          // Se ainda falhar, retornar null (será pulado)
+          return null;
+        }
       }
     };
     
@@ -1281,7 +1263,7 @@ app.post('/api/coverage/calculate', async (req, res) => {
         
         return cleaned;
       } catch (err) {
-        console.warn(`⚠️ [API] Erro ao validar geometria:`, err.message);
+        // Não logar erros de validação para evitar rate limit
         return null;
       }
     };
@@ -1399,7 +1381,7 @@ app.post('/api/coverage/calculate', async (req, res) => {
               // Unir grupo
               let groupUnion = validateAndFixGeometry(group[0]);
               if (!groupUnion) {
-                console.warn(`⚠️ [API] Buffer inicial do grupo inválido, pulando grupo`);
+                // Não logar para evitar rate limit
                 continue;
               }
               
@@ -1466,7 +1448,7 @@ app.post('/api/coverage/calculate', async (req, res) => {
             for (let i = 1; i < groups.length; i++) {
               const validatedGroup = validateAndFixGeometry(groups[i]);
               if (!validatedGroup) {
-                console.warn(`⚠️ [API] Grupo ${i} inválido, pulando`);
+                // Não logar para evitar rate limit
                 continue;
               }
               
@@ -1484,7 +1466,7 @@ app.post('/api/coverage/calculate', async (req, res) => {
                 // Validar resultado
                 batchUnion = validateAndFixGeometry(batchUnion);
                 if (!batchUnion) {
-                  console.warn(`⚠️ [API] Resultado da união de grupos inválido, mantendo anterior`);
+                  // Não logar para evitar rate limit
                   // Manter batchUnion anterior
                 }
               } catch (unionErr) {
@@ -1523,7 +1505,7 @@ app.post('/api/coverage/calculate', async (req, res) => {
                 // Validar resultado
                 batchUnion = validateAndFixGeometry(batchUnion);
                 if (!batchUnion) {
-                  console.warn(`⚠️ [API] Resultado da união inválido, mantendo anterior`);
+                  // Não logar para evitar rate limit
                   // Manter batchUnion anterior
                 }
               } catch (unionErr) {
@@ -1561,7 +1543,7 @@ app.post('/api/coverage/calculate', async (req, res) => {
               // Validar resultado
               accumulatedPolygon = validateAndFixGeometry(accumulatedPolygon);
               if (!accumulatedPolygon) {
-                console.warn(`⚠️ [API] Resultado da união acumulada inválido, mantendo anterior`);
+                // Não logar para evitar rate limit
                 // Manter accumulatedPolygon anterior
               }
             } catch (unionErr) {
