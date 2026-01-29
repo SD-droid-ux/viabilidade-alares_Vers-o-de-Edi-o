@@ -62,6 +62,20 @@
   let changeRoleError = '';
   let toolPermissions = {}; // Permissões de ferramentas: { 'tool-id': true/false }
   let loadingChangeRole = false; // Estado de carregamento do modal
+  let totalCTOsLoaded = 0; // Total de CTOs carregadas (para exibir na mensagem)
+  
+  // Variáveis para progresso do upload e cálculo
+  let uploadProgress = {
+    stage: 'idle', // 'idle', 'deleting', 'uploading', 'calculating', 'completed', 'error'
+    uploadPercent: 0,
+    calculationPercent: 0,
+    message: '',
+    totalRows: 0,
+    processedRows: 0,
+    importedRows: 0,
+    totalCTOs: 0,
+    processedCTOs: 0
+  };
 
   // Carregar dados do localStorage primeiro (instantâneo)
   function loadFromLocalStorage() {
@@ -153,6 +167,10 @@
       
       // Verificar se a aba está visível antes de fazer polling
       const pollIfVisible = () => {
+        // BLOQUEAR polling durante upload/cálculo
+        if (uploadingBase) {
+          return; // Não fazer polling durante upload
+        }
         // Usar Page Visibility API para evitar polling quando aba está em background
         if (typeof document !== 'undefined' && !document.hidden) {
           loadOnlineUsers();
@@ -272,6 +290,10 @@
           if (data.lastModified) {
             baseLastModified = new Date(data.lastModified);
             baseDataExists = true;
+            // Armazenar total de CTOs se disponível
+            if (data.total_ctos !== undefined) {
+              totalCTOsLoaded = data.total_ctos;
+            }
             // Salvar no localStorage para próxima vez
             try {
               localStorage.setItem('baseLastModified', data.lastModified);
@@ -507,6 +529,10 @@
           if (onlineUsersInterval) {
             clearInterval(onlineUsersInterval);
             onlineUsersInterval = setInterval(() => {
+              // BLOQUEAR polling durante upload/cálculo
+              if (uploadingBase) {
+                return; // Não fazer polling durante upload
+              }
               if (typeof document !== 'undefined' && !document.hidden) {
                 loadOnlineUsers();
               }
@@ -1421,8 +1447,21 @@
         // Se o backend indicou que está processando em background
         if (data.processing) {
           uploadSuccess = true; // Verde indicando que está tudo correto, é só aguardar
-          uploadMessage = '📤 Carregando base de dados...';
+          uploadMessage = 'Validando e atualizando base de dados...';
           uploadingBase = true; // Manter flag de upload ativo
+          
+          // Inicializar progresso
+          uploadProgress = {
+            stage: 'deleting',
+            uploadPercent: 0,
+            calculationPercent: 0,
+            message: 'Deletando base de dados antiga e polígonos...',
+            totalRows: 0,
+            processedRows: 0,
+            importedRows: 0,
+            totalCTOs: 0,
+            processedCTOs: 0
+          };
           
           // Limpar qualquer polling anterior
           if (uploadPollInterval) {
@@ -1430,150 +1469,68 @@
             uploadPollInterval = null;
           }
           
-          // Guardar timestamp antes do upload para comparar depois
-          const timestampBeforeUpload = baseLastModified ? baseLastModified.getTime() : 0;
-          
-          // Iniciar polling para verificar status do processamento
-          // O backend processa em background, então precisamos verificar periodicamente
-          let pollAttempts = 0;
-          const maxPollAttempts = 120; // 10 minutos máximo (120 * 5s = 600s)
-          const pollInterval = 5000; // Verificar a cada 5 segundos
-          
+          // Iniciar polling do progresso (mais frequente para atualização suave)
           uploadPollInterval = setInterval(async () => {
-            pollAttempts++;
-            
             try {
-              // Verificar se a base foi atualizada verificando a data de modificação
-              await loadBaseLastModified();
-              
-              // Verificar se a base foi atualizada (nova data de modificação)
-              if (baseLastModified && baseLastModified.getTime() > timestampBeforeUpload) {
-                // Base foi atualizada! Verificar se polígonos foram calculados
-                uploadMessage = '✅ Base de dados carregada! Calculando área de cobertura...';
-                
-                // Aguardar um pouco e verificar se polígonos foram calculados
-                setTimeout(async () => {
-                  try {
-                    const statusRes = await fetch(getApiUrl('/api/coverage/polygon'));
-                    if (statusRes.ok) {
-                      const polygonData = await statusRes.json();
-                      if (polygonData && polygonData.success) {
-                        // Polígonos calculados!
-                        clearInterval(uploadPollInterval);
-                        uploadPollInterval = null;
-                        uploadingBase = false;
-                        uploadSuccess = true;
-                        uploadMessage = `✅ Base de dados carregada com sucesso! (${data.total_ctos || 'N/A'} CTOs carregadas)\n✅ Área de cobertura criada com sucesso!`;
-                      } else {
-                        // Ainda calculando polígonos
-                        uploadMessage = '✅ Base de dados carregada! ⏳ Calculando área de cobertura...';
-                        // Continuar verificando polígonos
-                        checkPolygonStatus();
-                      }
-                    } else {
-                      // Ainda calculando
-                      uploadMessage = '✅ Base de dados carregada! ⏳ Calculando área de cobertura...';
-                      checkPolygonStatus();
-                    }
-                  } catch (err) {
-                    console.error('Erro ao verificar polígonos:', err);
-                    uploadMessage = '✅ Base de dados carregada! ⏳ Calculando área de cobertura...';
-                    checkPolygonStatus();
-                  }
-                }, 2000);
-                
-                // Função para verificar status dos polígonos
-                const checkPolygonStatus = () => {
-                  const polygonCheckInterval = setInterval(async () => {
-                    try {
-                      const statusRes = await fetch(getApiUrl('/api/coverage/polygon'));
-                      if (statusRes.ok) {
-                        const polygonData = await statusRes.json();
-                        if (polygonData && polygonData.success) {
-                          clearInterval(polygonCheckInterval);
-                          clearInterval(uploadPollInterval);
-                          uploadPollInterval = null;
-                          uploadingBase = false;
-                          uploadSuccess = true;
-                          uploadMessage = `✅ Base de dados carregada com sucesso! (${data.total_ctos || 'N/A'} CTOs carregadas)\n✅ Área de cobertura criada com sucesso!`;
-                        }
-                      }
-                    } catch (err) {
-                        console.error('Erro ao verificar polígonos:', err);
-                      }
-                  }, 3000); // Verificar a cada 3 segundos
+              const progressRes = await fetch(getApiUrl('/api/upload-progress'));
+              if (progressRes.ok) {
+                const progressData = await progressRes.json();
+                if (progressData.success) {
+                  // Atualizar progresso
+                  uploadProgress = { ...progressData };
                   
-                  // Timeout de 2 minutos para verificação de polígonos
-                  setTimeout(() => {
-                    clearInterval(polygonCheckInterval);
-                    if (uploadingBase) {
-                      uploadingBase = false;
-                      uploadSuccess = true;
-                      uploadMessage = `✅ Base de dados carregada com sucesso! (${data.total_ctos || 'N/A'} CTOs carregadas)\n⚠️ Área de cobertura ainda sendo calculada em background...`;
+                  // Atualizar mensagem baseada no estágio
+                  if (progressData.stage === 'deleting') {
+                    uploadMessage = 'Deletando base de dados antiga e polígonos...';
+                  } else if (progressData.stage === 'uploading') {
+                    uploadMessage = `Carregando base de dados... ${progressData.uploadPercent}%`;
+                  } else if (progressData.stage === 'calculating') {
+                    uploadMessage = `Calculando área de cobertura... ${Math.round(progressData.calculationPercent)}%`;
+                  } else if (progressData.stage === 'completed') {
+                    // Processo completo!
+                    clearInterval(uploadPollInterval);
+                    uploadPollInterval = null;
+                    uploadingBase = false;
+                    uploadSuccess = true;
+                    totalCTOsLoaded = progressData.totalCTOs || progressData.importedRows || 0;
+                    uploadMessage = `✅ Base de dados carregada com sucesso! (${totalCTOsLoaded} CTOs carregadas)\n✅ Área de cobertura criada com sucesso!`;
+                    
+                    // Recarregar dados
+                    await loadBaseLastModified();
+                    if (onReloadCTOs) {
+                      try {
+                        await onReloadCTOs();
+                      } catch (err) {
+                        console.error('Erro ao recarregar CTOs:', err);
+                      }
                     }
-                  }, 120000); // 2 minutos
-                };
-                
-                return; // Parar polling de base
-                
-                // Recarregar os dados das CTOs
-                if (onReloadCTOs) {
-                  try {
-                    await onReloadCTOs();
-                    console.log('✅ Base de dados recarregada com sucesso após upload');
-                  } catch (err) {
-                    console.error('Erro ao recarregar base de dados:', err);
+                  } else if (progressData.stage === 'error') {
+                    clearInterval(uploadPollInterval);
+                    uploadPollInterval = null;
+                    uploadingBase = false;
+                    uploadSuccess = false;
+                    uploadMessage = progressData.message || 'Erro ao processar upload';
                   }
                 }
-                
-                return; // Parar polling
-              }
-              
-              // Se passou muito tempo, assumir que terminou (ou deu erro)
-              if (pollAttempts >= maxPollAttempts) {
-                clearInterval(uploadPollInterval);
-                uploadPollInterval = null;
-                uploadingBase = false;
-                uploadMessage = 'Processamento demorou mais que o esperado. Verifique os logs do servidor.';
-                uploadSuccess = false;
-                return;
               }
             } catch (pollErr) {
-              console.error('❌ [Upload] Erro ao verificar status:', pollErr);
-              // Continuar tentando até atingir maxPollAttempts
+              console.error('❌ [Upload] Erro ao verificar progresso:', pollErr);
+              // Continuar tentando
             }
-          }, pollInterval);
+          }, 500); // Verificar a cada 500ms para atualização suave
           
-          // Parar polling após 10 minutos (timeout de segurança)
+          // Timeout de segurança (5 minutos)
           setTimeout(() => {
             if (uploadPollInterval) {
               clearInterval(uploadPollInterval);
               uploadPollInterval = null;
             }
             if (uploadingBase) {
-              // Se ainda está processando, verificar uma última vez
-              loadBaseLastModified().then(() => {
-                uploadingBase = false;
-                if (baseLastModified && baseLastModified.getTime() > timestampBeforeUpload) {
-                  // Base foi atualizada, assumir sucesso
-                  uploadSuccess = true;
-                  uploadMessage = 'Base de dados atualizada com sucesso!';
-                  
-                  // Recarregar os dados das CTOs
-                  if (onReloadCTOs) {
-                    onReloadCTOs().catch(err => {
-                      console.error('Erro ao recarregar base de dados:', err);
-                    });
-                  }
-                } else {
-                  uploadMessage = 'Processamento concluído. Verifique se a base foi atualizada corretamente.';
-                }
-              }).catch(() => {
-                uploadingBase = false;
-                uploadMessage = 'Não foi possível verificar o status final do processamento.';
-              });
+              uploadingBase = false;
+              uploadSuccess = false;
+              uploadMessage = 'Processamento demorou mais que o esperado. Verifique os logs do servidor.';
             }
-          }, 600000); // 10 minutos
+          }, 300000); // 5 minutos
           
           event.target.value = '';
           return; // Não limpar uploadingBase ainda
@@ -1897,8 +1854,30 @@
           {#if uploadingBase}
             <div class="upload-status">
               <div class="loading-spinner"></div>
-              <span>Validando e atualizando base de dados...</span>
+              <span>{uploadMessage || 'Validando e atualizando base de dados...'}</span>
             </div>
+            
+            {#if uploadProgress.stage === 'uploading' || uploadProgress.stage === 'calculating'}
+              <div class="progress-container" style="margin-top: 1rem;">
+                {#if uploadProgress.stage === 'uploading'}
+                  <div class="progress-bar-wrapper">
+                    <div class="progress-label">Carregando base de dados: {uploadProgress.uploadPercent}%</div>
+                    <div class="progress-bar">
+                      <div class="progress-fill" style="width: {uploadProgress.uploadPercent}%;"></div>
+                    </div>
+                  </div>
+                {/if}
+                
+                {#if uploadProgress.stage === 'calculating' && uploadProgress.uploadPercent >= 100}
+                  <div class="progress-bar-wrapper" style="margin-top: 0.5rem;">
+                    <div class="progress-label">Calculando área de cobertura: {Math.round(uploadProgress.calculationPercent)}%</div>
+                    <div class="progress-bar">
+                      <div class="progress-fill" style="width: {uploadProgress.calculationPercent}%;"></div>
+                    </div>
+                  </div>
+                {/if}
+              </div>
+            {/if}
           {/if}
 
           {#if uploadMessage}
@@ -3226,6 +3205,42 @@
     color: #c62828;
   }
 
+  .progress-container {
+    margin-top: 1rem;
+  }
+
+  .progress-bar-wrapper {
+    margin-bottom: 0.5rem;
+  }
+
+  .progress-label {
+    font-size: 0.85rem;
+    color: #7B68EE;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+  }
+
+  .progress-bar {
+    width: 100%;
+    height: 24px;
+    background: rgba(123, 104, 238, 0.1);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(123, 104, 238, 0.2);
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #7B68EE 0%, #9C88FF 100%);
+    border-radius: 12px;
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
 
   .delete-base-container {
     display: flex;
