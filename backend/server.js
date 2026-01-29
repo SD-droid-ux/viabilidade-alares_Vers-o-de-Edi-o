@@ -1111,10 +1111,22 @@ app.post('/api/coverage/calculate', async (req, res) => {
     // Gerar ID único para este cálculo
     const calculationId = `calc_inc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // Contar total de CTOs
-    const { count: totalCTOs } = await supabase
+    // Contar total de CTOs válidas (com latitude/longitude válidas)
+    const { count: totalCTOs, error: countError } = await supabase
       .from('ctos')
-      .select('*', { count: 'exact', head: true });
+      .select('*', { count: 'exact', head: true })
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null)
+      .gte('latitude', -90)
+      .lte('latitude', 90)
+      .gte('longitude', -180)
+      .lte('longitude', 180);
+    
+    if (countError) {
+      console.error('❌ [API] Erro ao contar CTOs válidas:', countError);
+    }
+    
+    console.log(`📊 [API] Total de CTOs válidas encontradas: ${totalCTOs || 0}`);
     
     // Inicializar progresso global
     uploadProgress = {
@@ -1143,7 +1155,7 @@ app.post('/api/coverage/calculate', async (req, res) => {
       const startTime = Date.now();
       let accumulatedPolygon = null; // Polígono acumulado (GeoJSON Feature)
       let processedCTOs = 0;
-      const batchSize = 10000; // Lotes grandes agora que processamos no backend
+        const batchSize = 1000; // Lotes de 1000 (limite seguro do Supabase para paginação)
       const bufferRadiusMeters = 250; // Raio do buffer em metros
       const simplificationTolerance = 0.0001; // Tolerância de simplificação
       
@@ -1161,15 +1173,17 @@ app.post('/api/coverage/calculate', async (req, res) => {
           const batchStartTime = Date.now();
           
           // 1. Buscar lote de CTOs do Supabase (apenas dados, sem cálculos)
+          // IMPORTANTE: Adicionar .order() para garantir paginação consistente
           const { data: ctosBatch, error: fetchError } = await supabase
             .from('ctos')
-            .select('id, latitude, longitude')
+            .select('id, latitude, longitude', { count: 'exact' })
             .not('latitude', 'is', null)
             .not('longitude', 'is', null)
             .gte('latitude', -90)
             .lte('latitude', 90)
             .gte('longitude', -180)
             .lte('longitude', 180)
+            .order('id', { ascending: true }) // Ordenar por ID para paginação consistente
             .range(offset, offset + batchSize - 1);
           
           if (fetchError) {
@@ -1180,8 +1194,13 @@ app.post('/api/coverage/calculate', async (req, res) => {
           }
           
           if (!ctosBatch || ctosBatch.length === 0) {
-            console.log(`✅ [API] Não há mais CTOs para processar`);
+            console.log(`✅ [API] Não há mais CTOs para processar (offset: ${offset}, total esperado: ${totalCTOs || 0}, processadas: ${processedCTOs})`);
             break;
+          }
+          
+          // Log detalhado para debug
+          if (batchNumber === 1 || batchNumber % 5 === 0) {
+            console.log(`📦 [API] Lote ${batchNumber}: Buscou ${ctosBatch.length} CTOs (offset: ${offset} a ${offset + ctosBatch.length - 1}, total esperado: ${totalCTOs || 0})`);
           }
           
           // 2. Criar buffers para cada CTO usando Turf.js
@@ -1331,9 +1350,15 @@ app.post('/api/coverage/calculate', async (req, res) => {
           
           const batchTime = ((Date.now() - batchStartTime) / 1000).toFixed(2);
           
-          // Log a cada 5 lotes ou quando próximo do fim
-          if (batchNumber % 5 === 0 || progressPercent >= 95) {
+          // Log detalhado para debug
+          if (batchNumber === 1 || batchNumber % 5 === 0 || progressPercent >= 95) {
             console.log(`📦 [API] Lote ${batchNumber}: ${processedCTOs}/${totalCTOs || 0} CTOs (${progressPercent}%) - ${batchTime}s`);
+            console.log(`   └─ Offset atual: ${offset}, Próximo offset: ${offset + batchSize}, Total esperado: ${totalCTOs || 0}`);
+          }
+          
+          // Verificar se há problema de paginação
+          if (ctosBatch.length < batchSize && offset < (totalCTOs || 0)) {
+            console.warn(`⚠️ [API] Lote ${batchNumber} retornou apenas ${ctosBatch.length} CTOs (esperado ${batchSize}). Pode haver problema de paginação.`);
           }
           
           // Pequeno delay para não sobrecarregar
@@ -1341,6 +1366,14 @@ app.post('/api/coverage/calculate', async (req, res) => {
         }
         
         console.log(`✅ [API] Todos os lotes processados: ${batchNumber} lotes`);
+        console.log(`📊 [API] Total processado: ${processedCTOs} CTOs de ${totalCTOs || 0} esperadas`);
+        
+        if (processedCTOs < (totalCTOs || 0)) {
+          console.warn(`⚠️ [API] ATENÇÃO: Processou apenas ${processedCTOs} de ${totalCTOs || 0} CTOs!`);
+          console.warn(`⚠️ [API] Diferença: ${(totalCTOs || 0) - processedCTOs} CTOs não foram processadas`);
+          console.warn(`⚠️ [API] Isso pode indicar problema de paginação ou limite do Supabase`);
+        }
+        
         console.log(`🎉 [API] Finalizando cálculo...`);
         
         // 6. Simplificar polígono final
@@ -1379,7 +1412,17 @@ app.post('/api/coverage/calculate', async (req, res) => {
           .eq('is_active', true);
         
         // Salvar polígono final no Supabase usando função RPC que converte GeoJSON para PostGIS
-        const { data: insertData, error: insertError } = await supabase.rpc('save_coverage_polygon_from_geojson', {
+        console.log(`💾 [API] Salvando polígono no Supabase...`);
+        console.log(`   - GeoJSON tamanho: ${geoJsonString.length} caracteres`);
+        console.log(`   - Total CTOs: ${processedCTOs}`);
+        console.log(`   - Área: ${areaKm2.toFixed(2)} km²`);
+        console.log(`   - Versão: ${nextVersion}`);
+        
+        let insertData = null;
+        let polygonId = null;
+        
+        // Tentar usar função RPC primeiro
+        const { data: rpcData, error: insertError } = await supabase.rpc('save_coverage_polygon_from_geojson', {
           p_geometry_geojson: geoJsonString,
           p_total_ctos: processedCTOs,
           p_area_km2: areaKm2,
@@ -1388,8 +1431,150 @@ app.post('/api/coverage/calculate', async (req, res) => {
         });
         
         if (insertError) {
-          console.error('❌ [API] Erro ao salvar polígono:', insertError);
-          throw insertError;
+          console.error('❌ [API] Erro ao salvar polígono via RPC:', insertError);
+          console.error('❌ [API] Código do erro:', insertError.code);
+          console.error('❌ [API] Mensagem:', insertError.message);
+          console.error('❌ [API] Detalhes:', insertError.details);
+          console.error('❌ [API] Hint:', insertError.hint);
+          
+          // Se a função não existir, tentar inserir diretamente usando SQL
+          if (insertError.code === 'PGRST116' || insertError.message?.includes('does not exist') || insertError.message?.includes('function')) {
+            console.warn('⚠️ [API] Função save_coverage_polygon_from_geojson não encontrada. Tentando inserir via SQL direto...');
+            
+            // Usar SQL direto para inserir
+            const sqlInsert = `
+              INSERT INTO coverage_polygons (
+                geometry,
+                simplified_geometry,
+                total_ctos,
+                area_km2,
+                simplification_tolerance,
+                is_active,
+                version
+              ) VALUES (
+                ST_SetSRID(ST_GeomFromGeoJSON($1::text), 4326),
+                ST_SetSRID(ST_GeomFromGeoJSON($1::text), 4326),
+                $2,
+                $3,
+                $4,
+                true,
+                $5
+              )
+              RETURNING id;
+            `;
+            
+            const { data: sqlData, error: sqlError } = await supabase.rpc('exec_sql', {
+              sql: sqlInsert,
+              params: [geoJsonString, processedCTOs, areaKm2, simplificationTolerance, nextVersion]
+            });
+            
+            if (sqlError) {
+              // Última tentativa: inserir via .from() com GeoJSON (pode funcionar se Supabase aceitar)
+              console.warn('⚠️ [API] SQL direto falhou. Tentando inserir via .from()...');
+              
+              const { data: directInsert, error: directError } = await supabase
+                .from('coverage_polygons')
+                .insert({
+                  geometry: geoJsonString,
+                  simplified_geometry: geoJsonString,
+                  total_ctos: processedCTOs,
+                  area_km2: areaKm2,
+                  simplification_tolerance: simplificationTolerance,
+                  is_active: true,
+                  version: nextVersion
+                })
+                .select();
+              
+              if (directError) {
+                console.error('❌ [API] Erro ao inserir diretamente:', directError);
+                throw new Error(`Falha ao salvar polígono: ${directError.message}. Execute o SQL save_coverage_polygon_from_geojson.sql no Supabase.`);
+              }
+              
+              console.log(`✅ [API] Polígono inserido diretamente! ID: ${directInsert?.[0]?.id || 'N/A'}`);
+              polygonId = directInsert?.[0]?.id || null;
+              insertData = [{ polygon_id: polygonId, success: true, message: 'Polígono salvo diretamente' }];
+            } else {
+              polygonId = sqlData?.[0]?.id || null;
+              insertData = [{ polygon_id: polygonId, success: true, message: 'Polígono salvo via SQL' }];
+            }
+          } else {
+            throw insertError;
+          }
+        } else {
+          // Sucesso via RPC
+          insertData = rpcData;
+          polygonId = rpcData?.[0]?.polygon_id || null;
+          
+          // Verificar resposta da função RPC
+          if (!insertData || insertData.length === 0) {
+            console.error('❌ [API] Função RPC retornou resposta vazia:', insertData);
+            throw new Error('Falha ao salvar polígono - função RPC retornou resposta vazia');
+          }
+          
+          // Verificar se a função retornou sucesso
+          if (insertData[0]?.success === false) {
+            console.error('❌ [API] Função RPC retornou erro:', insertData[0]?.message);
+            throw new Error(`Falha ao salvar polígono: ${insertData[0]?.message || 'Erro desconhecido'}`);
+          }
+          
+          if (!polygonId && insertData[0]?.polygon_id) {
+            polygonId = insertData[0].polygon_id;
+          }
+        }
+        
+        // Verificar se realmente foi salvo
+        if (!insertData || insertData.length === 0 || (!insertData[0]?.success && !polygonId)) {
+          console.error('❌ [API] Resposta inválida ao salvar polígono:', JSON.stringify(insertData, null, 2));
+          throw new Error('Falha ao salvar polígono - resposta inválida');
+        }
+        
+        // Verificar se foi realmente salvo no banco (aguardar um pouco para garantir commit)
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        if (polygonId) {
+          const { data: verifyData, error: verifyError } = await supabase
+            .from('coverage_polygons')
+            .select('id, version, total_ctos, is_active, area_km2')
+            .eq('id', polygonId)
+            .single();
+          
+          if (verifyError) {
+            console.error(`❌ [API] ERRO CRÍTICO: Polígono não encontrado no banco após salvar!`, verifyError);
+            console.error(`   - Polygon ID retornado: ${polygonId}`);
+            console.error(`   - Isso indica que o INSERT falhou silenciosamente`);
+            throw new Error(`Polígono não foi salvo no banco. ID: ${polygonId}, Erro: ${verifyError.message}`);
+          } else {
+            console.log(`✅ [API] Polígono VERIFICADO no banco:`);
+            console.log(`   - ID: ${verifyData.id}`);
+            console.log(`   - Versão: ${verifyData.version}`);
+            console.log(`   - Total CTOs: ${verifyData.total_ctos}`);
+            console.log(`   - Área: ${verifyData.area_km2} km²`);
+            console.log(`   - Ativo: ${verifyData.is_active}`);
+          }
+        } else {
+          console.warn(`⚠️ [API] Polygon ID não foi retornado. Verificando último polígono inserido...`);
+          
+          // Buscar último polígono inserido
+          const { data: lastPolygon, error: lastError } = await supabase
+            .from('coverage_polygons')
+            .select('id, version, total_ctos, is_active, area_km2')
+            .eq('version', nextVersion)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (lastError || !lastPolygon) {
+            console.error(`❌ [API] ERRO CRÍTICO: Nenhum polígono encontrado após salvar!`, lastError);
+            throw new Error(`Polígono não foi salvo no banco. Verifique os logs do Supabase.`);
+          } else {
+            polygonId = lastPolygon.id;
+            console.log(`✅ [API] Polígono encontrado no banco (busca alternativa):`);
+            console.log(`   - ID: ${lastPolygon.id}`);
+            console.log(`   - Versão: ${lastPolygon.version}`);
+            console.log(`   - Total CTOs: ${lastPolygon.total_ctos}`);
+            console.log(`   - Área: ${lastPolygon.area_km2} km²`);
+          }
         }
         
         const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -1398,7 +1583,7 @@ app.post('/api/coverage/calculate', async (req, res) => {
         uploadProgress.message = 'Área de cobertura criada com sucesso!';
         
         console.log(`✅ [API] ===== POLÍGONOS CALCULADOS COM SUCESSO (BACKEND)! =====`);
-        console.log(`   - Polygon ID: ${insertData?.[0]?.polygon_id || 'N/A'}`);
+        console.log(`   - Polygon ID: ${polygonId || 'N/A'}`);
         console.log(`   - Total CTOs: ${processedCTOs}`);
         console.log(`   - Área: ${areaKm2.toFixed(2)} km²`);
         console.log(`   - Versão: ${nextVersion}`);
