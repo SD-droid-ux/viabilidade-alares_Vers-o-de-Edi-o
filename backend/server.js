@@ -2836,10 +2836,10 @@ app.get('/api/base-last-modified', async (req, res) => {
 
     let lastModified = null;
     let hasData = false;
+    let totalCTOs = 0; // Declarar fora do bloco para estar disponível em todo o escopo
 
     if (supabase && isSupabaseAvailable()) {
       // Primeiro verificar se existe dados na tabela ctos
-      let totalCTOs = 0;
       const { count, error: countError } = await supabase
         .from('ctos')
         .select('*', { count: 'exact', head: true });
@@ -2856,17 +2856,16 @@ app.get('/api/base-last-modified', async (req, res) => {
       if (hasData) {
         const { data, error } = await supabase
           .from('upload_history')
-          .select('uploaded_at, created_at')
+          .select('uploaded_at')
           .order('uploaded_at', { ascending: false })
           .limit(1);
 
         if (error) {
           console.warn('⚠️ [API] Erro ao buscar lastModified do Supabase:', error.message);
-          // Fallback para arquivo local se Supabase falhar
-        } else if (data && data.length > 0) {
-          // Usar uploaded_at se disponível, senão usar created_at como fallback
-          lastModified = data[0].uploaded_at || data[0].created_at;
-          console.log('✅ [API] LastModified do Supabase:', lastModified);
+          // Fallback: buscar última CTO inserida
+        } else if (data && data.length > 0 && data[0].uploaded_at) {
+          lastModified = data[0].uploaded_at;
+          console.log('✅ [API] LastModified do Supabase (upload_history):', lastModified);
         }
         
         // Se ainda não tem lastModified mas tem dados, usar data atual como fallback
@@ -2924,20 +2923,34 @@ app.get('/api/base-last-modified', async (req, res) => {
     }
 
     // Sempre retornar lastModified quando há dados
+    console.log(`✅ [API] Retornando: hasData=${hasData}, lastModified=${lastModified}, totalCTOs=${totalCTOs}`);
     res.json({ success: true, lastModified, hasData: true, total_ctos: totalCTOs });
   } catch (err) {
     console.error('❌ [API] Erro ao obter lastModified:', err);
+    console.error('❌ [API] Stack:', err.stack);
     
     // Garantir headers CORS mesmo em erro
-    const origin = req.headers.origin;
-    if (origin) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
+    const errorOrigin = req.headers.origin;
+    if (errorOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', errorOrigin);
     } else {
       res.setHeader('Access-Control-Allow-Origin', '*');
     }
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     
-    res.status(500).json({ success: false, error: err.message });
+    // Retornar erro mas ainda tentar retornar dados se possível
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        success: false, 
+        error: 'Erro ao obter data de atualização', 
+        details: err.message,
+        hasData: false,
+        total_ctos: 0
+      });
+    } else {
+      // Se já enviou resposta, apenas logar o erro
+      console.warn('⚠️ [API] Resposta já enviada, não foi possível retornar erro');
+    }
   }
 });
 
