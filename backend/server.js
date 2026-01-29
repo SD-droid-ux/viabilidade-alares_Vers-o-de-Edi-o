@@ -1157,25 +1157,44 @@ app.post('/api/coverage/calculate', async (req, res) => {
       }
       
       try {
-        // 1. Limpar coordenadas duplicadas
+        // 1. Limpar coordenadas duplicadas (remove pontos muito próximos)
         let cleaned = turf.cleanCoords(geometry);
         
-        // 2. Se ainda tiver problemas, usar buffer(0) para corrigir
+        // 2. Simplificar AGressivamente primeiro para reduzir problemas de precisão
+        // Tolerância maior remove pontos muito próximos que causam erros de topologia
+        cleaned = turf.simplify(cleaned, { tolerance: 0.0001, highQuality: true });
+        
+        // 3. Tentar corrigir geometria inválida com buffer(0)
         try {
           // Verificar se é válido tentando calcular área
-          turf.area(cleaned);
+          const area = turf.area(cleaned);
+          if (area <= 0 || !isFinite(area)) {
+            throw new Error('Área inválida');
+          }
         } catch (areaErr) {
           // Se calcular área falhar, tentar corrigir com buffer(0)
           try {
             cleaned = turf.buffer(cleaned, 0, { units: 'kilometers' });
+            // Simplificar novamente após buffer
+            cleaned = turf.simplify(cleaned, { tolerance: 0.0001, highQuality: true });
           } catch (bufferErr) {
-            // Se buffer falhar, simplificar agressivamente
+            // Se buffer falhar, simplificar ainda mais agressivamente
             cleaned = turf.simplify(cleaned, { tolerance: 0.001, highQuality: true });
           }
         }
         
-        // 3. Simplificar levemente para reduzir problemas de precisão
-        cleaned = turf.simplify(cleaned, { tolerance: 0.00001, highQuality: true });
+        // 4. Limpar coordenadas novamente após simplificação
+        cleaned = turf.cleanCoords(cleaned);
+        
+        // 5. Verificação final: tentar calcular área novamente
+        try {
+          const finalArea = turf.area(cleaned);
+          if (finalArea <= 0 || !isFinite(finalArea)) {
+            return null; // Geometria ainda inválida
+          }
+        } catch (finalErr) {
+          return null; // Não conseguiu corrigir
+        }
         
         return cleaned;
       } catch (err) {
@@ -1248,8 +1267,19 @@ app.post('/api/coverage/calculate', async (req, res) => {
               // Turf.js buffer usa unidades em quilômetros, então 250m = 0.25km
               let buffer = turf.buffer(point, bufferRadiusMeters / 1000, { units: 'kilometers' });
               
-              // Validar e corrigir buffer antes de adicionar
+              // Simplificar buffer IMEDIATAMENTE após criação para reduzir problemas de precisão
+              // Isso é crítico para evitar erros de topologia em uniões posteriores
               if (buffer && buffer.geometry) {
+                try {
+                  // Simplificar com tolerância maior para remover pontos muito próximos
+                  buffer = turf.simplify(buffer, { tolerance: 0.0001, highQuality: true });
+                  // Limpar coordenadas duplicadas
+                  buffer = turf.cleanCoords(buffer);
+                } catch (simplifyErr) {
+                  // Se simplificar falhar, tentar validar mesmo assim
+                }
+                
+                // Validar e corrigir buffer antes de adicionar
                 const validatedBuffer = validateAndFixGeometry(buffer);
                 if (validatedBuffer) {
                   buffers.push(validatedBuffer);
@@ -1304,7 +1334,16 @@ app.post('/api/coverage/calculate', async (req, res) => {
                     continue;
                   }
                   
-                  groupUnion = turf.union(validatedGroup, validatedBuffer);
+                  // Simplificar AGressivamente antes de unir para evitar erros de precisão
+                  // Isso remove pontos muito próximos que causam "Unable to complete output ring"
+                  const simplifiedGroup = turf.simplify(validatedGroup, { tolerance: 0.0001, highQuality: true });
+                  const simplifiedBuffer = turf.simplify(validatedBuffer, { tolerance: 0.0001, highQuality: true });
+                  
+                  // Limpar coordenadas antes de unir
+                  const cleanedGroup = turf.cleanCoords(simplifiedGroup);
+                  const cleanedBuffer = turf.cleanCoords(simplifiedBuffer);
+                  
+                  groupUnion = turf.union(cleanedGroup, cleanedBuffer);
                   
                   // Validar resultado da união
                   groupUnion = validateAndFixGeometry(groupUnion);
@@ -1313,7 +1352,11 @@ app.post('/api/coverage/calculate', async (req, res) => {
                     // Manter groupUnion anterior
                   }
                 } catch (unionErr) {
-                  console.warn(`⚠️ [API] Erro ao unir buffer ${j} no grupo ${Math.floor(i/groupSize) + 1} do lote ${batchNumber}:`, unionErr.message);
+                  // Erro de topologia - pular este buffer e continuar
+                  // Não logar todos os erros para não poluir o log (já temos aviso suficiente)
+                  if (j % 10 === 0) {
+                    console.warn(`⚠️ [API] Erro ao unir buffer ${j} no grupo ${Math.floor(i/groupSize) + 1} do lote ${batchNumber} (pulando geometria problemática)`);
+                  }
                   // Pular este buffer e continuar
                 }
               }
