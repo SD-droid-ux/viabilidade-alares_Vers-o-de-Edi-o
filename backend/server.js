@@ -7,6 +7,7 @@ import fsPromises from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
+import * as turf from '@turf/turf';
 import supabase, { testSupabaseConnection, checkTables, isSupabaseAvailable } from './supabase.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1137,145 +1138,205 @@ app.post('/api/coverage/calculate', async (req, res) => {
       calculation_id: calculationId
     });
     
-    // Processar em background usando abordagem incremental
+    // Processar em background - CÁLCULOS NO BACKEND (sem usar Supabase RPC)
     (async () => {
+      const startTime = Date.now();
+      let accumulatedPolygon = null; // Polígono acumulado (GeoJSON Feature)
+      let processedCTOs = 0;
+      const batchSize = 10000; // Lotes grandes agora que processamos no backend
+      const bufferRadiusMeters = 250; // Raio do buffer em metros
+      const simplificationTolerance = 0.0001; // Tolerância de simplificação
+      
       try {
         console.log(`🔄 [API] Processando polígonos em background (ID: ${calculationId})...`);
-        console.log(`🗺️ [API] Usando abordagem INCREMENTAL (lotes pequenos)`);
+        console.log(`🗺️ [API] Cálculos sendo feitos no BACKEND (Node.js + Turf.js)`);
+        console.log(`📊 [API] Total de CTOs: ${totalCTOs || 0}`);
         
-        const batchSize = 10000; // Lotes grandes com simplificação agressiva e frequente
-        let isComplete = false;
+        let offset = 0;
         let batchNumber = 0;
-        const maxRetries = 2; // Máximo de tentativas por lote
         
-        // Loop: processar lotes até completar
-        while (!isComplete) {
+        // Loop: buscar e processar lotes até completar
+        while (offset < (totalCTOs || 0)) {
           batchNumber++;
-          let retryCount = 0;
-          let batchSuccess = false;
+          const batchStartTime = Date.now();
           
-          // Tentar processar lote com retry
-          while (!batchSuccess && retryCount <= maxRetries) {
+          // 1. Buscar lote de CTOs do Supabase (apenas dados, sem cálculos)
+          const { data: ctosBatch, error: fetchError } = await supabase
+            .from('ctos')
+            .select('id, latitude, longitude')
+            .not('latitude', 'is', null)
+            .not('longitude', 'is', null)
+            .gte('latitude', -90)
+            .lte('latitude', 90)
+            .gte('longitude', -180)
+            .lte('longitude', 180)
+            .range(offset, offset + batchSize - 1);
+          
+          if (fetchError) {
+            console.error(`❌ [API] Erro ao buscar CTOs (lote ${batchNumber}):`, fetchError);
+            uploadProgress.stage = 'error';
+            uploadProgress.message = `Erro ao buscar CTOs: ${fetchError.message}`;
+            throw fetchError;
+          }
+          
+          if (!ctosBatch || ctosBatch.length === 0) {
+            console.log(`✅ [API] Não há mais CTOs para processar`);
+            break;
+          }
+          
+          // 2. Criar buffers para cada CTO usando Turf.js
+          const buffers = [];
+          for (const cto of ctosBatch) {
             try {
-              const { data: batchResult, error: batchError } = await supabase.rpc('process_coverage_batch', {
-                p_calculation_id: calculationId,
-                p_batch_size: batchSize
-              });
+              // Criar ponto GeoJSON
+              const point = turf.point([cto.longitude, cto.latitude]);
               
-              if (batchError) {
-                // Se for timeout, tentar novamente
-                if (batchError.code === '57014' || (batchError.message && batchError.message.includes('timeout'))) {
-                  retryCount++;
-                  if (retryCount <= maxRetries) {
-                    console.warn(`⚠️ [API] Timeout no lote ${batchNumber}, tentando novamente (tentativa ${retryCount}/${maxRetries})...`);
-                    await new Promise(resolve => setTimeout(resolve, 2000)); // Aguardar 2s antes de retry
-                    continue;
-                  } else {
-                    console.error(`❌ [API] Timeout no lote ${batchNumber} após ${maxRetries} tentativas`);
-                    uploadProgress.stage = 'error';
-                    uploadProgress.message = `Timeout no lote ${batchNumber} após ${maxRetries} tentativas`;
-                    throw batchError;
-                  }
-                } else {
-                  // Outro tipo de erro
-                  console.error(`❌ [API] Erro ao processar lote ${batchNumber}:`, batchError);
-                  uploadProgress.stage = 'error';
-                  uploadProgress.message = `Erro ao processar lote: ${batchError.message}`;
-                  throw batchError;
-                }
+              // Criar buffer de 250 metros
+              // Turf.js buffer usa unidades em quilômetros, então 250m = 0.25km
+              const buffer = turf.buffer(point, bufferRadiusMeters / 1000, { units: 'kilometers' });
+              
+              if (buffer && buffer.geometry) {
+                buffers.push(buffer);
               }
-              
-              if (!batchResult || batchResult.length === 0) {
-                console.error(`❌ [API] Resposta vazia do lote ${batchNumber}`);
-                uploadProgress.stage = 'error';
-                uploadProgress.message = 'Resposta vazia do processamento';
-                throw new Error('Resposta vazia do processamento');
-              }
-              
-              const result = batchResult[0];
-              
-              if (!result.success) {
-                console.error(`❌ [API] Erro no lote ${batchNumber}:`, result.message);
-                uploadProgress.stage = 'error';
-                uploadProgress.message = result.message || 'Erro ao processar lote';
-                throw new Error(result.message || 'Erro ao processar lote');
-              }
-              
-              // Sucesso! Marcar como processado
-              batchSuccess = true;
-              
-              // Atualizar progresso
-              uploadProgress.processedCTOs = result.processed_ctos || 0;
-              uploadProgress.totalCTOs = result.total_ctos || totalCTOs || 0;
-              uploadProgress.calculationPercent = Math.round(result.progress_percent || 0);
-              uploadProgress.message = result.message || `Calculando área de cobertura... ${Math.round(result.progress_percent || 0)}%`;
-              
-              isComplete = result.is_complete || false;
-              
-              // Log a cada 2 lotes ou quando completo (com 10k CTOs por lote, são poucos lotes)
-              if (batchNumber % 2 === 0 || isComplete) {
-                console.log(`📦 [API] Lote ${batchNumber}: ${result.processed_ctos}/${result.total_ctos} CTOs (${Math.round(result.progress_percent || 0)}%)`);
-              }
-              
-            } catch (batchErr) {
-              // Se não é timeout ou já tentou todas as vezes, lançar erro
-              if (retryCount >= maxRetries || (batchErr.code !== '57014' && !batchErr.message?.includes('timeout'))) {
-                console.error(`❌ [API] Erro no lote ${batchNumber}:`, batchErr);
-                uploadProgress.stage = 'error';
-                uploadProgress.message = `Erro: ${batchErr.message}`;
-                throw batchErr;
-              }
-              // Se for timeout e ainda tem tentativas, continuar loop de retry
-              retryCount++;
-              if (retryCount <= maxRetries) {
-                console.warn(`⚠️ [API] Erro no lote ${batchNumber}, tentando novamente (tentativa ${retryCount}/${maxRetries})...`);
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                continue;
+            } catch (bufferErr) {
+              console.warn(`⚠️ [API] Erro ao criar buffer para CTO ${cto.id}:`, bufferErr.message);
+              // Continuar com outras CTOs
+            }
+          }
+          
+          if (buffers.length === 0) {
+            console.warn(`⚠️ [API] Nenhum buffer válido criado no lote ${batchNumber}`);
+            offset += batchSize;
+            processedCTOs += ctosBatch.length;
+            continue;
+          }
+          
+          // 3. Unir todos os buffers do lote em um único polígono
+          let batchUnion = buffers[0];
+          for (let i = 1; i < buffers.length; i++) {
+            try {
+              batchUnion = turf.union(batchUnion, buffers[i]);
+            } catch (unionErr) {
+              console.warn(`⚠️ [API] Erro ao unir buffers no lote ${batchNumber}:`, unionErr.message);
+              // Tentar continuar com o próximo
+            }
+          }
+          
+          // 4. Unir com polígono acumulado
+          if (accumulatedPolygon === null) {
+            accumulatedPolygon = batchUnion;
+          } else {
+            try {
+              accumulatedPolygon = turf.union(accumulatedPolygon, batchUnion);
+            } catch (unionErr) {
+              console.error(`❌ [API] Erro ao unir com polígono acumulado (lote ${batchNumber}):`, unionErr.message);
+              // Tentar simplificar antes de unir
+              try {
+                const simplifiedAccumulated = turf.simplify(accumulatedPolygon, { tolerance: simplificationTolerance, highQuality: true });
+                const simplifiedBatch = turf.simplify(batchUnion, { tolerance: simplificationTolerance, highQuality: true });
+                accumulatedPolygon = turf.union(simplifiedAccumulated, simplifiedBatch);
+              } catch (retryErr) {
+                console.error(`❌ [API] Erro mesmo após simplificação:`, retryErr.message);
+                throw retryErr;
               }
             }
           }
           
-          // Pequeno delay entre lotes para não sobrecarregar
-          if (!isComplete) {
-            await new Promise(resolve => setTimeout(resolve, 500));
+          // 5. Simplificar polígono acumulado periodicamente para reduzir complexidade
+          if (batchNumber % 5 === 0 && accumulatedPolygon) {
+            try {
+              accumulatedPolygon = turf.simplify(accumulatedPolygon, { tolerance: simplificationTolerance, highQuality: true });
+            } catch (simplifyErr) {
+              console.warn(`⚠️ [API] Erro ao simplificar (não crítico):`, simplifyErr.message);
+            }
           }
+          
+          processedCTOs += ctosBatch.length;
+          offset += batchSize;
+          
+          // Atualizar progresso
+          const progressPercent = Math.round((processedCTOs / (totalCTOs || 1)) * 100);
+          uploadProgress.processedCTOs = processedCTOs;
+          uploadProgress.totalCTOs = totalCTOs || 0;
+          uploadProgress.calculationPercent = progressPercent;
+          uploadProgress.message = `Calculando área de cobertura... ${progressPercent}% (${processedCTOs}/${totalCTOs || 0} CTOs)`;
+          
+          const batchTime = ((Date.now() - batchStartTime) / 1000).toFixed(2);
+          
+          // Log a cada 5 lotes ou quando próximo do fim
+          if (batchNumber % 5 === 0 || progressPercent >= 95) {
+            console.log(`📦 [API] Lote ${batchNumber}: ${processedCTOs}/${totalCTOs || 0} CTOs (${progressPercent}%) - ${batchTime}s`);
+          }
+          
+          // Pequeno delay para não sobrecarregar
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
         console.log(`✅ [API] Todos os lotes processados: ${batchNumber} lotes`);
         console.log(`🎉 [API] Finalizando cálculo...`);
         
-        // Finalizar: salvar polígono final
-        const { data: finalData, error: finalError } = await supabase.rpc('finalize_coverage_calculation', {
-          p_calculation_id: calculationId,
-          p_simplification_tolerance: 0.0001
+        // 6. Simplificar polígono final
+        if (accumulatedPolygon) {
+          try {
+            accumulatedPolygon = turf.simplify(accumulatedPolygon, { tolerance: simplificationTolerance, highQuality: true });
+          } catch (simplifyErr) {
+            console.warn(`⚠️ [API] Erro ao simplificar polígono final (não crítico):`, simplifyErr.message);
+          }
+        }
+        
+        // 7. Converter GeoJSON para formato PostGIS e salvar no Supabase
+        if (!accumulatedPolygon || !accumulatedPolygon.geometry) {
+          throw new Error('Nenhum polígono foi gerado');
+        }
+        
+        // Converter GeoJSON para GeoJSON string (PostGIS aceita GeoJSON)
+        const geoJsonString = JSON.stringify(accumulatedPolygon.geometry);
+        
+        // Calcular área em km²
+        const areaKm2 = turf.area(accumulatedPolygon) / 1000000; // Converter m² para km²
+        
+        // Obter próxima versão
+        const { data: maxVersionData } = await supabase
+          .from('coverage_polygons')
+          .select('version')
+          .order('version', { ascending: false })
+          .limit(1);
+        
+        const nextVersion = (maxVersionData && maxVersionData[0]?.version) ? maxVersionData[0].version + 1 : 1;
+        
+        // Desativar versões antigas
+        await supabase
+          .from('coverage_polygons')
+          .update({ is_active: false })
+          .eq('is_active', true);
+        
+        // Salvar polígono final no Supabase usando função RPC que converte GeoJSON para PostGIS
+        const { data: insertData, error: insertError } = await supabase.rpc('save_coverage_polygon_from_geojson', {
+          p_geometry_geojson: geoJsonString,
+          p_total_ctos: processedCTOs,
+          p_area_km2: areaKm2,
+          p_simplification_tolerance: simplificationTolerance,
+          p_version: nextVersion
         });
         
-        if (finalError) {
-          console.error('❌ [API] Erro ao finalizar cálculo:', finalError);
-          uploadProgress.stage = 'error';
-          uploadProgress.message = 'Erro ao finalizar cálculo';
-          throw finalError;
+        if (insertError) {
+          console.error('❌ [API] Erro ao salvar polígono:', insertError);
+          throw insertError;
         }
         
-        if (finalData && finalData.length > 0 && finalData[0].success) {
-          const finalResult = finalData[0];
-          uploadProgress.stage = 'completed';
-          uploadProgress.calculationPercent = 100;
-          uploadProgress.message = 'Área de cobertura criada com sucesso!';
-          console.log(`✅ [API] ===== POLÍGONOS CALCULADOS COM SUCESSO (INCREMENTAL)! =====`);
-          console.log(`   - Polygon ID: ${finalResult.polygon_id}`);
-          console.log(`   - Total CTOs: ${finalResult.total_ctos}`);
-          console.log(`   - Área: ${finalResult.area_km2?.toFixed(2)} km²`);
-          console.log(`   - Versão: ${finalResult.version || 'N/A'}`);
-          console.log(`   - Tempo: ${finalResult.processing_time_seconds?.toFixed(2)}s`);
-          console.log(`   - Lotes processados: ${batchNumber}`);
-          console.log(`✅ [API] ==========================================`);
-        } else {
-          console.error('❌ [API] Erro ao finalizar - resposta inválida:', finalData);
-          uploadProgress.stage = 'error';
-          uploadProgress.message = 'Erro ao finalizar - resposta inválida';
-          throw new Error('Resposta inválida ao finalizar');
-        }
+        const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
+        uploadProgress.stage = 'completed';
+        uploadProgress.calculationPercent = 100;
+        uploadProgress.message = 'Área de cobertura criada com sucesso!';
+        
+        console.log(`✅ [API] ===== POLÍGONOS CALCULADOS COM SUCESSO (BACKEND)! =====`);
+        console.log(`   - Polygon ID: ${insertData?.[0]?.polygon_id || 'N/A'}`);
+        console.log(`   - Total CTOs: ${processedCTOs}`);
+        console.log(`   - Área: ${areaKm2.toFixed(2)} km²`);
+        console.log(`   - Versão: ${nextVersion}`);
+        console.log(`   - Tempo: ${processingTime}s`);
+        console.log(`   - Lotes processados: ${batchNumber}`);
+        console.log(`✅ [API] ==========================================`);
       } catch (err) {
         console.error('❌ [API] Erro no processamento em background:', err);
         uploadProgress.stage = 'error';
