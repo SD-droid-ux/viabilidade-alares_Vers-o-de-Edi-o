@@ -1193,9 +1193,15 @@ app.post('/api/coverage/calculate', async (req, res) => {
               
               // Criar buffer de 250 metros
               // Turf.js buffer usa unidades em quilômetros, então 250m = 0.25km
-              const buffer = turf.buffer(point, bufferRadiusMeters / 1000, { units: 'kilometers' });
+              let buffer = turf.buffer(point, bufferRadiusMeters / 1000, { units: 'kilometers' });
               
+              // Simplificar buffer imediatamente para reduzir problemas de precisão
               if (buffer && buffer.geometry) {
+                try {
+                  buffer = turf.simplify(buffer, { tolerance: 0.00001, highQuality: true });
+                } catch (simplifyErr) {
+                  // Se simplificar falhar, usar buffer original
+                }
                 buffers.push(buffer);
               }
             } catch (bufferErr) {
@@ -1212,13 +1218,75 @@ app.post('/api/coverage/calculate', async (req, res) => {
           }
           
           // 3. Unir todos os buffers do lote em um único polígono
+          // Estratégia: unir em grupos menores para evitar erros de precisão
           let batchUnion = buffers[0];
-          for (let i = 1; i < buffers.length; i++) {
-            try {
-              batchUnion = turf.union(batchUnion, buffers[i]);
-            } catch (unionErr) {
-              console.warn(`⚠️ [API] Erro ao unir buffers no lote ${batchNumber}:`, unionErr.message);
-              // Tentar continuar com o próximo
+          
+          // Se houver muitos buffers, unir em grupos menores
+          if (buffers.length > 100) {
+            // Dividir em grupos de 100 buffers
+            const groupSize = 100;
+            const groups = [];
+            
+            for (let i = 0; i < buffers.length; i += groupSize) {
+              const group = buffers.slice(i, Math.min(i + groupSize, buffers.length));
+              
+              // Unir grupo
+              let groupUnion = group[0];
+              for (let j = 1; j < group.length; j++) {
+                try {
+                  // Simplificar antes de unir para reduzir problemas de precisão
+                  const simplifiedGroup = turf.simplify(groupUnion, { tolerance: 0.00001, highQuality: true });
+                  const simplifiedBuffer = turf.simplify(group[j], { tolerance: 0.00001, highQuality: true });
+                  groupUnion = turf.union(simplifiedGroup, simplifiedBuffer);
+                } catch (unionErr) {
+                  // Se falhar, tentar sem simplificação
+                  try {
+                    groupUnion = turf.union(groupUnion, group[j]);
+                  } catch (retryErr) {
+                    console.warn(`⚠️ [API] Erro ao unir buffer ${j} no grupo ${Math.floor(i/groupSize) + 1} do lote ${batchNumber}:`, retryErr.message);
+                    // Pular este buffer e continuar
+                  }
+                }
+              }
+              
+              groups.push(groupUnion);
+            }
+            
+            // Unir todos os grupos
+            batchUnion = groups[0];
+            for (let i = 1; i < groups.length; i++) {
+              try {
+                // Simplificar antes de unir grupos
+                const simplifiedBatch = turf.simplify(batchUnion, { tolerance: 0.00001, highQuality: true });
+                const simplifiedGroup = turf.simplify(groups[i], { tolerance: 0.00001, highQuality: true });
+                batchUnion = turf.union(simplifiedBatch, simplifiedGroup);
+              } catch (unionErr) {
+                // Se falhar, tentar sem simplificação
+                try {
+                  batchUnion = turf.union(batchUnion, groups[i]);
+                } catch (retryErr) {
+                  console.error(`❌ [API] Erro ao unir grupos no lote ${batchNumber}:`, retryErr.message);
+                  throw retryErr;
+                }
+              }
+            }
+          } else {
+            // Para poucos buffers, unir normalmente mas com simplificação
+            for (let i = 1; i < buffers.length; i++) {
+              try {
+                // Simplificar antes de unir para reduzir problemas de precisão
+                const simplifiedBatch = turf.simplify(batchUnion, { tolerance: 0.00001, highQuality: true });
+                const simplifiedBuffer = turf.simplify(buffers[i], { tolerance: 0.00001, highQuality: true });
+                batchUnion = turf.union(simplifiedBatch, simplifiedBuffer);
+              } catch (unionErr) {
+                // Se falhar, tentar sem simplificação
+                try {
+                  batchUnion = turf.union(batchUnion, buffers[i]);
+                } catch (retryErr) {
+                  console.warn(`⚠️ [API] Erro ao unir buffer ${i} no lote ${batchNumber}:`, retryErr.message);
+                  // Pular este buffer e continuar
+                }
+              }
             }
           }
           
