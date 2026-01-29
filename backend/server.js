@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import * as turf from '@turf/turf';
+import { union as martinezUnion } from 'martinez-polygon-clipping';
 import supabase, { testSupabaseConnection, checkTables, isSupabaseAvailable } from './supabase.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1150,6 +1151,65 @@ app.post('/api/coverage/calculate', async (req, res) => {
       calculation_id: calculationId
     });
     
+    // Função auxiliar para converter GeoJSON para formato Martinez (array de coordenadas)
+    const geojsonToMartinez = (geojson) => {
+      if (!geojson || !geojson.geometry) return null;
+      
+      const coords = geojson.geometry.coordinates;
+      if (!coords || coords.length === 0) return null;
+      
+      // Martinez espera: [[x, y], [x, y], ...] para cada ring
+      // GeoJSON Polygon tem: [[[x, y], ...], ...] (array de rings)
+      // Pegar apenas o ring externo (primeiro array)
+      return coords[0] || null;
+    };
+    
+    // Função auxiliar para converter resultado Martinez de volta para GeoJSON
+    const martinezToGeojson = (martinezResult) => {
+      if (!martinezResult || martinezResult.length === 0) return null;
+      
+      // Martinez retorna array de polígonos: [[[x, y], ...], ...]
+      // Se tiver múltiplos polígonos, criar MultiPolygon
+      // Se tiver apenas um, criar Polygon
+      
+      if (martinezResult.length === 1) {
+        // Polygon único
+        return turf.polygon([martinezResult[0]]);
+      } else {
+        // MultiPolygon
+        return turf.multiPolygon(martinezResult.map(poly => [poly]));
+      }
+    };
+    
+    // Função auxiliar para fazer union usando Martinez (mais robusto que Turf.js)
+    const robustUnion = (poly1, poly2) => {
+      try {
+        // Converter para formato Martinez
+        const martinez1 = geojsonToMartinez(poly1);
+        const martinez2 = geojsonToMartinez(poly2);
+        
+        if (!martinez1 || !martinez2) {
+          throw new Error('Geometria inválida para conversão');
+        }
+        
+        // Fazer union com Martinez
+        const result = martinezUnion([martinez1], [martinez2]);
+        
+        // Converter de volta para GeoJSON
+        const geojson = martinezToGeojson(result);
+        
+        if (!geojson) {
+          throw new Error('Falha ao converter resultado Martinez');
+        }
+        
+        return geojson;
+      } catch (err) {
+        // Se Martinez falhar, tentar com Turf.js como fallback
+        console.warn(`⚠️ [API] Martinez union falhou, usando Turf.js como fallback:`, err.message);
+        return turf.union(poly1, poly2);
+      }
+    };
+    
     // Função auxiliar para validar e corrigir geometria
     const validateAndFixGeometry = (geometry) => {
       if (!geometry || !geometry.geometry) {
@@ -1208,7 +1268,9 @@ app.post('/api/coverage/calculate', async (req, res) => {
       const startTime = Date.now();
       let accumulatedPolygon = null; // Polígono acumulado (GeoJSON Feature)
       let processedCTOs = 0;
-      const batchSize = 1000; // Lotes de 1000 (limite seguro do Supabase para paginação)
+      // Lotes de 5000: Supabase permite até 10.000, mas 5.000 é mais seguro
+      // Como estamos apenas buscando dados (não calculando no Supabase), podemos usar lotes maiores
+      const batchSize = 5000; // Lotes de 5000 para melhor performance
       const bufferRadiusMeters = 250; // Raio do buffer em metros
       const simplificationTolerance = 0.0001; // Tolerância de simplificação
       
@@ -1343,7 +1405,8 @@ app.post('/api/coverage/calculate', async (req, res) => {
                   const cleanedGroup = turf.cleanCoords(simplifiedGroup);
                   const cleanedBuffer = turf.cleanCoords(simplifiedBuffer);
                   
-                  groupUnion = turf.union(cleanedGroup, cleanedBuffer);
+                  // Usar Martinez para union (mais robusto que Turf.js)
+                  groupUnion = robustUnion(cleanedGroup, cleanedBuffer);
                   
                   // Validar resultado da união
                   groupUnion = validateAndFixGeometry(groupUnion);
@@ -1392,7 +1455,8 @@ app.post('/api/coverage/calculate', async (req, res) => {
                   continue;
                 }
                 
-                batchUnion = turf.union(validatedBatch, validatedGroup);
+                // Usar Martinez para union (mais robusto que Turf.js)
+                batchUnion = robustUnion(validatedBatch, validatedGroup);
                 
                 // Validar resultado
                 batchUnion = validateAndFixGeometry(batchUnion);
@@ -1430,7 +1494,8 @@ app.post('/api/coverage/calculate', async (req, res) => {
                   continue;
                 }
                 
-                batchUnion = turf.union(validatedBatch, validatedBuffer);
+                // Usar Martinez para union (mais robusto que Turf.js)
+                batchUnion = robustUnion(validatedBatch, validatedBuffer);
                 
                 // Validar resultado
                 batchUnion = validateAndFixGeometry(batchUnion);
@@ -1467,7 +1532,8 @@ app.post('/api/coverage/calculate', async (req, res) => {
                 continue;
               }
               
-              accumulatedPolygon = turf.union(validatedAccumulated, validatedBatch);
+              // Usar Martinez para union (mais robusto que Turf.js)
+              accumulatedPolygon = robustUnion(validatedAccumulated, validatedBatch);
               
               // Validar resultado
               accumulatedPolygon = validateAndFixGeometry(accumulatedPolygon);
