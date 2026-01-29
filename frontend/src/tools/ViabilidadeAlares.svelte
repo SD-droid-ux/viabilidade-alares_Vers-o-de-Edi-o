@@ -22,6 +22,8 @@
   let addressInput = '';
   let coordinatesInput = '';
   let loading = false;
+  let loadingDots = '.'; // Pontos animados para "Localizando..."
+  let loadingDotsInterval = null; // Intervalo para animação dos pontos
   let error = null;
   let showPopupInstructions = false; // Controla exibição de instruções de pop-up
   let markers = [];
@@ -1482,6 +1484,11 @@
     document.removeEventListener('keydown', handleCopyKeydown);
     // Remover handler de cliques fora da tabela
     document.removeEventListener('click', handleDocumentClick);
+    // Limpar intervalo de animação dos pontos
+    if (loadingDotsInterval) {
+      clearInterval(loadingDotsInterval);
+      loadingDotsInterval = null;
+    }
     cleanup();
   });
 
@@ -2131,6 +2138,29 @@
     }
   }
 
+  // Animação dos pontos em "Localizando..."
+  $: if (loading) {
+    // Iniciar animação dos pontos
+    if (loadingDotsInterval) {
+      clearInterval(loadingDotsInterval);
+    }
+    loadingDotsInterval = setInterval(() => {
+      if (loadingDots === '.') {
+        loadingDots = '..';
+      } else if (loadingDots === '..') {
+        loadingDots = '...';
+      } else {
+        loadingDots = '.';
+      }
+    }, 500); // Muda a cada 500ms
+  } else {
+    // Parar animação quando não está carregando
+    if (loadingDotsInterval) {
+      clearInterval(loadingDotsInterval);
+      loadingDotsInterval = null;
+      loadingDots = '.'; // Resetar para o estado inicial
+    }
+  }
 
   function clearMap() {
     // Fechar InfoWindow do cliente se estiver aberto
@@ -6093,7 +6123,11 @@
             on:click={searchClientLocation}
             disabled={loading || !googleMapsLoaded}
           >
-            {loading ? 'Localizando...' : 'Localizar no Mapa'}
+            {#if loading}
+              <span class="hourglass-icon">⏳</span> Localizando{loadingDots}
+            {:else}
+              Localizar no Mapa
+            {/if}
           </button>
 
           {#if clientCoords}
@@ -7801,6 +7835,29 @@
   .search-button:disabled {
     background: #ccc;
     cursor: not-allowed;
+  }
+
+  .hourglass-icon {
+    display: inline-block;
+    animation: hourglass-rotate 1.5s linear infinite;
+  }
+
+  @keyframes hourglass-rotate {
+    0% {
+      transform: rotate(0deg);
+    }
+    25% {
+      transform: rotate(90deg);
+    }
+    50% {
+      transform: rotate(180deg);
+    }
+    75% {
+      transform: rotate(270deg);
+    }
+    100% {
+      transform: rotate(360deg);
+    }
   }
 
   /* Popup de informações da rota */
