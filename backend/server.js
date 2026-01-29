@@ -1143,7 +1143,7 @@ app.post('/api/coverage/calculate', async (req, res) => {
         console.log(`🔄 [API] Processando polígonos em background (ID: ${calculationId})...`);
         console.log(`🗺️ [API] Usando abordagem INCREMENTAL (lotes pequenos)`);
         
-        const batchSize = 2500; // Lotes pequenos para evitar timeout
+        const batchSize = 5000; // Lotes pequenos para evitar timeout
         let isComplete = false;
         let batchNumber = 0;
         
