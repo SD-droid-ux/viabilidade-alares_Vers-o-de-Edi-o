@@ -18,10 +18,7 @@
   let loadingCTOs = false;
   let baseDataExists = true;
   
-  // Estados de cálculo de cobertura
-  let isCalculatingCoverage = false;
-  let calculationStatus = null; // null, 'calculating', 'completed', 'error'
-  let calculationMessage = '';
+  // Estados de cálculo de cobertura (removido - cálculo agora é feito apenas em Config.svelte)
   
   // Google Maps
   let map;
@@ -177,135 +174,7 @@
     }
   }
 
-  // Iniciar cálculo de polígonos de cobertura
-  async function startCoverageCalculation() {
-    if (isCalculatingCoverage) {
-      console.warn('⚠️ Cálculo já está em andamento');
-      return;
-    }
-
-    try {
-      isCalculatingCoverage = true;
-      calculationStatus = 'calculating';
-      calculationMessage = 'Iniciando cálculo de polígonos de cobertura...';
-      console.log('🔄 Iniciando cálculo de polígonos de cobertura...');
-
-      const response = await fetch(getApiUrl('/api/coverage/calculate'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Erro ao iniciar cálculo: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao iniciar cálculo');
-      }
-
-      const calculationId = data.calculation_id || null;
-      calculationMessage = 'Cálculo iniciado em background. Aguardando conclusão...';
-      console.log('✅ Cálculo iniciado:', data.message, calculationId ? `(ID: ${calculationId})` : '');
-
-      // Verificar status periodicamente
-      await checkCalculationStatus(calculationId);
-
-    } catch (err) {
-      console.error('❌ Erro ao iniciar cálculo:', err);
-      calculationStatus = 'error';
-      calculationMessage = `Erro: ${err.message}`;
-      isCalculatingCoverage = false;
-    }
-  }
-
-  // Verificar status do cálculo periodicamente
-  async function checkCalculationStatus(calculationId = null) {
-    const maxAttempts = 600; // Máximo 50 minutos (600 * 5s) - cálculo incremental pode demorar mais
-    let attempts = 0;
-
-    const checkStatus = async () => {
-      try {
-        // Adicionar calculation_id se disponível
-        const url = calculationId 
-          ? `/api/coverage/calculate-status?calculation_id=${calculationId}`
-          : '/api/coverage/calculate-status';
-        
-        const response = await fetch(getApiUrl(url));
-        
-        if (!response.ok) {
-          throw new Error(`Erro ao verificar status: ${response.status}`);
-        }
-
-        const data = await response.json();
-
-        if (data.success && data.status === 'completed') {
-          // Cálculo concluído!
-          calculationStatus = 'completed';
-          calculationMessage = `✅ Cálculo concluído! ${data.total_ctos?.toLocaleString('pt-BR') || 0} CTOs, ${data.area_km2?.toFixed(2) || 0} km²`;
-          isCalculatingCoverage = false;
-          
-          console.log('✅ Cálculo concluído:', data);
-          
-          // Recarregar polígonos
-          await loadCoveragePolygon();
-          
-          // Redesenhar se o mapa estiver inicializado
-          if (map && coveragePolygonGeoJSON) {
-            await drawCoverageArea();
-          }
-          
-          return;
-        }
-
-        // Se está processando, mostrar progresso
-        if (data.status === 'processing') {
-          if (data.progress_percent !== undefined) {
-            calculationMessage = `Processando... ${data.processed_ctos?.toLocaleString('pt-BR') || 0}/${data.total_ctos?.toLocaleString('pt-BR') || 0} CTOs (${data.progress_percent?.toFixed(1) || 0}%)`;
-          } else {
-            calculationMessage = `Processando... (verificação ${attempts}/${maxAttempts})`;
-          }
-        } else if (data.status === 'not_calculated') {
-          // Nenhum cálculo encontrado, parar verificação
-          calculationStatus = 'error';
-          calculationMessage = 'Nenhum cálculo encontrado. Clique em "Calcular Polígonos" para iniciar.';
-          isCalculatingCoverage = false;
-          return;
-        } else {
-          calculationMessage = `Processando... (verificação ${attempts}/${maxAttempts})`;
-        }
-
-        attempts++;
-        if (attempts >= maxAttempts) {
-          calculationStatus = 'error';
-          calculationMessage = '⏱️ Tempo limite excedido. O cálculo pode estar ainda em processamento.';
-          isCalculatingCoverage = false;
-          return;
-        }
-
-        // Continuar verificando
-        setTimeout(checkStatus, 5000); // Verificar a cada 5 segundos
-
-      } catch (err) {
-        console.error('❌ Erro ao verificar status:', err);
-        attempts++;
-        
-        if (attempts >= maxAttempts) {
-          calculationStatus = 'error';
-          calculationMessage = 'Erro ao verificar status do cálculo';
-          isCalculatingCoverage = false;
-        } else {
-          setTimeout(checkStatus, 5000);
-        }
-      }
-    };
-
-    // Iniciar verificação
-    checkStatus();
-  }
+  // Funções de cálculo removidas - cálculo agora é feito apenas em Config.svelte
 
   // Função antiga removida - não é mais usada (substituída por loadCoveragePolygon)
   // Mantida apenas como placeholder para evitar erros de referência
@@ -1174,95 +1043,7 @@
       if (polygonLoaded) {
         console.log(`✅ Polígono de cobertura carregado`);
       } else {
-        console.warn('⚠️ Nenhum polígono de cobertura encontrado. Iniciando cálculo automático...');
-        
-        // Tentar calcular polígonos automaticamente durante o loading
-        loadingMessage = 'Calculando Polígonos de Cobertura (pode levar alguns minutos)...';
-        
-        try {
-          // Atualizar estado para mostrar que está calculando
-          isCalculatingCoverage = true;
-          calculationStatus = 'calculating';
-          calculationMessage = 'Cálculo iniciado automaticamente...';
-          
-          // Iniciar cálculo sem bloquear o loading completo
-          const calcResponse = await fetch(getApiUrl('/api/coverage/calculate'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            }
-          });
-          
-          if (calcResponse.ok) {
-            const calcData = await calcResponse.json();
-            if (calcData.success) {
-              const calculationId = calcData.calculation_id || null;
-              console.log('✅ Cálculo iniciado automaticamente durante loading', calculationId ? `(ID: ${calculationId})` : '');
-              calculationMessage = 'Cálculo iniciado em background. Aguardando conclusão...';
-              
-              // Aguardar um pouco e verificar se já concluiu (pode ser rápido se já estava calculando)
-              loadingMessage = 'Aguardando conclusão do cálculo...';
-              
-              // Verificar status algumas vezes rapidamente (não bloquear muito o loading)
-              let quickChecks = 0;
-              const maxQuickChecks = 6; // 6 tentativas rápidas (30 segundos)
-              
-              while (quickChecks < maxQuickChecks && !polygonLoaded) {
-                await new Promise(resolve => setTimeout(resolve, 5000)); // 5 segundos entre verificações
-                
-                // Usar calculation_id se disponível
-                const statusUrl = calculationId 
-                  ? `/api/coverage/calculate-status?calculation_id=${calculationId}`
-                  : '/api/coverage/calculate-status';
-                
-                const statusResponse = await fetch(getApiUrl(statusUrl));
-                if (statusResponse.ok) {
-                  const statusData = await statusResponse.json();
-                  if (statusData.success && statusData.status === 'completed') {
-                    // Cálculo concluído! Tentar carregar polígonos
-                    polygonLoaded = await loadCoveragePolygon();
-                    if (polygonLoaded) {
-                      console.log('✅ Polígono carregado após cálculo automático');
-                      calculationStatus = 'completed';
-                      calculationMessage = `✅ Cálculo concluído! ${statusData.total_ctos?.toLocaleString('pt-BR') || 0} CTOs, ${statusData.area_km2?.toFixed(2) || 0} km²`;
-                      isCalculatingCoverage = false;
-                      break;
-                    }
-                  } else if (statusData.status === 'processing' && statusData.progress_percent !== undefined) {
-                    // Mostrar progresso em tempo real
-                    calculationMessage = `Processando... ${statusData.processed_ctos?.toLocaleString('pt-BR') || 0}/${statusData.total_ctos?.toLocaleString('pt-BR') || 0} CTOs (${statusData.progress_percent?.toFixed(1) || 0}%)`;
-                  }
-                }
-                quickChecks++;
-                loadingMessage = `Aguardando conclusão do cálculo... (${quickChecks}/${maxQuickChecks})`;
-              }
-              
-              if (!polygonLoaded) {
-                // Cálculo ainda em andamento, continuar em background
-                console.log('⏳ Cálculo ainda em processamento. Continuará em background.');
-                // Iniciar verificação em background sem bloquear o loading
-                // Passar calculation_id para verificação contínua
-                checkCalculationStatus(calculationId);
-              }
-            } else {
-              // Erro ao iniciar cálculo
-              isCalculatingCoverage = false;
-              calculationStatus = 'error';
-              calculationMessage = calcData.error || 'Erro ao iniciar cálculo';
-            }
-          } else {
-            // Erro na requisição
-            isCalculatingCoverage = false;
-            calculationStatus = 'error';
-            calculationMessage = 'Erro ao iniciar cálculo';
-          }
-        } catch (calcErr) {
-          console.warn('⚠️ Erro ao iniciar cálculo automático:', calcErr);
-          isCalculatingCoverage = false;
-          calculationStatus = 'error';
-          calculationMessage = `Erro: ${calcErr.message}`;
-          // Continuar mesmo com erro - o usuário pode usar o botão manualmente
-        }
+        console.warn('⚠️ Nenhum polígono de cobertura encontrado. Use a aba Configurações para calcular a mancha de cobertura.');
       }
       
       // Pequeno delay para visualização
@@ -1830,24 +1611,10 @@
                     <div class="stats-subtitle">Calcule os polígonos para visualizar</div>
                   </div>
                 </div>
-                <div class="stats-detail" style="margin-top: 10px;">
-                  <button 
-                    class="calculate-button" 
-                    on:click={startCoverageCalculation}
-                    disabled={isCalculatingCoverage}
-                    style="width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;"
-                  >
-                    {#if isCalculatingCoverage}
-                      ⏳ Calculando...
-                    {:else}
-                      🗺️ Calcular Polígonos de Cobertura
-                    {/if}
-                  </button>
-                  {#if calculationMessage}
-                    <div style="margin-top: 10px; font-size: 0.9em; color: #666;">
-                      {calculationMessage}
-                    </div>
-                  {/if}
+                <div class="stats-detail" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                  <p style="margin: 0; font-size: 0.9em; color: #666;">
+                    Para visualizar a mancha de cobertura no mapa, vá até a aba <strong>Configurações</strong> e clique em <strong>"Criar Nova Mancha de Cobertura"</strong>.
+                  </p>
                 </div>
               </div>
             </div>
