@@ -6114,7 +6114,10 @@
           })}
           {@const cto = routeInfo ? routeInfo.cto : null}
           {@const ctoIndex = routeInfo ? routeInfo.ctoIndex : selectedRouteIndex}
-          {@const distancia = cto ? `${cto.distancia_metros}m (${cto.distancia_km}km)` : 'N/A'}
+          {@const ctoNumber = cto ? (ctoNumbers.get(cto) || 'N/A') : 'N/A'}
+          {@const distanciaMetros = cto ? (cto.distancia_real || cto.distancia_metros || 0) : 0}
+          {@const distanciaKm = distanciaMetros > 0 ? Math.round((distanciaMetros / 1000) * 100) / 100 : 0}
+          {@const distancia = cto && distanciaMetros > 0 ? `${Math.round(distanciaMetros * 100) / 100}m (${distanciaKm}km)` : 'N/A'}
           <div 
             class="route-popup"
             style="left: {routePopupPosition.x}px; top: {routePopupPosition.y}px;"
@@ -6128,7 +6131,7 @@
                 on:mousedown={startDraggingRoutePopup}
                 style="cursor: move;"
               >
-                <h3>Rota {ctoIndex + 1}</h3>
+                <h3>Rota ({ctoNumber})</h3>
                 <button class="route-popup-close" on:click={closeRoutePopup}>×</button>
               </div>
               <div class="route-popup-info">
