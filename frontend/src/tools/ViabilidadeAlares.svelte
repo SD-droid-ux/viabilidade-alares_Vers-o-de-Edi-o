@@ -6180,7 +6180,7 @@
 
           {#if clientCoords}
             <button 
-              class="search-button"
+              class="search-button generate-report-button"
               on:click={openReportModal}
             >
               Gerar Relatório
@@ -8016,7 +8016,12 @@
     cursor: pointer;
     transition: all 0.3s;
     box-shadow: 0 4px 6px rgba(123, 104, 238, 0.3);
-    margin-bottom: 0.20rem;
+    margin-bottom: 0.25rem;
+  }
+  
+  .generate-report-button {
+    margin-top: -0.5rem;
+    margin-bottom: 0.75rem;
   }
 
   .search-button:hover:not(:disabled) {
@@ -8284,6 +8289,10 @@
     border-radius: 8px;
     border-left: 4px solid #7B68EE;
     color: #5A4FCF;
+  }
+  
+  .results-info + .results-info {
+    margin-top: 0.25rem;
   }
 
   .results-info p {
