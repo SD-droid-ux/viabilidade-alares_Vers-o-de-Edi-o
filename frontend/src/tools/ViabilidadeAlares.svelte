@@ -2577,9 +2577,15 @@
               console.log(`📝 RouteData criado (fallback): ctoKey=${ctoKey}, ctoNome=${cto.nome}, routeIndex=${actualRouteIndex}`);
 
               // Clique na rota
+              // CRÍTICO: Usar closure para capturar a rota específica
               routePolyline.addListener('click', (event) => {
-                console.log(`🖱️ Clique na rota fallback ${actualRouteIndex} (CTO: ${cto.nome}, ctoKey: ${ctoKey})`);
-                handleRouteClick(actualRouteIndex, event);
+                const currentRouteIndex = routes.findIndex(r => r === routePolyline);
+                if (currentRouteIndex === -1) {
+                  console.error(`❌ Rota fallback não encontrada no array routes ao clicar! ctoKey: ${ctoKey}`);
+                  return;
+                }
+                console.log(`🖱️ Clique na rota fallback índice ${currentRouteIndex} (CTO: ${cto.nome}, ctoKey: ${ctoKey})`);
+                handleRouteClick(currentRouteIndex, event);
               });
               console.log(`✅ Listener de clique adicionado à rota fallback ${actualRouteIndex} para CTO ${cto.nome} (${ctoKey})`);
 
@@ -2653,10 +2659,16 @@
             console.log(`📝 RouteData criado: ctoKey=${ctoKey}, ctoNome=${cto.nome}, routeIndex=${actualRouteIndex}`);
 
             // Adicionar listener de clique na rota para mostrar popup
-            // Usar o índice correto da rota no array routes
+            // CRÍTICO: Usar closure para capturar a rota específica e garantir que sempre encontramos a CTO correta
             routePolyline.addListener('click', (event) => {
-              console.log(`🖱️ Clique na rota ${actualRouteIndex} (CTO: ${cto.nome}, ctoKey: ${ctoKey})`);
-              handleRouteClick(actualRouteIndex, event);
+              // Encontrar o índice atual da rota no array (pode ter mudado se outras rotas foram removidas)
+              const currentRouteIndex = routes.findIndex(r => r === routePolyline);
+              if (currentRouteIndex === -1) {
+                console.error(`❌ Rota não encontrada no array routes ao clicar! ctoKey: ${ctoKey}`);
+                return;
+              }
+              console.log(`🖱️ Clique na rota índice ${currentRouteIndex} (CTO: ${cto.nome}, ctoKey: ${ctoKey})`);
+              handleRouteClick(currentRouteIndex, event);
             });
             console.log(`✅ Listener de clique adicionado à rota ${actualRouteIndex} para CTO ${cto.nome} (${ctoKey})`);
 
@@ -2742,9 +2754,15 @@
             });
             console.log(`📝 RouteData criado (fallback 2): ctoKey=${ctoKey}, ctoNome=${cto.nome}, routeIndex=${actualRouteIndex}`);
 
+            // CRÍTICO: Usar closure para capturar a rota específica
             routePolyline.addListener('click', (event) => {
-              console.log(`🖱️ Clique na rota fallback 2 ${actualRouteIndex} (CTO: ${cto.nome}, ctoKey: ${ctoKey})`);
-              handleRouteClick(actualRouteIndex, event);
+              const currentRouteIndex = routes.findIndex(r => r === routePolyline);
+              if (currentRouteIndex === -1) {
+                console.error(`❌ Rota fallback 2 não encontrada no array routes ao clicar! ctoKey: ${ctoKey}`);
+                return;
+              }
+              console.log(`🖱️ Clique na rota fallback 2 índice ${currentRouteIndex} (CTO: ${cto.nome}, ctoKey: ${ctoKey})`);
+              handleRouteClick(currentRouteIndex, event);
             });
             console.log(`✅ Listener de clique adicionado à rota fallback 2 ${actualRouteIndex} para CTO ${cto.nome} (${ctoKey})`);
 
@@ -3042,37 +3060,61 @@
       return;
     }
     
-    // Encontrar routeInfo usando a polyline diretamente (mais confiável que usar índice)
-    // CRÍTICO: Usar polyline para garantir que encontramos a rota correta, mesmo com coordenadas iguais
-    let routeInfo = routeData.find(rd => rd && rd.polyline === route);
-    
-    // Se não encontrou por polyline, tentar encontrar por ctoKey (fallback)
-    // Isso garante que mesmo se houver algum problema, ainda encontra a rota correta
-    if (!routeInfo && route.__ctoKey) {
-      console.log(`🔍 RouteInfo não encontrada por polyline, tentando por ctoKey: ${route.__ctoKey}`);
-      routeInfo = routeData.find(rd => {
-        if (!rd || rd.ctoKey !== route.__ctoKey) return false;
-        // Verificar se está no mapa
-        if (!rd.polyline || !rd.polyline.getMap) return false;
-        return rd.polyline.getMap() === map;
-      });
-    }
-    
-    if (!routeInfo) {
-      console.error(`❌ handleRouteClick: RouteInfo não encontrada para rota ${routeIndex}. routeData.length: ${routeData.length}, ctoKey: ${route.__ctoKey || 'N/A'}`);
-      console.log(`🔍 Routes disponíveis:`, routes.map((r, idx) => ({ idx, ctoKey: r.__ctoKey || 'N/A' })));
-      console.log(`🔍 RouteData disponível:`, routeData.map(rd => ({ ctoKey: rd.ctoKey, ctoNome: rd.cto?.nome, polylineExists: !!rd.polyline, onMap: rd.polyline?.getMap?.() === map })));
+    // CRÍTICO: Usar o ctoKey da rota clicada para encontrar a CTO correta
+    // Isso garante que mesmo com coordenadas iguais, sempre encontramos a CTO certa
+    const clickedCtoKey = route.__ctoKey;
+    if (!clickedCtoKey) {
+      console.error(`❌ handleRouteClick: Rota no índice ${routeIndex} não tem ctoKey anexado!`);
+      console.log(`🔍 Tentando encontrar por polyline...`);
+      // Fallback: tentar encontrar por polyline
+      const routeInfo = routeData.find(rd => rd && rd.polyline === route);
+      if (!routeInfo) {
+        console.error(`❌ RouteInfo não encontrada nem por ctoKey nem por polyline`);
+        return;
+      }
+      selectedRouteIndex = routeIndex;
       return;
     }
     
-    // Verificar se a routeInfo encontrada corresponde realmente a esta rota
-    if (routeInfo.polyline !== route) {
-      console.warn(`⚠️ RouteInfo encontrada mas polyline não corresponde! routeInfo.ctoKey: ${routeInfo.ctoKey}, route.__ctoKey: ${route.__ctoKey}`);
+    console.log(`🖱️ Clique na rota ${routeIndex} com ctoKey: ${clickedCtoKey}`);
+    
+    // Encontrar routeInfo usando APENAS o ctoKey da rota clicada
+    // Isso garante que sempre encontramos a CTO correta, mesmo se houver múltiplas rotas com mesma coordenada
+    const routeInfo = routeData.find(rd => {
+      if (!rd || rd.ctoKey !== clickedCtoKey) return false;
+      // Verificar se a polyline está realmente no mapa E é a mesma rota clicada
+      if (!rd.polyline || rd.polyline !== route) return false;
+      if (!rd.polyline.getMap) return false;
+      return rd.polyline.getMap() === map;
+    });
+    
+    if (!routeInfo) {
+      console.error(`❌ handleRouteClick: RouteInfo não encontrada para ctoKey ${clickedCtoKey} na rota ${routeIndex}`);
+      console.log(`🔍 RouteData disponível:`, routeData.map(rd => ({ 
+        ctoKey: rd.ctoKey, 
+        ctoNome: rd.cto?.nome, 
+        polylineMatches: rd.polyline === route,
+        onMap: rd.polyline?.getMap?.() === map 
+      })));
+      return;
     }
     
-    selectedRouteIndex = routeIndex;
+    // Verificar se encontramos a CTO correta
+    if (routeInfo.ctoKey !== clickedCtoKey) {
+      console.error(`❌ ERRO CRÍTICO: RouteInfo encontrada mas ctoKey não corresponde! Esperado: ${clickedCtoKey}, Encontrado: ${routeInfo.ctoKey}`);
+      return;
+    }
+    
+    // Encontrar o índice correto da rota no array routes usando a polyline
+    const correctRouteIndex = routes.findIndex(r => r === route);
+    if (correctRouteIndex === -1) {
+      console.error(`❌ Rota não encontrada no array routes!`);
+      return;
+    }
+    
+    selectedRouteIndex = correctRouteIndex;
     const ctoNumber = routeInfo.cto ? (ctoNumbers.get(routeInfo.cto) || 'N/A') : 'N/A';
-    console.log(`✅ Popup aberto para rota ${routeIndex} (CTO: ${routeInfo.cto?.nome}, ctoKey: ${routeInfo.ctoKey}, número: ${ctoNumber})`);
+    console.log(`✅ Popup aberto para rota ${correctRouteIndex} (CTO: ${routeInfo.cto?.nome}, ctoKey: ${routeInfo.ctoKey}, número: ${ctoNumber})`);
     
     // Posicionar popup próximo ao ponto de clique na tela
     if (event && event.domEvent) {
