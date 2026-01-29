@@ -1424,15 +1424,33 @@
             if (progressRes.ok) {
               const progressData = await progressRes.json();
               if (progressData.success) {
-                uploadProgress = { ...progressData.progress };
+                // O backend retorna uploadProgress diretamente (não dentro de .progress)
+                // Atualizar progresso com os dados recebidos
+                uploadProgress = {
+                  stage: progressData.stage || uploadProgress.stage,
+                  uploadPercent: progressData.uploadPercent || uploadProgress.uploadPercent,
+                  calculationPercent: progressData.calculationPercent || uploadProgress.calculationPercent,
+                  message: progressData.message || uploadProgress.message,
+                  totalRows: progressData.totalRows || uploadProgress.totalRows,
+                  processedRows: progressData.processedRows || uploadProgress.processedRows,
+                  importedRows: progressData.importedRows || uploadProgress.importedRows,
+                  totalCTOs: progressData.totalCTOs || uploadProgress.totalCTOs,
+                  processedCTOs: progressData.processedCTOs || uploadProgress.processedCTOs
+                };
+                
                 coverageMessage = uploadProgress.message || 'Calculando área de cobertura...';
                 
+                // Verificar se cálculo foi concluído
                 if (uploadProgress.stage === 'completed') {
+                  console.log('✅ [Config] Cálculo concluído detectado!');
                   clearInterval(coveragePollInterval);
                   coveragePollInterval = null;
                   calculatingCoverage = false;
                   coverageSuccess = true;
                   coverageMessage = '✅ Área de cobertura criada com sucesso!';
+                  
+                  // Forçar atualização do componente
+                  forceUpdate++;
                   
                   // Recarregar dados
                   if (onReloadCTOs) {
@@ -1443,11 +1461,18 @@
                     }
                   }
                 } else if (uploadProgress.stage === 'error') {
+                  console.log('❌ [Config] Erro no cálculo detectado!');
                   clearInterval(coveragePollInterval);
                   coveragePollInterval = null;
                   calculatingCoverage = false;
                   coverageSuccess = false;
                   coverageMessage = `❌ Erro: ${uploadProgress.message || 'Erro ao calcular área de cobertura'}`;
+                  
+                  // Forçar atualização do componente
+                  forceUpdate++;
+                } else if (uploadProgress.stage === 'calculating') {
+                  // Ainda calculando, atualizar mensagem
+                  coverageMessage = uploadProgress.message || `Calculando área de cobertura... ${uploadProgress.calculationPercent || 0}%`;
                 }
               }
             }
