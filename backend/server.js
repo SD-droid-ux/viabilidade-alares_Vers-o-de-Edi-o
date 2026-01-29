@@ -5247,9 +5247,9 @@ async function processExcelStreaming(filePath, supabaseClient, progressCallback 
           totalInvalid++;
         }
         
-        // Atualizar progresso a cada 1000 linhas processadas
+        // Atualizar progresso a cada 5000 linhas processadas (menos frequente = menos overhead)
         // Como não sabemos o total antes, usamos uma estimativa baseada na taxa de processamento
-        if (processedRows % 1000 === 0 && progressCallback) {
+        if (processedRows % 5000 === 0 && progressCallback) {
           // Estimar progresso baseado na taxa de processamento (ajustar conforme necessário)
           // Para arquivos grandes, assumir que ainda há mais linhas
           const estimatedTotal = Math.max(totalRows, processedRows * 1.2); // Estimativa conservadora
@@ -5746,10 +5746,10 @@ app.post('/api/upload-base', (req, res, next) => {
                 try {
                   // Gerar ID único para este cálculo
                   const calculationId = `calc_auto_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                // OTIMIZAÇÃO: Batch_size balanceado para evitar timeout mas manter velocidade
-                // Com query otimizada (ST_UnaryUnion + ST_Collect), podemos processar mais
-                // Meta: < 2 minutos total para 218k CTOs, mas sem timeout
-                const batchSize = 3000;  // Reduzido para 3000 para evitar timeout do Supabase
+                // OTIMIZAÇÃO: Batch_size muito conservador para evitar timeout
+                // ST_UnaryUnion de muitos buffers pode ser lento mesmo com otimização
+                // Com 218k CTOs, priorizar confiabilidade sobre velocidade
+                const batchSize = 500;  // Reduzido para 500 para garantir que não dê timeout
                   
                   console.log(`🆔 [Background] Calculation ID: ${calculationId}`);
                   console.log(`📦 [Background] Usando batch_size: ${batchSize} para evitar timeout`);
@@ -5837,9 +5837,8 @@ app.post('/api/upload-base', (req, res, next) => {
                       break;
                     }
                     
-                    // Delay mínimo - query otimizada processa muito rápido
-                    // Delay pequeno para evitar sobrecarga do Supabase (aumentado para evitar timeout)
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                    // Delay entre lotes para evitar sobrecarga do Supabase
+                    await new Promise(resolve => setTimeout(resolve, 300));
                   } catch (batchErr) {
                     console.error(`❌ [Background] Erro no lote ${attempts}:`, batchErr);
                     lastError = batchErr;
