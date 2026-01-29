@@ -302,16 +302,29 @@
             return;
           }
           
+          // Se há dados, atualizar baseDataExists
+          baseDataExists = true;
+          
+          // Armazenar total de CTOs se disponível
+          if (data.total_ctos !== undefined) {
+            totalCTOsLoaded = data.total_ctos;
+          }
+          
+          // Sempre atualizar lastModified quando há dados (backend sempre retorna)
           if (data.lastModified) {
             baseLastModified = new Date(data.lastModified);
-            baseDataExists = true;
-            // Armazenar total de CTOs se disponível
-            if (data.total_ctos !== undefined) {
-              totalCTOsLoaded = data.total_ctos;
-            }
             // Salvar no localStorage para próxima vez
             try {
               localStorage.setItem('baseLastModified', data.lastModified);
+            } catch (err) {
+              console.error('Erro ao salvar no localStorage:', err);
+            }
+          } else if (data.hasData === true) {
+            // Fallback: se tem dados mas não tem lastModified, usar data atual
+            baseLastModified = new Date();
+            console.log('⚠️ [Base] LastModified não disponível, usando data atual como fallback');
+            try {
+              localStorage.setItem('baseLastModified', baseLastModified.toISOString());
             } catch (err) {
               console.error('Erro ao salvar no localStorage:', err);
             }
@@ -2005,17 +2018,23 @@
             </div>
           {/if}
           
-          {#if baseDataExists && baseLastModified}
-            <p class="last-modified-text">
-              Última atualização: {baseLastModified.toLocaleDateString('pt-BR', { 
-                day: '2-digit', 
-                month: '2-digit', 
-                year: 'numeric'
-              })} - {baseLastModified.toLocaleTimeString('pt-BR', {
-                hour: '2-digit', 
-                minute: '2-digit'
-              })}
-            </p>
+          {#if baseDataExists}
+            {#if baseLastModified}
+              <p class="last-modified-text">
+                Última atualização: {baseLastModified.toLocaleDateString('pt-BR', { 
+                  day: '2-digit', 
+                  month: '2-digit', 
+                  year: 'numeric'
+                })} - {baseLastModified.toLocaleTimeString('pt-BR', {
+                  hour: '2-digit', 
+                  minute: '2-digit'
+                })}
+              </p>
+            {:else}
+              <p class="last-modified-text" style="color: #7B68EE;">
+                Base de dados carregada (data de atualização não disponível)
+              </p>
+            {/if}
           {:else}
             <p class="last-modified-text" style="color: #7B68EE;">
               Não consta nenhuma base de dados
@@ -3450,3 +3469,4 @@
       0 4px 6px rgba(244, 67, 54, 0.3);
   }
 </style>
+
