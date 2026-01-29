@@ -5793,8 +5793,51 @@ app.post('/api/upload-base', (req, res, next) => {
                       });
                       
                       if (cellError) {
-                        console.warn(`⚠️ [Background] Erro ao processar célula ${cell.cell_index}:`, cellError.message);
-                        continue; // Continuar com próxima célula
+                        // Se for timeout, tentar novamente uma vez
+                        if (cellError.message && cellError.message.includes('timeout')) {
+                          console.warn(`⚠️ [Background] Timeout na célula ${cell.cell_index}, tentando novamente...`);
+                          await new Promise(resolve => setTimeout(resolve, 1000)); // Aguardar 1s antes de retry
+                          
+                          try {
+                            const { data: retryResult, error: retryError } = await supabase.rpc('process_coverage_grid_cell', {
+                              p_calculation_id: calculationId,
+                              p_min_lat: cell.min_lat,
+                              p_max_lat: cell.max_lat,
+                              p_min_lng: cell.min_lng,
+                              p_max_lng: cell.max_lng,
+                              p_cell_index: cell.cell_index
+                            });
+                            
+                            if (retryError) {
+                              console.warn(`⚠️ [Background] Erro ao processar célula ${cell.cell_index} (após retry):`, retryError.message);
+                              continue; // Continuar com próxima célula
+                            }
+                            
+                            // Usar resultado do retry
+                            if (retryResult && retryResult.length > 0 && retryResult[0].success) {
+                              processedCells++;
+                              totalCTOsInGrid += retryResult[0].processed_ctos || 0;
+                              
+                              const progressPercent = Math.round((processedCells / totalCells) * 100);
+                              uploadProgress.calculationPercent = progressPercent;
+                              uploadProgress.processedCTOs = totalCTOsInGrid;
+                              uploadProgress.totalCTOs = importedRows;
+                              uploadProgress.calculationId = calculationId;
+                              uploadProgress.message = `Calculando área de cobertura... ${progressPercent}% (${processedCells}/${totalCells} células)`;
+                              
+                              if (processedCells % 10 === 0 || processedCells === totalCells) {
+                                console.log(`📦 [Background] Célula ${cell.cell_index}/${totalCells}: ${retryResult[0].processed_ctos} CTOs (${progressPercent}%) [RETRY OK]`);
+                              }
+                              continue; // Sucesso no retry
+                            }
+                          } catch (retryErr) {
+                            console.warn(`⚠️ [Background] Erro no retry da célula ${cell.cell_index}:`, retryErr.message);
+                            continue; // Continuar com próxima célula
+                          }
+                        } else {
+                          console.warn(`⚠️ [Background] Erro ao processar célula ${cell.cell_index}:`, cellError.message);
+                          continue; // Continuar com próxima célula
+                        }
                       }
                       
                       if (cellResult && cellResult.length > 0 && cellResult[0].success) {
