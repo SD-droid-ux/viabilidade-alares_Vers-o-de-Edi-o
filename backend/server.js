@@ -1143,26 +1143,47 @@ app.post('/api/coverage/calculate', async (req, res) => {
         console.log(`🔄 [API] Processando polígonos em background (ID: ${calculationId})...`);
         console.log(`🗺️ [API] Usando abordagem INCREMENTAL (lotes pequenos)`);
         
-        const batchSize = 5000; // Lotes pequenos para evitar timeout
+        const batchSize = 50; // Lotes muito pequenos para evitar timeout (reduzido de 100 para 50)
         let isComplete = false;
         let batchNumber = 0;
+        const maxRetries = 2; // Máximo de tentativas por lote
         
         // Loop: processar lotes até completar
         while (!isComplete) {
           batchNumber++;
+          let retryCount = 0;
+          let batchSuccess = false;
           
-          try {
-            const { data: batchResult, error: batchError } = await supabase.rpc('process_coverage_batch', {
-              p_calculation_id: calculationId,
-              p_batch_size: batchSize
-            });
-            
-            if (batchError) {
-              console.error(`❌ [API] Erro ao processar lote ${batchNumber}:`, batchError);
-              uploadProgress.stage = 'error';
-              uploadProgress.message = `Erro ao processar lote: ${batchError.message}`;
-              throw batchError;
-            }
+          // Tentar processar lote com retry
+          while (!batchSuccess && retryCount <= maxRetries) {
+            try {
+              const { data: batchResult, error: batchError } = await supabase.rpc('process_coverage_batch', {
+                p_calculation_id: calculationId,
+                p_batch_size: batchSize
+              });
+              
+              if (batchError) {
+                // Se for timeout, tentar novamente
+                if (batchError.code === '57014' || (batchError.message && batchError.message.includes('timeout'))) {
+                  retryCount++;
+                  if (retryCount <= maxRetries) {
+                    console.warn(`⚠️ [API] Timeout no lote ${batchNumber}, tentando novamente (tentativa ${retryCount}/${maxRetries})...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // Aguardar 2s antes de retry
+                    continue;
+                  } else {
+                    console.error(`❌ [API] Timeout no lote ${batchNumber} após ${maxRetries} tentativas`);
+                    uploadProgress.stage = 'error';
+                    uploadProgress.message = `Timeout no lote ${batchNumber} após ${maxRetries} tentativas`;
+                    throw batchError;
+                  }
+                } else {
+                  // Outro tipo de erro
+                  console.error(`❌ [API] Erro ao processar lote ${batchNumber}:`, batchError);
+                  uploadProgress.stage = 'error';
+                  uploadProgress.message = `Erro ao processar lote: ${batchError.message}`;
+                  throw batchError;
+                }
+              }
             
             if (!batchResult || batchResult.length === 0) {
               console.error(`❌ [API] Resposta vazia do lote ${batchNumber}`);
@@ -1188,14 +1209,14 @@ app.post('/api/coverage/calculate', async (req, res) => {
             
             isComplete = result.is_complete || false;
             
-            // Log a cada 10 lotes ou quando completo
-            if (batchNumber % 10 === 0 || isComplete) {
+            // Log a cada 20 lotes ou quando completo (reduzido para não poluir logs)
+            if (batchNumber % 20 === 0 || isComplete) {
               console.log(`📦 [API] Lote ${batchNumber}: ${result.processed_ctos}/${result.total_ctos} CTOs (${Math.round(result.progress_percent || 0)}%)`);
             }
             
-            // Pequeno delay entre lotes para não sobrecarregar
+            // Pequeno delay entre lotes para não sobrecarregar (aumentado)
             if (!isComplete) {
-              await new Promise(resolve => setTimeout(resolve, 300));
+              await new Promise(resolve => setTimeout(resolve, 500));
             }
             
           } catch (batchErr) {
