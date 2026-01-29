@@ -5626,17 +5626,25 @@ app.post('/api/upload-base', (req, res, next) => {
               // CALCULAR POLÍGONOS DE COBERTURA AUTOMATICAMENTE
               // ============================================
               // Após importar CTOs, recalcular polígonos de cobertura automaticamente (incremental)
+              // IMPORTANTE: Processar em background assíncrono (não bloquear upload)
               console.log('🗺️ [Background] ===== INICIANDO CÁLCULO AUTOMÁTICO DE POLÍGONOS =====');
-              console.log(`🗺️ [Background] CTOs importadas: ${importedRows}, iniciando cálculo...`);
+              console.log(`🗺️ [Background] CTOs importadas: ${importedRows}, iniciando cálculo em background...`);
               
-              try {
-                // Gerar ID único para este cálculo
-                const calculationId = `calc_auto_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                const batchSize = 5000;
-                
-                console.log(`🆔 [Background] Calculation ID: ${calculationId}`);
-                
-                // Processar cálculo de forma síncrona (aguardar conclusão)
+              // Processar em background sem bloquear (fire and forget)
+              (async () => {
+                try {
+                  // Gerar ID único para este cálculo
+                  const calculationId = `calc_auto_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                // OTIMIZAÇÃO: Usar batch_size maior com query otimizada
+                // ST_UnaryUnion + ST_Collect é mais eficiente que ST_Union simples
+                // Permite processar mais CTOs por lote sem timeout
+                const batchSize = 2000;  // Aumentado para 2000 com query otimizada
+                  
+                  console.log(`🆔 [Background] Calculation ID: ${calculationId}`);
+                  console.log(`📦 [Background] Usando batch_size: ${batchSize} para evitar timeout`);
+                  console.log(`⏳ [Background] Processamento iniciado em background (não bloqueia upload)`);
+                  
+                  // Processar cálculo de forma assíncrona (não bloqueia)
                 let isComplete = false;
                 let attempts = 0;
                 const maxAttempts = 1000;
@@ -5709,8 +5717,8 @@ app.post('/api/upload-base', (req, res, next) => {
                       break;
                     }
                     
-                    // Pequeno delay entre lotes
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    // Delay reduzido - query otimizada processa mais rápido
+                    await new Promise(resolve => setTimeout(resolve, 50));
                   } catch (batchErr) {
                     console.error(`❌ [Background] Erro no lote ${attempts}:`, batchErr);
                     lastError = batchErr;
@@ -5732,7 +5740,9 @@ app.post('/api/upload-base', (req, res, next) => {
                 console.error('❌ [Background] Stack:', coverageErr.stack);
                 console.warn('⚠️ [Background] Polígonos não foram atualizados, mas CTOs foram importadas com sucesso');
               }
+              })(); // Fechar IIFE - executa em background sem bloquear
               
+              console.log(`✅ [Background] Cálculo de polígonos iniciado em background (não bloqueia upload)`);
               console.log(`✅ [Background] ===== IMPORTAÇÃO SUPABASE CONCLUÍDA =====`);
               console.log(`✅ [Background] ${importedRows} CTOs importadas com sucesso no Supabase!`);
             } else {
