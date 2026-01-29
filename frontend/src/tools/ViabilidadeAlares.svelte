@@ -4578,6 +4578,51 @@
 
   // Função para abrir modal de relatório
   async function openReportModal() {
+    // Expandir mapa completamente e minimizar tabela para ocupar máximo de espaço
+    // 1. Minimizar a tabela para liberar espaço
+    if (!isListMinimized) {
+      isListMinimized = true;
+    }
+    
+    // 2. Expandir o mapa se estiver minimizado
+    if (isMapMinimized) {
+      isMapMinimized = false;
+    }
+    
+    // 3. Calcular e definir altura máxima do mapa
+    const container = document.querySelector('.main-area');
+    const containerHeight = container ? container.getBoundingClientRect().height : 800;
+    // Com a tabela minimizada, deixar apenas 90px para ela + handle + margem
+    const minSpaceForList = 90;
+    const maxMapHeight = Math.max(containerHeight - minSpaceForList, 300);
+    mapHeightPixels = maxMapHeight;
+    
+    // 4. Aguardar o Svelte atualizar o DOM
+    await tick();
+    
+    // 5. Aplicar estilos diretamente para garantir que o mapa ocupe o espaço máximo
+    const mapElement = document.querySelector('.map-container');
+    const listElement = document.querySelector('.results-table-container, .empty-state');
+    
+    if (mapElement) {
+      mapElement.style.height = `${maxMapHeight}px`;
+      mapElement.style.flex = '0 0 auto';
+      mapElement.style.minHeight = `${maxMapHeight}px`;
+    }
+    
+    if (listElement) {
+      listElement.style.flex = '0 0 auto';
+      listElement.style.minHeight = '60px';
+    }
+    
+    // 6. Aguardar um pouco mais para garantir que o DOM foi atualizado
+    await new Promise(resolve => setTimeout(resolve, 150));
+    
+    // 7. Disparar evento resize do Google Maps para garantir que o mapa se ajuste corretamente
+    if (map && google?.maps) {
+      google.maps.event.trigger(map, 'resize');
+    }
+    
     // Limpar erros anteriores
     reportFormErrors = {};
     
@@ -4586,7 +4631,7 @@
     
     // Pré-preencher o projetista com o usuário logado
     reportForm.projetista = currentUser || '';
-
+    
     // Fechar InfoWindow do cliente automaticamente
     if (clientInfoWindow) {
       clientInfoWindow.close();
