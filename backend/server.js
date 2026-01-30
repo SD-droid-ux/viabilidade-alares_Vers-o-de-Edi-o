@@ -1151,6 +1151,13 @@ app.post('/api/coverage/calculate', async (req, res) => {
       calculation_id: calculationId
     });
     
+    // ============================================
+    // FUNÇÕES ANTIGAS (TURF.JS) - NÃO MAIS USADAS
+    // Mantidas apenas como referência
+    // Agora usamos PostGIS para todos os cálculos
+    // ============================================
+    
+    /*
     // Função auxiliar para converter GeoJSON para formato Martinez (array de coordenadas)
     const geojsonToMartinez = (geojson) => {
       if (!geojson || !geojson.geometry) return null;
@@ -1267,43 +1274,42 @@ app.post('/api/coverage/calculate', async (req, res) => {
         return null;
       }
     };
+    */
     
-    // Processar em background - CÁLCULOS NO BACKEND (sem usar Supabase RPC)
+    // Processar em background - CÁLCULOS USANDO POSTGIS
     (async () => {
       const startTime = Date.now();
-      let accumulatedPolygon = null; // Polígono acumulado (GeoJSON Feature)
+      let accumulatedPolygonGeoJSON = null; // Polígono acumulado (GeoJSON string)
       let processedCTOs = 0;
-      // Lotes de 5000: Supabase permite até 10.000, mas 5.000 é mais seguro
-      // Como estamos apenas buscando dados (não calculando no Supabase), podemos usar lotes maiores
-      const batchSize = 5000; // Lotes de 5000 para melhor performance
+      // Lotes de 2000: PostGIS pode processar bem, mas lotes menores são mais seguros
+      const batchSize = 2000; // Lotes de 2000 para melhor performance com PostGIS
       const bufferRadiusMeters = 250; // Raio do buffer em metros
       const simplificationTolerance = 0.0001; // Tolerância de simplificação
       
       try {
         console.log(`🔄 [API] Processando polígonos em background (ID: ${calculationId})...`);
-        console.log(`🗺️ [API] Cálculos sendo feitos no BACKEND (Node.js + Turf.js)`);
+        console.log(`🗺️ [API] Cálculos sendo feitos usando POSTGIS (via Supabase)`);
         console.log(`📊 [API] Total de CTOs: ${totalCTOs || 0}`);
         
         let offset = 0;
         let batchNumber = 0;
         
-        // Loop: buscar e processar lotes até completar
+        // Loop: buscar e processar lotes até completar usando PostGIS
         while (offset < (totalCTOs || 0)) {
           batchNumber++;
           const batchStartTime = Date.now();
           
-          // 1. Buscar lote de CTOs do Supabase (apenas dados, sem cálculos)
-          // IMPORTANTE: Adicionar .order() para garantir paginação consistente
+          // 1. Buscar lote de CTOs do Supabase (apenas IDs)
           const { data: ctosBatch, error: fetchError } = await supabase
             .from('ctos')
-            .select('id, latitude, longitude', { count: 'exact' })
+            .select('id', { count: 'exact' })
             .not('latitude', 'is', null)
             .not('longitude', 'is', null)
             .gte('latitude', -90)
             .lte('latitude', 90)
             .gte('longitude', -180)
             .lte('longitude', 180)
-            .order('id', { ascending: true }) // Ordenar por ID para paginação consistente
+            .order('id', { ascending: true })
             .range(offset, offset + batchSize - 1);
           
           if (fetchError) {
@@ -1320,247 +1326,74 @@ app.post('/api/coverage/calculate', async (req, res) => {
           
           // Log detalhado para debug
           if (batchNumber === 1 || batchNumber % 5 === 0) {
-            console.log(`📦 [API] Lote ${batchNumber}: Buscou ${ctosBatch.length} CTOs (offset: ${offset} a ${offset + ctosBatch.length - 1}, total esperado: ${totalCTOs || 0})`);
+            console.log(`📦 [API] Lote ${batchNumber}: Processando ${ctosBatch.length} CTOs (offset: ${offset} a ${offset + ctosBatch.length - 1}, total esperado: ${totalCTOs || 0})`);
           }
           
-          // 2. Criar buffers para cada CTO usando Turf.js
-          const buffers = [];
-          for (const cto of ctosBatch) {
-            try {
-              // Criar ponto GeoJSON
-              const point = turf.point([cto.longitude, cto.latitude]);
-              
-              // Criar buffer de 250 metros
-              // Turf.js buffer usa unidades em quilômetros, então 250m = 0.25km
-              let buffer = turf.buffer(point, bufferRadiusMeters / 1000, { units: 'kilometers' });
-              
-              // Simplificar buffer IMEDIATAMENTE após criação para reduzir problemas de precisão
-              // Isso é crítico para evitar erros de topologia em uniões posteriores
-              if (buffer && buffer.geometry) {
-                try {
-                  // Simplificar com tolerância maior para remover pontos muito próximos
-                  buffer = turf.simplify(buffer, { tolerance: 0.0001, highQuality: true });
-                  // Limpar coordenadas duplicadas
-                  buffer = turf.cleanCoords(buffer);
-                } catch (simplifyErr) {
-                  // Se simplificar falhar, tentar validar mesmo assim
-                }
-                
-                // Validar e corrigir buffer antes de adicionar
-                const validatedBuffer = validateAndFixGeometry(buffer);
-                if (validatedBuffer) {
-                  buffers.push(validatedBuffer);
-                }
-              }
-            } catch (bufferErr) {
-              console.warn(`⚠️ [API] Erro ao criar buffer para CTO ${cto.id}:`, bufferErr.message);
-              // Continuar com outras CTOs
-            }
-          }
+          // 2. Extrair IDs das CTOs
+          const ctoIds = ctosBatch.map(cto => cto.id);
           
-          if (buffers.length === 0) {
-            console.warn(`⚠️ [API] Nenhum buffer válido criado no lote ${batchNumber}`);
+          // 3. Chamar função PostGIS para calcular polígono do lote
+          const { data: batchResult, error: batchError } = await supabase.rpc('calculate_coverage_polygon_batch', {
+            p_cto_ids: ctoIds,
+            p_buffer_radius_meters: bufferRadiusMeters
+          });
+          
+          if (batchError) {
+            console.error(`❌ [API] Erro ao calcular polígono do lote ${batchNumber}:`, batchError);
+            // Continuar com próximo lote ao invés de quebrar
             offset += batchSize;
             processedCTOs += ctosBatch.length;
             continue;
           }
           
-          // 3. Unir todos os buffers do lote em um único polígono
-          // Estratégia: unir em grupos menores para evitar erros de precisão
-          let batchUnion = buffers[0];
-          
-          // Se houver muitos buffers, unir em grupos menores
-          if (buffers.length > 100) {
-            // Dividir em grupos de 100 buffers
-            const groupSize = 100;
-            const groups = [];
-            
-            for (let i = 0; i < buffers.length; i += groupSize) {
-              const group = buffers.slice(i, Math.min(i + groupSize, buffers.length));
-              
-              // Unir grupo
-              let groupUnion = validateAndFixGeometry(group[0]);
-              if (!groupUnion) {
-                // Não logar para evitar rate limit
-                continue;
-              }
-              
-              for (let j = 1; j < group.length; j++) {
-                const validatedBuffer = validateAndFixGeometry(group[j]);
-                if (!validatedBuffer) {
-                  // Não logar todos os erros para evitar rate limit
-                  continue;
-                }
-                
-                try {
-                  // Validar geometrias antes de unir
-                  const validatedGroup = validateAndFixGeometry(groupUnion);
-                  if (!validatedGroup) {
-                    // Não logar todos os erros para evitar rate limit
-                    groupUnion = validatedBuffer;
-                    continue;
-                  }
-                  
-                  // Simplificar AGressivamente antes de unir para evitar erros de precisão
-                  // Isso remove pontos muito próximos que causam "Unable to complete output ring"
-                  const simplifiedGroup = turf.simplify(validatedGroup, { tolerance: 0.0001, highQuality: true });
-                  const simplifiedBuffer = turf.simplify(validatedBuffer, { tolerance: 0.0001, highQuality: true });
-                  
-                  // Limpar coordenadas antes de unir
-                  const cleanedGroup = turf.cleanCoords(simplifiedGroup);
-                  const cleanedBuffer = turf.cleanCoords(simplifiedBuffer);
-                  
-                  // Usar Martinez para union (mais robusto que Turf.js)
-                  groupUnion = robustUnion(cleanedGroup, cleanedBuffer);
-                  
-                  // Validar resultado da união
-                  groupUnion = validateAndFixGeometry(groupUnion);
-                  if (!groupUnion) {
-                    // Não logar todos os erros para evitar rate limit
-                    // Manter groupUnion anterior
-                  }
-                } catch (unionErr) {
-                  // Erro de topologia - pular este buffer e continuar
-                  // Não logar todos os erros para não poluir o log (já temos aviso suficiente)
-                  if (j % 10 === 0) {
-                    console.warn(`⚠️ [API] Erro ao unir buffer ${j} no grupo ${Math.floor(i/groupSize) + 1} do lote ${batchNumber} (pulando geometria problemática)`);
-                  }
-                  // Pular este buffer e continuar
-                }
-              }
-              
-              groups.push(groupUnion);
-            }
-            
-            // Unir todos os grupos
-            batchUnion = validateAndFixGeometry(groups[0]);
-            if (!batchUnion) {
-              console.warn(`⚠️ [API] Primeiro grupo inválido, tentando próximo`);
-              batchUnion = groups.length > 1 ? validateAndFixGeometry(groups[1]) : null;
-              if (!batchUnion) {
-                console.error(`❌ [API] Nenhum grupo válido no lote ${batchNumber}`);
-                offset += batchSize;
-                processedCTOs += ctosBatch.length;
-                continue;
-              }
-            }
-            
-            for (let i = 1; i < groups.length; i++) {
-              const validatedGroup = validateAndFixGeometry(groups[i]);
-              if (!validatedGroup) {
-                // Não logar para evitar rate limit
-                continue;
-              }
-              
-              try {
-                const validatedBatch = validateAndFixGeometry(batchUnion);
-                if (!validatedBatch) {
-                  console.warn(`⚠️ [API] BatchUnion inválido, usando grupo atual`);
-                  batchUnion = validatedGroup;
-                  continue;
-                }
-                
-                // Usar Martinez para union (mais robusto que Turf.js)
-                batchUnion = robustUnion(validatedBatch, validatedGroup);
-                
-                // Validar resultado
-                batchUnion = validateAndFixGeometry(batchUnion);
-                if (!batchUnion) {
-                  // Não logar para evitar rate limit
-                  // Manter batchUnion anterior
-                }
-              } catch (unionErr) {
-                console.warn(`⚠️ [API] Erro ao unir grupo ${i} no lote ${batchNumber}:`, unionErr.message);
-                // Pular este grupo e continuar
-              }
-            }
-          } else {
-            // Para poucos buffers, unir normalmente mas com validação
-            batchUnion = validateAndFixGeometry(batchUnion);
-            if (!batchUnion) {
-              console.warn(`⚠️ [API] BatchUnion inicial inválido no lote ${batchNumber}`);
-              offset += batchSize;
-              processedCTOs += ctosBatch.length;
-              continue;
-            }
-            
-            for (let i = 1; i < buffers.length; i++) {
-              const validatedBuffer = validateAndFixGeometry(buffers[i]);
-              if (!validatedBuffer) {
-                console.warn(`⚠️ [API] Buffer ${i} inválido, pulando`);
-                continue;
-              }
-              
-              try {
-                const validatedBatch = validateAndFixGeometry(batchUnion);
-                if (!validatedBatch) {
-                  console.warn(`⚠️ [API] BatchUnion inválido, usando buffer atual`);
-                  batchUnion = validatedBuffer;
-                  continue;
-                }
-                
-                // Usar Martinez para union (mais robusto que Turf.js)
-                batchUnion = robustUnion(validatedBatch, validatedBuffer);
-                
-                // Validar resultado
-                batchUnion = validateAndFixGeometry(batchUnion);
-                if (!batchUnion) {
-                  // Não logar para evitar rate limit
-                  // Manter batchUnion anterior
-                }
-              } catch (unionErr) {
-                console.warn(`⚠️ [API] Erro ao unir buffer ${i} no lote ${batchNumber}:`, unionErr.message);
-                // Pular este buffer e continuar
-              }
-            }
-          }
-          
-          // 4. Unir com polígono acumulado
-          if (!batchUnion) {
-            console.warn(`⚠️ [API] BatchUnion inválido no lote ${batchNumber}, pulando união`);
+          if (!batchResult || batchResult.length === 0 || !batchResult[0].success) {
+            const errorMsg = batchResult?.[0]?.error_message || 'Erro desconhecido ao calcular polígono do lote';
+            console.warn(`⚠️ [API] Lote ${batchNumber} falhou: ${errorMsg}`);
             offset += batchSize;
             processedCTOs += ctosBatch.length;
             continue;
           }
           
-          if (accumulatedPolygon === null) {
-            accumulatedPolygon = validateAndFixGeometry(batchUnion);
+          const batchPolygonGeoJSON = batchResult[0].geometry_geojson;
+          
+          if (!batchPolygonGeoJSON) {
+            console.warn(`⚠️ [API] Lote ${batchNumber} não retornou polígono válido`);
+            offset += batchSize;
+            processedCTOs += ctosBatch.length;
+            continue;
+          }
+          
+          // 4. Unir com polígono acumulado usando PostGIS
+          if (accumulatedPolygonGeoJSON === null) {
+            accumulatedPolygonGeoJSON = batchPolygonGeoJSON;
           } else {
-            try {
-              const validatedAccumulated = validateAndFixGeometry(accumulatedPolygon);
-              const validatedBatch = validateAndFixGeometry(batchUnion);
-              
-              if (!validatedAccumulated || !validatedBatch) {
-                console.warn(`⚠️ [API] Geometrias inválidas para união no lote ${batchNumber}, pulando`);
-                offset += batchSize;
-                processedCTOs += ctosBatch.length;
-                continue;
-              }
-              
-              // Usar Martinez para union (mais robusto que Turf.js)
-              accumulatedPolygon = robustUnion(validatedAccumulated, validatedBatch);
-              
-              // Validar resultado
-              accumulatedPolygon = validateAndFixGeometry(accumulatedPolygon);
-              if (!accumulatedPolygon) {
-                // Não logar para evitar rate limit
-                // Manter accumulatedPolygon anterior
-              }
-            } catch (unionErr) {
-              console.warn(`⚠️ [API] Erro ao unir com polígono acumulado (lote ${batchNumber}):`, unionErr.message);
-              // Pular este lote e continuar (não quebrar o processo inteiro)
+            // Chamar função PostGIS para unir polígonos
+            const { data: unionResult, error: unionError } = await supabase.rpc('union_polygons_geojson', {
+              p_geojson1: accumulatedPolygonGeoJSON,
+              p_geojson2: batchPolygonGeoJSON
+            });
+            
+            if (unionError || !unionResult || unionResult.length === 0 || !unionResult[0].success) {
+              const errorMsg = unionResult?.[0]?.error_message || unionError?.message || 'Erro ao unir polígonos';
+              console.warn(`⚠️ [API] Erro ao unir polígono do lote ${batchNumber} com acumulado: ${errorMsg}`);
+              // Continuar com próximo lote
               offset += batchSize;
               processedCTOs += ctosBatch.length;
               continue;
             }
+            
+            accumulatedPolygonGeoJSON = unionResult[0].geometry_geojson;
           }
           
-          // 5. Simplificar polígono acumulado periodicamente para reduzir complexidade
-          if (batchNumber % 5 === 0 && accumulatedPolygon) {
-            try {
-              accumulatedPolygon = turf.simplify(accumulatedPolygon, { tolerance: simplificationTolerance, highQuality: true });
-            } catch (simplifyErr) {
-              console.warn(`⚠️ [API] Erro ao simplificar (não crítico):`, simplifyErr.message);
+          // 5. Simplificar polígono acumulado periodicamente
+          if (batchNumber % 5 === 0 && accumulatedPolygonGeoJSON) {
+            const { data: simplifyResult, error: simplifyError } = await supabase.rpc('simplify_polygon_geojson', {
+              p_geojson: accumulatedPolygonGeoJSON,
+              p_tolerance: simplificationTolerance
+            });
+            
+            if (!simplifyError && simplifyResult && simplifyResult.length > 0 && simplifyResult[0].success) {
+              accumulatedPolygonGeoJSON = simplifyResult[0].geometry_geojson;
             }
           }
           
@@ -1572,13 +1405,13 @@ app.post('/api/coverage/calculate', async (req, res) => {
           uploadProgress.processedCTOs = processedCTOs;
           uploadProgress.totalCTOs = totalCTOs || 0;
           uploadProgress.calculationPercent = progressPercent;
-          uploadProgress.message = `Calculando área de cobertura... ${progressPercent}% (${processedCTOs}/${totalCTOs || 0} CTOs)`;
+          uploadProgress.message = `Calculando área de cobertura (PostGIS)... ${progressPercent}% (${processedCTOs}/${totalCTOs || 0} CTOs)`;
           
           const batchTime = ((Date.now() - batchStartTime) / 1000).toFixed(2);
           
           // Log detalhado para debug
           if (batchNumber === 1 || batchNumber % 5 === 0 || progressPercent >= 95) {
-            console.log(`📦 [API] Lote ${batchNumber}: ${processedCTOs}/${totalCTOs || 0} CTOs (${progressPercent}%) - ${batchTime}s`);
+            console.log(`📦 [API] Lote ${batchNumber}: ${processedCTOs}/${totalCTOs || 0} CTOs (${progressPercent}%) - ${batchTime}s [PostGIS]`);
             console.log(`   └─ Offset atual: ${offset}, Próximo offset: ${offset + batchSize}, Total esperado: ${totalCTOs || 0}`);
           }
           
@@ -1587,8 +1420,8 @@ app.post('/api/coverage/calculate', async (req, res) => {
             console.warn(`⚠️ [API] Lote ${batchNumber} retornou apenas ${ctosBatch.length} CTOs (esperado ${batchSize}). Pode haver problema de paginação.`);
           }
           
-          // Pequeno delay para não sobrecarregar
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // Pequeno delay para não sobrecarregar o banco
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
         
         console.log(`✅ [API] Todos os lotes processados: ${batchNumber} lotes`);
@@ -1602,25 +1435,50 @@ app.post('/api/coverage/calculate', async (req, res) => {
         
         console.log(`🎉 [API] Finalizando cálculo...`);
         
-        // 6. Simplificar polígono final
-        if (accumulatedPolygon) {
-          try {
-            accumulatedPolygon = turf.simplify(accumulatedPolygon, { tolerance: simplificationTolerance, highQuality: true });
-          } catch (simplifyErr) {
-            console.warn(`⚠️ [API] Erro ao simplificar polígono final (não crítico):`, simplifyErr.message);
+        // 6. Simplificar polígono final usando PostGIS
+        if (accumulatedPolygonGeoJSON) {
+          const { data: simplifyResult, error: simplifyError } = await supabase.rpc('simplify_polygon_geojson', {
+            p_geojson: accumulatedPolygonGeoJSON,
+            p_tolerance: simplificationTolerance
+          });
+          
+          if (!simplifyError && simplifyResult && simplifyResult.length > 0 && simplifyResult[0].success) {
+            accumulatedPolygonGeoJSON = simplifyResult[0].geometry_geojson;
+          } else if (simplifyError) {
+            console.warn(`⚠️ [API] Erro ao simplificar polígono final (não crítico):`, simplifyError.message);
           }
         }
         
-        // 7. Converter GeoJSON para formato PostGIS e salvar no Supabase
-        if (!accumulatedPolygon || !accumulatedPolygon.geometry) {
+        // 7. Validar e salvar polígono no Supabase
+        if (!accumulatedPolygonGeoJSON) {
           throw new Error('Nenhum polígono foi gerado');
         }
         
-        // Converter GeoJSON para GeoJSON string (PostGIS aceita GeoJSON)
-        const geoJsonString = JSON.stringify(accumulatedPolygon.geometry);
+        // GeoJSON já está como string
+        const geoJsonString = accumulatedPolygonGeoJSON;
         
-        // Calcular área em km²
-        const areaKm2 = turf.area(accumulatedPolygon) / 1000000; // Converter m² para km²
+        // Calcular área em km² usando PostGIS
+        const { data: areaResult, error: areaError } = await supabase.rpc('calculate_polygon_area_km2', {
+          p_geojson: geoJsonString
+        });
+        
+        let areaKm2 = 0;
+        if (!areaError && areaResult && areaResult.length > 0 && areaResult[0].success) {
+          areaKm2 = parseFloat(areaResult[0].area_km2) || 0;
+        } else {
+          // Fallback: tentar calcular usando Turf.js se PostGIS falhar
+          const errorMsg = areaResult?.[0]?.error_message || areaError?.message || 'Erro desconhecido';
+          console.warn(`⚠️ [API] Erro ao calcular área com PostGIS, usando Turf.js como fallback: ${errorMsg}`);
+          try {
+            const geoJsonObj = JSON.parse(geoJsonString);
+            const turfPolygon = turf.feature(geoJsonObj);
+            areaKm2 = turf.area(turfPolygon) / 1000000;
+            console.log(`✅ [API] Área calculada com Turf.js: ${areaKm2.toFixed(2)} km²`);
+          } catch (turfErr) {
+            console.warn(`⚠️ [API] Erro ao calcular área (PostGIS e Turf.js falharam):`, turfErr.message);
+            areaKm2 = 0;
+          }
+        }
         
         // Obter próxima versão
         const { data: maxVersionData } = await supabase
@@ -1808,13 +1666,14 @@ app.post('/api/coverage/calculate', async (req, res) => {
         uploadProgress.calculationPercent = 100;
         uploadProgress.message = 'Área de cobertura criada com sucesso!';
         
-        console.log(`✅ [API] ===== POLÍGONOS CALCULADOS COM SUCESSO (BACKEND)! =====`);
+        console.log(`✅ [API] ===== POLÍGONOS CALCULADOS COM SUCESSO (POSTGIS)! =====`);
         console.log(`   - Polygon ID: ${polygonId || 'N/A'}`);
         console.log(`   - Total CTOs: ${processedCTOs}`);
         console.log(`   - Área: ${areaKm2.toFixed(2)} km²`);
         console.log(`   - Versão: ${nextVersion}`);
         console.log(`   - Tempo: ${processingTime}s`);
         console.log(`   - Lotes processados: ${batchNumber}`);
+        console.log(`   - Método: PostGIS (via Supabase)`);
         console.log(`✅ [API] ==========================================`);
       } catch (err) {
         console.error('❌ [API] Erro no processamento em background:', err);
