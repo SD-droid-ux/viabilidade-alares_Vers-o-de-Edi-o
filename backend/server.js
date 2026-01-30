@@ -5678,10 +5678,11 @@ function generateChaveUnica(cto) {
  * Esta função é usada para comparar CTOs existentes com as novas do Excel
  * 
  * @param {Object} supabaseClient - Cliente Supabase
+ * @param {Function} progressCallback - Callback opcional para atualizar progresso (recebe { loaded, total, percent })
  * @returns {Promise<Map<string, string|null>>} - Map<id_cto, chave_unica>
  * @throws {Error} - Se houver erro ao carregar do Supabase
  */
-async function loadExistingCTOs(supabaseClient) {
+async function loadExistingCTOs(supabaseClient, progressCallback = null) {
   const existingCTOs = new Map(); // Map<id_cto, chave_unica>
   let lastId = null;
   let hasMore = true;
@@ -5730,6 +5731,20 @@ async function loadExistingCTOs(supabaseClient) {
       // Atualizar lastId para próxima iteração
       lastId = data[data.length - 1].id_cto;
       
+      // Atualizar progresso (se callback fornecido)
+      // Estimar total baseado no padrão: se retornou 1000, provavelmente há mais
+      const estimatedTotal = data.length === 1000 ? existingCTOs.size * 1.2 : existingCTOs.size;
+      const loadPercent = Math.min(10, Math.round((existingCTOs.size / estimatedTotal) * 10));
+      
+      if (progressCallback) {
+        progressCallback({
+          loaded: existingCTOs.size,
+          total: estimatedTotal,
+          percent: loadPercent,
+          batchNumber: batchNumber
+        });
+      }
+      
       // Log de progresso a cada 10 lotes ou no primeiro lote
       if (batchNumber === 1 || batchNumber % 10 === 0) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -5777,10 +5792,11 @@ async function loadExistingCTOs(supabaseClient) {
  * 
  * @param {Object} supabaseClient - Cliente Supabase
  * @param {string[]} idsToDelete - Array de id_cto para deletar
+ * @param {Function} progressCallback - Callback opcional para atualizar progresso (recebe { deleted, total, percent })
  * @returns {Promise<Object>} - { deleted: number } - Quantidade de CTOs deletadas
  * @throws {Error} - Se houver erro ao deletar
  */
-async function deleteCTOsInBatches(supabaseClient, idsToDelete) {
+async function deleteCTOsInBatches(supabaseClient, idsToDelete, progressCallback = null) {
   if (!idsToDelete || idsToDelete.length === 0) {
     console.log('ℹ️ [Upload] Nenhuma CTO para deletar (Cenário 1)');
     return { deleted: 0 };
@@ -5815,9 +5831,18 @@ async function deleteCTOsInBatches(supabaseClient, idsToDelete) {
       const deletedInBatch = count !== null ? count : batch.length;
       totalDeleted += deletedInBatch;
       
+      // Atualizar progresso (se callback fornecido)
+      const progressPercent = Math.round((totalDeleted / idsToDelete.length) * 100);
+      if (progressCallback) {
+        progressCallback({
+          deleted: totalDeleted,
+          total: idsToDelete.length,
+          percent: progressPercent
+        });
+      }
+      
       // Log de progresso
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      const progressPercent = Math.round((totalDeleted / idsToDelete.length) * 100);
       console.log(`🗑️ [Upload] Lote ${batchNumber}: ${deletedInBatch} CTO(s) deletada(s) | Total: ${totalDeleted}/${idsToDelete.length} (${progressPercent}%) | Tempo: ${elapsed}s`);
       
       // Pequeno delay entre lotes para não sobrecarregar o banco
@@ -5850,10 +5875,11 @@ async function deleteCTOsInBatches(supabaseClient, idsToDelete) {
  * 
  * @param {Object} supabaseClient - Cliente Supabase
  * @param {Object[]} ctosToUpdate - Array de objetos CTO para atualizar (deve incluir chave_unica)
- * @returns {Promise<Object>} - { updated: number } - Quantidade de CTOs atualizadas
+ * @param {Function} progressCallback - Callback opcional para atualizar progresso (recebe { updated, total, percent })
+ * @returns {Promise<Object>} - { updated: number, errors: number } - Quantidade de CTOs atualizadas e erros
  * @throws {Error} - Se houver erro ao atualizar
  */
-async function updateCTOsInBatches(supabaseClient, ctosToUpdate) {
+async function updateCTOsInBatches(supabaseClient, ctosToUpdate, progressCallback = null) {
   if (!ctosToUpdate || ctosToUpdate.length === 0) {
     console.log('ℹ️ [Upload] Nenhuma CTO para atualizar (Cenário 3)');
     return { updated: 0 };
@@ -5931,9 +5957,18 @@ async function updateCTOsInBatches(supabaseClient, ctosToUpdate) {
       totalUpdated += batchUpdated;
       totalErrors += batchErrors;
       
+      // Atualizar progresso (se callback fornecido)
+      const progressPercent = Math.round((totalUpdated / ctosToUpdate.length) * 100);
+      if (progressCallback) {
+        progressCallback({
+          updated: totalUpdated,
+          total: ctosToUpdate.length,
+          percent: progressPercent
+        });
+      }
+      
       // Log de progresso
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      const progressPercent = Math.round((totalUpdated / ctosToUpdate.length) * 100);
       console.log(`🔄 [Upload] Lote ${batchNumber}: ${batchUpdated} atualizada(s), ${batchErrors} erro(s) | Total: ${totalUpdated}/${ctosToUpdate.length} (${progressPercent}%) | Tempo: ${elapsed}s`);
       
       // Pequeno delay entre lotes para não sobrecarregar o banco
@@ -5970,10 +6005,11 @@ async function updateCTOsInBatches(supabaseClient, ctosToUpdate) {
  * 
  * @param {Object} supabaseClient - Cliente Supabase
  * @param {Object[]} ctosToInsert - Array de objetos CTO para inserir (deve incluir chave_unica)
+ * @param {Function} progressCallback - Callback opcional para atualizar progresso (recebe { inserted, total, percent })
  * @returns {Promise<Object>} - { inserted: number } - Quantidade de CTOs inseridas
  * @throws {Error} - Se houver erro ao inserir
  */
-async function insertCTOsInBatches(supabaseClient, ctosToInsert) {
+async function insertCTOsInBatches(supabaseClient, ctosToInsert, progressCallback = null) {
   if (!ctosToInsert || ctosToInsert.length === 0) {
     console.log('ℹ️ [Upload] Nenhuma CTO nova para inserir (Cenário 2)');
     return { inserted: 0 };
@@ -6041,9 +6077,18 @@ async function insertCTOsInBatches(supabaseClient, ctosToInsert) {
         const insertedInBatch = await insertBatchWithRetry(batch, batchNumber);
         totalInserted += insertedInBatch;
         
+        // Atualizar progresso (se callback fornecido)
+        const progressPercent = Math.round((totalInserted / ctosToInsert.length) * 100);
+        if (progressCallback) {
+          progressCallback({
+            inserted: totalInserted,
+            total: ctosToInsert.length,
+            percent: progressPercent
+          });
+        }
+        
         // Log de progresso
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        const progressPercent = Math.round((totalInserted / ctosToInsert.length) * 100);
         console.log(`➕ [Upload] Lote ${batchNumber}: ${insertedInBatch} CTO(s) inserida(s) | Total: ${totalInserted}/${ctosToInsert.length} (${progressPercent}%) | Tempo: ${elapsed}s`);
         
         // Delay maior entre lotes para não sobrecarregar o Supabase/Cloudflare
@@ -6844,8 +6889,18 @@ app.post('/api/upload-base', (req, res, next) => {
             console.log('📥 [Background] Carregando CTOs existentes do Supabase para comparação...');
             
             // Carregar CTOs existentes (IDs e chaves_unicas)
-            const existingCTOsMap = await loadExistingCTOs(supabase);
+            // Callback para atualizar progresso durante carregamento
+            const loadProgressCallback = (progress) => {
+              uploadProgress.uploadPercent = progress.percent;
+              uploadProgress.message = `Carregando CTOs existentes... ${progress.loaded} CTO(s)`;
+            };
+            
+            const existingCTOsMap = await loadExistingCTOs(supabase, loadProgressCallback);
             console.log(`✅ [Background] CTOs existentes carregadas: ${existingCTOsMap.size}`);
+            
+            // Atualizar progresso após carregamento completo
+            uploadProgress.uploadPercent = 10;
+            uploadProgress.message = 'CTOs existentes carregadas. Processando arquivo...';
             
             // Processar Excel com comparação inteligente
             uploadProgress.message = 'Processando arquivo e comparando com base existente...';
@@ -6897,21 +6952,48 @@ app.post('/api/upload-base', (req, res, next) => {
             if (idsToDelete.length > 0) {
               uploadProgress.message = `Deletando ${idsToDelete.length} CTO(s) que saíram da base...`;
               uploadProgress.stage = 'deleting';
-              deleteResult = await deleteCTOsInBatches(supabase, idsToDelete);
+              uploadProgress.uploadPercent = 85; // Início do estágio de deleção
+              
+              // Callback para atualizar progresso durante deleção
+              const deleteProgressCallback = (progress) => {
+                uploadProgress.uploadPercent = 85 + Math.round((progress.percent / 100) * 3); // 85% a 88%
+                uploadProgress.message = `Deletando ${idsToDelete.length} CTO(s) que saíram da base... ${progress.percent}%`;
+              };
+              
+              deleteResult = await deleteCTOsInBatches(supabase, idsToDelete, deleteProgressCallback);
+              uploadProgress.uploadPercent = 88; // Fim do estágio de deleção
             }
             
             // Cenário 2: INSERIR CTOs novas
             if (result.ctosToInsert.length > 0) {
               uploadProgress.message = `Inserindo ${result.ctosToInsert.length} CTO(s) nova(s)...`;
               uploadProgress.stage = 'inserting';
-              insertResult = await insertCTOsInBatches(supabase, result.ctosToInsert);
+              uploadProgress.uploadPercent = 88; // Início do estágio de inserção
+              
+              // Callback para atualizar progresso durante inserção
+              const insertProgressCallback = (progress) => {
+                uploadProgress.uploadPercent = 88 + Math.round((progress.percent / 100) * 6); // 88% a 94%
+                uploadProgress.message = `Inserindo ${result.ctosToInsert.length} CTO(s) nova(s)... ${progress.percent}%`;
+              };
+              
+              insertResult = await insertCTOsInBatches(supabase, result.ctosToInsert, insertProgressCallback);
+              uploadProgress.uploadPercent = 94; // Fim do estágio de inserção
             }
             
             // Cenário 3: ATUALIZAR CTOs que mudaram
             if (result.ctosToUpdate.length > 0) {
               uploadProgress.message = `Atualizando ${result.ctosToUpdate.length} CTO(s) que mudaram...`;
               uploadProgress.stage = 'updating';
-              updateResult = await updateCTOsInBatches(supabase, result.ctosToUpdate);
+              uploadProgress.uploadPercent = 94; // Início do estágio de atualização
+              
+              // Callback para atualizar progresso durante atualização
+              const updateProgressCallback = (progress) => {
+                uploadProgress.uploadPercent = 94 + Math.round((progress.percent / 100) * 4); // 94% a 98%
+                uploadProgress.message = `Atualizando ${result.ctosToUpdate.length} CTO(s) que mudaram... ${progress.percent}%`;
+              };
+              
+              updateResult = await updateCTOsInBatches(supabase, result.ctosToUpdate, updateProgressCallback);
+              uploadProgress.uploadPercent = 98; // Fim do estágio de atualização
             }
             
             // Calcular total processado
