@@ -6912,17 +6912,25 @@ app.post('/api/upload-base', (req, res, next) => {
             uploadProgress.stage = 'processing';
             
             // Callback para atualizar progresso
+            // NÃO usar uploadPercent do processExcelStreaming (está em escala 0-100% do Excel, não do total)
+            // O frontend calculará o percentual total baseado em processedRows/totalRows
             const progressCallback = (progress) => {
               uploadProgress.processedRows = progress.processedRows;
               uploadProgress.totalRows = progress.totalRows;
               uploadProgress.importedRows = progress.importedRows;
-              uploadProgress.uploadPercent = progress.uploadPercent;
-              uploadProgress.message = progress.message;
+              // NÃO definir uploadPercent aqui - deixar o frontend calcular baseado em processedRows/totalRows
+              // uploadProgress.uploadPercent será calculado pelo frontend: 5% + (processedRows/totalRows * 75%)
+              uploadProgress.message = progress.message || `Processando arquivo... ${progress.processedRows}/${progress.totalRows} linhas`;
             };
             
             // Processar Excel com comparação (passar existingCTOsMap)
             const result = await processExcelStreaming(tempFilePath, supabase, existingCTOsMap, progressCallback);
             totalRows = result.totalRows;
+            
+            // Garantir que ao final do processamento, o percentual seja 80%
+            uploadProgress.processedRows = totalRows;
+            uploadProgress.totalRows = totalRows;
+            uploadProgress.uploadPercent = 80; // Fim do estágio de processamento (5-80%)
             
             // NOVO: Identificar CTOs deletadas (Cenário 1)
             // CTOs que existem no Supabase mas não existem no Excel
