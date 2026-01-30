@@ -6837,38 +6837,9 @@ app.post('/api/upload-base', (req, res, next) => {
             console.log('📤 [Background] ===== INICIANDO IMPORTAÇÃO SUPABASE =====');
             console.log('📤 [Background] Usando processamento em STREAMING (exceljs) para arquivos grandes...');
             
-            // Deletar polígonos de cobertura primeiro (antes de deletar CTOs)
-            uploadProgress.stage = 'deleting';
-            uploadProgress.message = 'Deletando polígonos de cobertura...';
-            console.log('🗑️ [Background] Deletando polígonos de cobertura antigos...');
-            const polygonDeleteResult = await deleteAllCoveragePolygons();
-            if (polygonDeleteResult.success) {
-              console.log(`✅ [Background] Polígonos deletados: ${polygonDeleteResult.deletedCount || 0} polígono(s)`);
-            } else {
-              console.warn(`⚠️ [Background] Aviso ao deletar polígonos: ${polygonDeleteResult.error}`);
-              // Continuar mesmo se falhar - não é crítico
-            }
-            
-            uploadProgress.message = 'Carregando CTOs existentes para comparação inteligente...';
-            
-            // Limpar registros antigos de cálculo em progresso (se existirem)
-            try {
-              console.log('🗑️ [Background] Limpando registros antigos de cálculo em progresso...');
-              const { error: clearProgressError } = await supabase
-                .from('coverage_calculation_progress')
-                .delete()
-                .neq('calculation_id', ''); // Deletar todos os registros
-              
-              if (clearProgressError) {
-                console.warn(`⚠️ [Background] Aviso ao limpar progresso antigo: ${clearProgressError.message}`);
-              } else {
-                console.log(`✅ [Background] Registros antigos de cálculo limpos`);
-              }
-            } catch (clearErr) {
-              console.warn(`⚠️ [Background] Erro ao limpar progresso antigo (não crítico):`, clearErr.message);
-            }
-            
             // NOVO FLUXO: Carregar CTOs existentes para comparação inteligente
+            // POLÍGONOS NÃO SÃO TRATADOS AQUI - apenas no botão "Criar Nova Mancha de Cobertura"
+            uploadProgress.message = 'Carregando CTOs existentes para comparação inteligente...';
             console.log('📥 [Background] ===== INICIANDO ATUALIZAÇÃO INTELIGENTE =====');
             console.log('📥 [Background] Carregando CTOs existentes do Supabase para comparação...');
             
@@ -6912,6 +6883,10 @@ app.post('/api/upload-base', (req, res, next) => {
             console.log(`📊 [Background] CTOs atualizadas (Cenário 3): ${result.ctosToUpdate.length}`);
             console.log(`📊 [Background] CTOs deletadas (Cenário 1): ${idsToDelete.length}`);
             console.log(`📊 [Background] CTOs não alteradas: ${result.ctosUnchanged}`);
+            
+            // POLÍGONOS NÃO SÃO TRATADOS AQUI
+            // Polígonos são tratados apenas no botão "Criar Nova Mancha de Cobertura"
+            // O usuário deve recalcular os polígonos manualmente após atualizar a base
             
             // NOVO: Executar os 3 cenários
             let deleteResult = { deleted: 0 };
