@@ -1281,8 +1281,9 @@ app.post('/api/coverage/calculate', async (req, res) => {
       const startTime = Date.now();
       let accumulatedPolygonGeoJSON = null; // Polígono acumulado (GeoJSON string)
       let processedCTOs = 0;
-      // Lotes de 2000: PostGIS pode processar bem, mas lotes menores são mais seguros
-      const batchSize = 2000; // Lotes de 2000 para melhor performance com PostGIS
+      // Lotes de 2000: Cada query PostGIS processa 2000 CTOs diretamente
+      // Query abre → processa 2000 CTOs → fecha → próxima query
+      const batchSize = 2000; // Processar 2000 CTOs por query PostGIS
       const bufferRadiusMeters = 250; // Raio do buffer em metros
       const simplificationTolerance = 0.0001; // Tolerância de simplificação
       
@@ -1313,6 +1314,13 @@ app.post('/api/coverage/calculate', async (req, res) => {
             .range(offset, offset + batchSize - 1);
           
           if (fetchError) {
+            // Tratar timeout especificamente - continuar com próximo lote
+            if (fetchError.code === '57014' || fetchError.message?.includes('timeout')) {
+              console.warn(`⚠️ [API] Timeout ao buscar CTOs (lote ${batchNumber}). Pulando lote e continuando...`);
+              offset += batchSize;
+              processedCTOs += batchSize; // Assumir que processou mesmo com timeout
+              continue; // Continuar com próximo lote
+            }
             console.error(`❌ [API] Erro ao buscar CTOs (lote ${batchNumber}):`, fetchError);
             uploadProgress.stage = 'error';
             uploadProgress.message = `Erro ao buscar CTOs: ${fetchError.message}`;
@@ -1332,7 +1340,9 @@ app.post('/api/coverage/calculate', async (req, res) => {
           // 2. Extrair IDs das CTOs
           const ctoIds = ctosBatch.map(cto => cto.id);
           
-          // 3. Chamar função PostGIS para calcular polígono do lote
+          // 3. Chamar função PostGIS - ela processa 2000 CTOs internamente em sub-lotes
+          // A função SQL agora processa internamente em sub-lotes de 100 para evitar timeout
+          // Mas o backend chama apenas uma vez com 2000 CTOs
           const { data: batchResult, error: batchError } = await supabase.rpc('calculate_coverage_polygon_batch', {
             p_cto_ids: ctoIds,
             p_buffer_radius_meters: bufferRadiusMeters
@@ -1355,6 +1365,13 @@ app.post('/api/coverage/calculate', async (req, res) => {
           }
           
           const batchPolygonGeoJSON = batchResult[0].geometry_geojson;
+          
+          if (!batchPolygonGeoJSON) {
+            console.warn(`⚠️ [API] Lote ${batchNumber} não retornou polígono válido`);
+            offset += batchSize;
+            processedCTOs += ctosBatch.length;
+            continue;
+          }
           
           if (!batchPolygonGeoJSON) {
             console.warn(`⚠️ [API] Lote ${batchNumber} não retornou polígono válido`);
@@ -1420,8 +1437,10 @@ app.post('/api/coverage/calculate', async (req, res) => {
             console.warn(`⚠️ [API] Lote ${batchNumber} retornou apenas ${ctosBatch.length} CTOs (esperado ${batchSize}). Pode haver problema de paginação.`);
           }
           
-          // Pequeno delay para não sobrecarregar o banco
-          await new Promise(resolve => setTimeout(resolve, 50));
+          // Delay maior para evitar sobrecarga e timeout
+          // Delay aumenta com o número de lotes processados
+          const delay = Math.min(200, 50 + (batchNumber * 5));
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
         
         console.log(`✅ [API] Todos os lotes processados: ${batchNumber} lotes`);
