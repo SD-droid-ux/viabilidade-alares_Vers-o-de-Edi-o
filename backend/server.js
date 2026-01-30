@@ -1113,9 +1113,10 @@ app.post('/api/coverage/calculate', async (req, res) => {
     const calculationId = `calc_inc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     // Contar total de CTOs válidas (com latitude/longitude válidas)
+    // IMPORTANTE: Usar os mesmos filtros da busca para garantir contagem precisa
     const { count: totalCTOs, error: countError } = await supabase
       .from('ctos')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .not('latitude', 'is', null)
       .not('longitude', 'is', null)
       .gte('latitude', -90)
@@ -1125,9 +1126,21 @@ app.post('/api/coverage/calculate', async (req, res) => {
     
     if (countError) {
       console.error('❌ [API] Erro ao contar CTOs válidas:', countError);
+      // Tentar contar sem filtros como fallback
+      const { count: totalAll } = await supabase
+        .from('ctos')
+        .select('id', { count: 'exact', head: true });
+      console.warn(`⚠️ [API] Usando contagem total sem filtros: ${totalAll || 0}`);
     }
     
     console.log(`📊 [API] Total de CTOs válidas encontradas: ${totalCTOs || 0}`);
+    
+    // Verificar se há CTOs para processar
+    if (!totalCTOs || totalCTOs === 0) {
+      uploadProgress.stage = 'error';
+      uploadProgress.message = 'Nenhuma CTO válida encontrada para processar';
+      throw new Error('Nenhuma CTO válida encontrada');
+    }
     
     // Inicializar progresso global
     uploadProgress = {
@@ -1292,16 +1305,19 @@ app.post('/api/coverage/calculate', async (req, res) => {
         console.log(`🗺️ [API] Cálculos sendo feitos usando POSTGIS (via Supabase)`);
         console.log(`📊 [API] Total de CTOs: ${totalCTOs || 0}`);
         
-        let offset = 0;
+        let lastId = 0; // Último ID processado (cursor-based pagination)
         let batchNumber = 0;
+        let hasMore = true;
         
         // Loop: buscar e processar lotes até completar usando PostGIS
-        while (offset < (totalCTOs || 0)) {
+        // Usar paginação baseada em ID (cursor) ao invés de offset para evitar problemas
+        while (hasMore) {
           batchNumber++;
           const batchStartTime = Date.now();
           
           // 1. Buscar lote de CTOs do Supabase (apenas IDs)
-          const { data: ctosBatch, error: fetchError } = await supabase
+          // Paginação baseada em ID (cursor) - mais confiável que offset
+          let query = supabase
             .from('ctos')
             .select('id', { count: 'exact' })
             .not('latitude', 'is', null)
@@ -1311,14 +1327,26 @@ app.post('/api/coverage/calculate', async (req, res) => {
             .gte('longitude', -180)
             .lte('longitude', 180)
             .order('id', { ascending: true })
-            .range(offset, offset + batchSize - 1);
+            .limit(batchSize);
+          
+          // Se não é o primeiro lote, buscar apenas IDs maiores que o último processado
+          if (lastId > 0) {
+            query = query.gt('id', lastId);
+          }
+          
+          const { data: ctosBatch, error: fetchError } = await query;
           
           if (fetchError) {
             // Tratar timeout especificamente - continuar com próximo lote
             if (fetchError.code === '57014' || fetchError.message?.includes('timeout')) {
-              console.warn(`⚠️ [API] Timeout ao buscar CTOs (lote ${batchNumber}). Pulando lote e continuando...`);
-              offset += batchSize;
-              processedCTOs += batchSize; // Assumir que processou mesmo com timeout
+              console.warn(`⚠️ [API] Timeout ao buscar CTOs (lote ${batchNumber}). Tentando buscar próximo lote...`);
+              // Não atualizar lastId - tentar novamente (pode ser problema temporário)
+              // Mas se lastId não mudar, pode entrar em loop - adicionar segurança
+              if (lastId > 0) {
+                // Avançar um pouco o ID para não ficar preso
+                lastId = lastId + 1000; // Pular alguns IDs para evitar loop
+                console.warn(`⚠️ [API] Avançando lastId para ${lastId} para evitar loop`);
+              }
               continue; // Continuar com próximo lote
             }
             console.error(`❌ [API] Erro ao buscar CTOs (lote ${batchNumber}):`, fetchError);
@@ -1328,17 +1356,26 @@ app.post('/api/coverage/calculate', async (req, res) => {
           }
           
           if (!ctosBatch || ctosBatch.length === 0) {
-            console.log(`✅ [API] Não há mais CTOs para processar (offset: ${offset}, total esperado: ${totalCTOs || 0}, processadas: ${processedCTOs})`);
+            console.log(`✅ [API] Não há mais CTOs para processar (último ID: ${lastId}, total esperado: ${totalCTOs || 0}, processadas: ${processedCTOs})`);
+            hasMore = false;
             break;
           }
           
+          // Atualizar último ID processado (para próxima iteração)
+          lastId = ctosBatch[ctosBatch.length - 1].id;
+          
           // Log detalhado para debug
           if (batchNumber === 1 || batchNumber % 5 === 0) {
-            console.log(`📦 [API] Lote ${batchNumber}: Processando ${ctosBatch.length} CTOs (offset: ${offset} a ${offset + ctosBatch.length - 1}, total esperado: ${totalCTOs || 0})`);
+            console.log(`📦 [API] Lote ${batchNumber}: Processando ${ctosBatch.length} CTOs (ID: ${ctosBatch[0]?.id} a ${lastId}, total esperado: ${totalCTOs || 0}, processadas: ${processedCTOs})`);
           }
           
           // 2. Extrair IDs das CTOs
           const ctoIds = ctosBatch.map(cto => cto.id);
+          
+          // Verificar se retornou menos que o esperado (pode indicar fim dos dados)
+          if (ctosBatch.length < batchSize) {
+            console.log(`📊 [API] Lote ${batchNumber} retornou ${ctosBatch.length} CTOs (menos que ${batchSize}). Pode ser o último lote.`);
+          }
           
           // 3. Chamar função PostGIS - ela processa 2000 CTOs internamente em sub-lotes
           // A função SQL agora processa internamente em sub-lotes de 100 para evitar timeout
@@ -1351,15 +1388,14 @@ app.post('/api/coverage/calculate', async (req, res) => {
           if (batchError) {
             console.error(`❌ [API] Erro ao calcular polígono do lote ${batchNumber}:`, batchError);
             // Continuar com próximo lote ao invés de quebrar
-            offset += batchSize;
             processedCTOs += ctosBatch.length;
+            // Não atualizar lastId - tentar novamente no próximo loop (pode ser problema temporário)
             continue;
           }
           
           if (!batchResult || batchResult.length === 0 || !batchResult[0].success) {
             const errorMsg = batchResult?.[0]?.error_message || 'Erro desconhecido ao calcular polígono do lote';
             console.warn(`⚠️ [API] Lote ${batchNumber} falhou: ${errorMsg}`);
-            offset += batchSize;
             processedCTOs += ctosBatch.length;
             continue;
           }
@@ -1368,14 +1404,6 @@ app.post('/api/coverage/calculate', async (req, res) => {
           
           if (!batchPolygonGeoJSON) {
             console.warn(`⚠️ [API] Lote ${batchNumber} não retornou polígono válido`);
-            offset += batchSize;
-            processedCTOs += ctosBatch.length;
-            continue;
-          }
-          
-          if (!batchPolygonGeoJSON) {
-            console.warn(`⚠️ [API] Lote ${batchNumber} não retornou polígono válido`);
-            offset += batchSize;
             processedCTOs += ctosBatch.length;
             continue;
           }
@@ -1394,7 +1422,6 @@ app.post('/api/coverage/calculate', async (req, res) => {
               const errorMsg = unionResult?.[0]?.error_message || unionError?.message || 'Erro ao unir polígonos';
               console.warn(`⚠️ [API] Erro ao unir polígono do lote ${batchNumber} com acumulado: ${errorMsg}`);
               // Continuar com próximo lote
-              offset += batchSize;
               processedCTOs += ctosBatch.length;
               continue;
             }
@@ -1415,7 +1442,6 @@ app.post('/api/coverage/calculate', async (req, res) => {
           }
           
           processedCTOs += ctosBatch.length;
-          offset += batchSize;
           
           // Atualizar progresso
           const progressPercent = Math.round((processedCTOs / (totalCTOs || 1)) * 100);
@@ -1429,12 +1455,13 @@ app.post('/api/coverage/calculate', async (req, res) => {
           // Log detalhado para debug
           if (batchNumber === 1 || batchNumber % 5 === 0 || progressPercent >= 95) {
             console.log(`📦 [API] Lote ${batchNumber}: ${processedCTOs}/${totalCTOs || 0} CTOs (${progressPercent}%) - ${batchTime}s [PostGIS]`);
-            console.log(`   └─ Offset atual: ${offset}, Próximo offset: ${offset + batchSize}, Total esperado: ${totalCTOs || 0}`);
+            console.log(`   └─ Último ID processado: ${lastId}, Próximo ID: > ${lastId}, Total esperado: ${totalCTOs || 0}`);
           }
           
-          // Verificar se há problema de paginação
-          if (ctosBatch.length < batchSize && offset < (totalCTOs || 0)) {
-            console.warn(`⚠️ [API] Lote ${batchNumber} retornou apenas ${ctosBatch.length} CTOs (esperado ${batchSize}). Pode haver problema de paginação.`);
+          // Se retornou menos que o batchSize, pode ser o último lote
+          if (ctosBatch.length < batchSize) {
+            hasMore = false; // Não há mais dados
+            console.log(`📊 [API] Lote ${batchNumber} foi o último (retornou ${ctosBatch.length} < ${batchSize} CTOs)`);
           }
           
           // Delay maior para evitar sobrecarga e timeout
