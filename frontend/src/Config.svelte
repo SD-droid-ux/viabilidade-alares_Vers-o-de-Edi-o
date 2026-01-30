@@ -72,7 +72,7 @@
   
   // Variáveis para progresso do upload e cálculo
   let uploadProgress = {
-    stage: 'idle', // 'idle', 'deleting', 'uploading', 'calculating', 'completed', 'error'
+    stage: 'idle', // 'idle', 'deleting', 'uploading', 'calculating', 'completed', 'error', 'processing', 'inserting', 'updating'
     uploadPercent: 0,
     calculationPercent: 0,
     message: '',
@@ -82,6 +82,133 @@
     totalCTOs: 0,
     processedCTOs: 0
   };
+  
+  // Função para calcular percentual total real do processo de upload
+  // Baseado nos estágios e progresso de cada um, de 0% a 100%
+  function calculateTotalUploadPercent(progress) {
+    if (!progress || progress.stage === 'idle') {
+      return 0;
+    }
+    
+    if (progress.stage === 'completed') {
+      return 100;
+    }
+    
+    if (progress.stage === 'error') {
+      return Math.min(95, progress.uploadPercent || 0);
+    }
+    
+    // Distribuição do tempo por estágio (baseado em experiência real):
+    // 1. Carregando CTOs existentes: 0-15% (pode variar muito)
+    // 2. Processando Excel: 15-75% (maior parte do tempo)
+    // 3. Deletando CTOs: 75-80% (rápido se houver)
+    // 4. Inserindo CTOs: 80-90% (pode ser rápido ou lento)
+    // 5. Atualizando CTOs: 90-98% (pode ser lento)
+    // 6. Finalizando: 98-100%
+    
+    let basePercent = 0;
+    let stagePercent = 0;
+    
+    // Estágio: Carregando CTOs existentes (antes de processing)
+    // Se não temos stage ou stage é idle, mas temos mensagem de carregamento
+    if (!progress.stage || progress.stage === 'idle') {
+      // Se temos processedRows ou totalRows, provavelmente está processando
+      if (progress.processedRows > 0 || progress.totalRows > 0) {
+        // Já começou a processar, mas stage ainda não foi atualizado
+        return 15;
+      }
+      // Ainda carregando CTOs existentes
+      // Estimativa baseada em uploadPercent se disponível, senão 5%
+      return Math.min(15, progress.uploadPercent || 5);
+    }
+    
+    // Estágio: Processando Excel (maior parte do tempo)
+    if (progress.stage === 'processing') {
+      basePercent = 15;
+      // Progresso dentro do estágio baseado em processedRows/totalRows
+      if (progress.totalRows > 0 && progress.processedRows > 0) {
+        const processingProgress = Math.min(100, (progress.processedRows / progress.totalRows) * 100);
+        stagePercent = (processingProgress / 100) * 60; // 15% a 75% = 60% de range
+      } else if (progress.processedRows > 0) {
+        // Se temos processedRows mas não totalRows, estimar baseado em uploadPercent
+        const estimatedProgress = Math.min(95, progress.uploadPercent || 0);
+        stagePercent = (estimatedProgress / 100) * 60;
+      } else {
+        stagePercent = 5; // Início do processamento
+      }
+      return Math.min(75, Math.round(basePercent + stagePercent));
+    }
+    
+    // Estágio: Deletando CTOs
+    if (progress.stage === 'deleting') {
+      basePercent = 75;
+      // Se temos uploadPercent do backend, usar ele (0-100% dentro deste estágio)
+      // Caso contrário, estimar baseado em processedRows se disponível
+      let deleteProgress = 0;
+      if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
+        deleteProgress = progress.uploadPercent;
+      } else if (progress.processedRows > 0 && progress.totalRows > 0) {
+        deleteProgress = Math.min(100, (progress.processedRows / progress.totalRows) * 100);
+      } else {
+        deleteProgress = 50; // Estimativa média
+      }
+      stagePercent = (deleteProgress / 100) * 5; // 75% a 80% = 5% de range
+      return Math.min(80, Math.round(basePercent + stagePercent));
+    }
+    
+    // Estágio: Inserindo CTOs
+    if (progress.stage === 'inserting') {
+      basePercent = 80;
+      // Se temos uploadPercent do backend, usar ele
+      let insertProgress = 0;
+      if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
+        insertProgress = progress.uploadPercent;
+      } else if (progress.processedRows > 0 && progress.totalRows > 0) {
+        insertProgress = Math.min(100, (progress.processedRows / progress.totalRows) * 100);
+      } else {
+        insertProgress = 50; // Estimativa média
+      }
+      stagePercent = (insertProgress / 100) * 10; // 80% a 90% = 10% de range
+      return Math.min(90, Math.round(basePercent + stagePercent));
+    }
+    
+    // Estágio: Atualizando CTOs
+    if (progress.stage === 'updating') {
+      basePercent = 90;
+      // Se temos uploadPercent do backend, usar ele
+      let updateProgress = 0;
+      if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
+        updateProgress = progress.uploadPercent;
+      } else if (progress.processedRows > 0 && progress.totalRows > 0) {
+        updateProgress = Math.min(100, (progress.processedRows / progress.totalRows) * 100);
+      } else {
+        updateProgress = 50; // Estimativa média
+      }
+      stagePercent = (updateProgress / 100) * 8; // 90% a 98% = 8% de range
+      return Math.min(98, Math.round(basePercent + stagePercent));
+    }
+    
+    // Estágio: Uploading (modo legado - sem comparação inteligente)
+    if (progress.stage === 'uploading') {
+      basePercent = 15;
+      const uploadProgressValue = progress.uploadPercent || 0;
+      stagePercent = (uploadProgressValue / 100) * 80; // 15% a 95% = 80% de range
+      return Math.min(95, Math.round(basePercent + stagePercent));
+    }
+    
+    // Se stage não está definido mas temos uploadPercent, usar ele
+    // Isso cobre o caso de "Carregando CTOs existentes" (antes de processing)
+    if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
+      // Se uploadPercent é baixo (< 15%), provavelmente está carregando CTOs existentes
+      if (progress.uploadPercent < 15) {
+        return Math.round(progress.uploadPercent);
+      }
+      return Math.min(95, Math.round(progress.uploadPercent));
+    }
+    
+    // Fallback: se não temos informações, retornar 5% (início do processo)
+    return 5;
+  }
 
   // Carregar dados do localStorage primeiro (instantâneo)
   function loadFromLocalStorage() {
@@ -1668,6 +1795,9 @@
                     uploadMessage = progressData.message || 'Atualizando CTOs que mudaram...';
                   } else if (progressData.stage === 'uploading') {
                     uploadMessage = progressData.message || `Carregando base de dados... ${progressData.uploadPercent}%`;
+                  } else if (!progressData.stage || progressData.stage === 'idle') {
+                    // Carregando CTOs existentes (antes de processing)
+                    uploadMessage = progressData.message || 'Carregando CTOs existentes para comparação inteligente...';
                   } else if (progressData.stage === 'completed') {
                     // Processo completo!
                     clearInterval(uploadPollInterval);
@@ -2095,21 +2225,20 @@
               <span>{uploadMessage || 'Validando e atualizando base de dados...'}</span>
             </div>
             
-            {#if uploadProgress.stage === 'processing' || uploadProgress.stage === 'deleting' || uploadProgress.stage === 'inserting' || uploadProgress.stage === 'updating' || uploadProgress.stage === 'uploading'}
-              <div class="progress-container" style="margin-top: 1rem;">
-                <div class="progress-bar-wrapper">
-                  <div class="progress-label">
-                    {uploadProgress.message || 'Carregando base de dados'}: {Math.round(uploadProgress.uploadPercent)}%
-                    {#if uploadProgress.processedRows > 0 && uploadProgress.totalRows > 0}
-                      ({uploadProgress.processedRows}/{uploadProgress.totalRows} linhas)
-                    {/if}
-                  </div>
-                  <div class="progress-bar">
-                    <div class="progress-fill" style="width: {uploadProgress.uploadPercent}%;"></div>
-                  </div>
+            {@const totalPercent = calculateTotalUploadPercent(uploadProgress)}
+            <div class="progress-container" style="margin-top: 1rem;">
+              <div class="progress-bar-wrapper">
+                <div class="progress-label">
+                  {uploadProgress.message || uploadMessage || 'Carregando base de dados'}: {totalPercent}%
+                  {#if uploadProgress.processedRows > 0 && uploadProgress.totalRows > 0}
+                    ({uploadProgress.processedRows}/{uploadProgress.totalRows} linhas)
+                  {/if}
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: {totalPercent}%;"></div>
                 </div>
               </div>
-            {/if}
+            </div>
           {/if}
 
           {#if uploadMessage}
