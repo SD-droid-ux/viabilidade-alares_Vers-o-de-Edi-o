@@ -5562,6 +5562,117 @@ function normalizeKey(key) {
   return mapping[lower] || lower;
 }
 
+/**
+ * Gera chave_unica para uma CTO
+ * Concatena todas as colunas (exceto id_cto) de forma normalizada
+ * Esta chave é usada para detectar mudanças em CTOs existentes durante atualização da base
+ * 
+ * @param {Object} cto - Objeto com dados da CTO
+ * @param {string|null} cto.cid_rede - CID da rede
+ * @param {string|null} cto.estado - Estado
+ * @param {string|null} cto.pop - POP
+ * @param {string|null} cto.olt - OLT
+ * @param {string|null} cto.slot - Slot
+ * @param {string|null} cto.pon - PON
+ * @param {string|null} cto.cto - Nome da CTO
+ * @param {number|null} cto.latitude - Latitude
+ * @param {number|null} cto.longitude - Longitude
+ * @param {string|null} cto.status_cto - Status da CTO
+ * @param {string|null} cto.data_cadastro - Data de cadastro (formato YYYY-MM-DD ou MM/YYYY)
+ * @param {number|null} cto.portas - Número de portas
+ * @param {number|null} cto.ocupado - Portas ocupadas
+ * @param {number|null} cto.livre - Portas livres
+ * @param {number|null} cto.pct_ocup - Percentual de ocupação
+ * @returns {string} - Chave única normalizada (concatenação de todas as colunas)
+ */
+function generateChaveUnica(cto) {
+  // Função auxiliar para normalizar valores
+  const normalize = (value) => {
+    // Se for null ou undefined, retornar string vazia
+    if (value === null || value === undefined) {
+      return '';
+    }
+    
+    // Converter para string
+    let str = String(value);
+    
+    // Remover espaços em branco no início e fim
+    str = str.trim();
+    
+    // Normalizar números decimais (virgula → ponto)
+    // Exemplo: "31,25" → "31.25"
+    str = str.replace(',', '.');
+    
+    // Converter para maiúsculas (case-insensitive)
+    // Isso garante que "ATIVADO" e "ativado" sejam iguais
+    str = str.toUpperCase();
+    
+    return str;
+  };
+  
+  // Função auxiliar para normalizar data
+  const normalizeDate = (value) => {
+    if (!value) return '';
+    
+    // Se for string no formato "MM/YYYY", converter para "YYYY-MM-01"
+    if (typeof value === 'string') {
+      const mmYYYYMatch = value.trim().match(/^(\d{1,2})\/(\d{4})$/);
+      if (mmYYYYMatch) {
+        const mes = mmYYYYMatch[1].padStart(2, '0');
+        const ano = mmYYYYMatch[2];
+        return `${ano}-${mes}-01`;
+      }
+      
+      // Se já estiver no formato "YYYY-MM-DD", manter
+      if (value.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return value;
+      }
+    }
+    
+    // Se for Date, converter para YYYY-MM-DD
+    if (value instanceof Date) {
+      return value.toISOString().split('T')[0];
+    }
+    
+    // Converter para string e normalizar
+    return normalize(value);
+  };
+  
+  // Ordem das colunas na concatenação (mesma ordem sempre)
+  // IMPORTANTE: id_cto NÃO entra na chave_unica
+  const columns = [
+    cto.cid_rede,        // CID_REDE
+    cto.estado,          // ESTADO
+    cto.pop,             // POP
+    cto.olt,             // OLT
+    cto.slot,            // SLOT
+    cto.pon,             // PON
+    cto.cto,             // CTO (nome)
+    cto.latitude,        // LATITUDE
+    cto.longitude,       // LONGITUDE
+    cto.status_cto,      // STATUS_CTO
+    cto.data_cadastro,   // DATA_CADASTRO (normalizar formato)
+    cto.portas,          // PORTAS
+    cto.ocupado,         // OCUPADO
+    cto.livre,           // LIVRE
+    cto.pct_ocup         // PCT_OCUP
+  ];
+  
+  // Normalizar e concatenar todas as colunas
+  const normalizedValues = columns.map((value, index) => {
+    // Se for data_cadastro (índice 10), usar normalização especial
+    if (index === 10) {
+      return normalizeDate(value);
+    }
+    // Para os demais, usar normalização padrão
+    return normalize(value);
+  });
+  
+  const chaveUnica = normalizedValues.join('');
+  
+  return chaveUnica;
+}
+
 // Função para validar colunas do arquivo Excel
 async function validateExcelColumns(filePath) {
   try {
