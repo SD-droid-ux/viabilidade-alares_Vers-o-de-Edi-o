@@ -5982,21 +5982,20 @@ async function insertCTOsInBatches(supabaseClient, ctosToInsert) {
   console.log(`➕ [Upload] ===== INSERINDO CTOs NOVAS (Cenário 2) =====`);
   console.log(`➕ [Upload] Total de CTOs novas para inserir: ${ctosToInsert.length}`);
   
-  const INSERT_BATCH_SIZE = 2500; // Mesmo tamanho usado no código atual (otimizado)
+  // Reduzir tamanho do lote para evitar timeout do Supabase/Cloudflare
+  // 1000 é mais seguro que 2500 para evitar erros 500
+  const INSERT_BATCH_SIZE = 1000;
   let totalInserted = 0;
   let batchNumber = 0;
   const startTime = Date.now();
+  const MAX_RETRIES = 3; // Número máximo de tentativas por lote
   
-  try {
-    for (let i = 0; i < ctosToInsert.length; i += INSERT_BATCH_SIZE) {
-      batchNumber++;
-      const batch = ctosToInsert.slice(i, i + INSERT_BATCH_SIZE);
-      
+  // Função auxiliar para inserir lote com retry
+  const insertBatchWithRetry = async (batch, batchNum, retryCount = 0) => {
+    try {
       // Garantir que todas as CTOs do lote tenham chave_unica
-      // Se alguma não tiver, gerar agora
       const batchWithChave = batch.map(cto => {
         if (!cto.chave_unica) {
-          // Se não tem chave_unica, gerar agora
           cto.chave_unica = generateChaveUnica(cto);
         }
         return cto;
@@ -6009,22 +6008,53 @@ async function insertCTOsInBatches(supabaseClient, ctosToInsert) {
         .select('id_cto');
       
       if (error) {
-        console.error(`❌ [Upload] Erro ao inserir lote ${batchNumber}:`, error);
-        throw new Error(`Erro ao inserir CTOs novas (lote ${batchNumber}): ${error.message}`);
+        // Se for erro 500 (Cloudflare/Supabase) e ainda temos tentativas, retry
+        if ((error.message.includes('500') || error.message.includes('timeout') || error.message.includes('Cloudflare')) && retryCount < MAX_RETRIES) {
+          const waitTime = (retryCount + 1) * 2000; // 2s, 4s, 6s
+          console.warn(`⚠️ [Upload] Erro temporário no lote ${batchNum} (tentativa ${retryCount + 1}/${MAX_RETRIES}). Aguardando ${waitTime}ms antes de retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          return insertBatchWithRetry(batch, batchNum, retryCount + 1);
+        }
+        throw error;
       }
       
-      // Contar quantas foram inseridas (data pode ser null se não retornar dados)
-      const insertedInBatch = data ? data.length : batchWithChave.length;
-      totalInserted += insertedInBatch;
+      return data ? data.length : batchWithChave.length;
+    } catch (err) {
+      // Se ainda temos tentativas e é erro temporário, retry
+      if (retryCount < MAX_RETRIES && (err.message.includes('500') || err.message.includes('timeout') || err.message.includes('Cloudflare'))) {
+        const waitTime = (retryCount + 1) * 2000;
+        console.warn(`⚠️ [Upload] Erro temporário no lote ${batchNum} (tentativa ${retryCount + 1}/${MAX_RETRIES}). Aguardando ${waitTime}ms antes de retry...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        return insertBatchWithRetry(batch, batchNum, retryCount + 1);
+      }
+      throw err;
+    }
+  };
+  
+  try {
+    for (let i = 0; i < ctosToInsert.length; i += INSERT_BATCH_SIZE) {
+      batchNumber++;
+      const batch = ctosToInsert.slice(i, i + INSERT_BATCH_SIZE);
       
-      // Log de progresso
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      const progressPercent = Math.round((totalInserted / ctosToInsert.length) * 100);
-      console.log(`➕ [Upload] Lote ${batchNumber}: ${insertedInBatch} CTO(s) inserida(s) | Total: ${totalInserted}/${ctosToInsert.length} (${progressPercent}%) | Tempo: ${elapsed}s`);
-      
-      // Pequeno delay entre lotes para não sobrecarregar o banco
-      if (i + INSERT_BATCH_SIZE < ctosToInsert.length) {
-        await new Promise(resolve => setTimeout(resolve, 100)); // 100ms de delay
+      try {
+        // Inserir lote com retry automático
+        const insertedInBatch = await insertBatchWithRetry(batch, batchNumber);
+        totalInserted += insertedInBatch;
+        
+        // Log de progresso
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        const progressPercent = Math.round((totalInserted / ctosToInsert.length) * 100);
+        console.log(`➕ [Upload] Lote ${batchNumber}: ${insertedInBatch} CTO(s) inserida(s) | Total: ${totalInserted}/${ctosToInsert.length} (${progressPercent}%) | Tempo: ${elapsed}s`);
+        
+        // Delay maior entre lotes para não sobrecarregar o Supabase/Cloudflare
+        if (i + INSERT_BATCH_SIZE < ctosToInsert.length) {
+          await new Promise(resolve => setTimeout(resolve, 500)); // 500ms de delay (aumentado de 100ms)
+        }
+      } catch (batchError) {
+        // Se falhar após todas as tentativas, logar erro mas continuar com próximo lote
+        console.error(`❌ [Upload] Erro ao inserir lote ${batchNumber} após ${MAX_RETRIES} tentativas:`, batchError.message);
+        console.error(`❌ [Upload] Pulando lote ${batchNumber} e continuando com próximo...`);
+        // Continuar com próximo lote ao invés de quebrar tudo
       }
     }
     
