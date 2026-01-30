@@ -1294,9 +1294,10 @@ app.post('/api/coverage/calculate', async (req, res) => {
       const startTime = Date.now();
       let accumulatedPolygonGeoJSON = null; // Polígono acumulado (GeoJSON string)
       let processedCTOs = 0;
-      // Lotes de 2000: Cada query PostGIS processa 2000 CTOs diretamente
-      // Query abre → processa 2000 CTOs → fecha → próxima query
-      const batchSize = 2000; // Processar 2000 CTOs por query PostGIS
+      // Lotes de 1000: Supabase tem limite padrão de 1000 registros por query
+      // Cada query PostGIS processa 1000 CTOs diretamente
+      // Query abre → processa 1000 CTOs → fecha → próxima query
+      const batchSize = 1000; // Processar 1000 CTOs por query PostGIS (limite do Supabase)
       const bufferRadiusMeters = 250; // Raio do buffer em metros
       const simplificationTolerance = 0.0001; // Tolerância de simplificação
       
@@ -1373,13 +1374,13 @@ app.post('/api/coverage/calculate', async (req, res) => {
           const ctoIds = ctosBatch.map(cto => cto.id);
           
           // Verificar se retornou menos que o esperado (pode indicar fim dos dados)
+          // IMPORTANTE: Supabase limita a 1000 registros por query, então 1000 é o máximo esperado
           if (ctosBatch.length < batchSize) {
-            console.log(`📊 [API] Lote ${batchNumber} retornou ${ctosBatch.length} CTOs (menos que ${batchSize}). Pode ser o último lote.`);
+            console.log(`📊 [API] Lote ${batchNumber} retornou ${ctosBatch.length} CTOs (menos que ${batchSize}). Verificando se há mais dados...`);
           }
           
-          // 3. Chamar função PostGIS - ela processa 2000 CTOs internamente em sub-lotes
-          // A função SQL agora processa internamente em sub-lotes de 100 para evitar timeout
-          // Mas o backend chama apenas uma vez com 2000 CTOs
+          // 3. Chamar função PostGIS - processa 1000 CTOs diretamente
+          // Query abre → processa 1000 CTOs → fecha → próxima query
           const { data: batchResult, error: batchError } = await supabase.rpc('calculate_coverage_polygon_batch', {
             p_cto_ids: ctoIds,
             p_buffer_radius_meters: bufferRadiusMeters
@@ -1458,10 +1459,20 @@ app.post('/api/coverage/calculate', async (req, res) => {
             console.log(`   └─ Último ID processado: ${lastId}, Próximo ID: > ${lastId}, Total esperado: ${totalCTOs || 0}`);
           }
           
-          // Se retornou menos que o batchSize, pode ser o último lote
-          if (ctosBatch.length < batchSize) {
+          // Verificar se há mais dados
+          // IMPORTANTE: Supabase limita a 1000 registros, então se retornou 1000, pode haver mais
+          // Só parar se retornou 0 ou muito pouco (menos de 100 CTOs)
+          if (ctosBatch.length === 0) {
             hasMore = false; // Não há mais dados
-            console.log(`📊 [API] Lote ${batchNumber} foi o último (retornou ${ctosBatch.length} < ${batchSize} CTOs)`);
+            console.log(`📊 [API] Lote ${batchNumber} retornou 0 CTOs - fim dos dados`);
+          } else if (ctosBatch.length < 100) {
+            // Se retornou menos de 100, provavelmente é o último lote
+            hasMore = false;
+            console.log(`📊 [API] Lote ${batchNumber} foi o último (retornou ${ctosBatch.length} < 100 CTOs)`);
+          } else {
+            // Se retornou 100 ou mais, continuar (pode haver mais dados)
+            // Mesmo que retorne exatamente batchSize (1000), continuar até retornar menos
+            hasMore = true;
           }
           
           // Delay maior para evitar sobrecarga e timeout
