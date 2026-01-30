@@ -6891,7 +6891,8 @@ app.post('/api/upload-base', (req, res, next) => {
             // Carregar CTOs existentes (IDs e chaves_unicas)
             // Callback para atualizar progresso durante carregamento
             const loadProgressCallback = (progress) => {
-              uploadProgress.uploadPercent = progress.percent;
+              // Mapear progresso para 0-5% (antes era 0-10%)
+              uploadProgress.uploadPercent = Math.round((progress.percent / 10) * 5);
               uploadProgress.message = `Carregando CTOs existentes... ${progress.loaded} CTO(s)`;
             };
             
@@ -6899,7 +6900,7 @@ app.post('/api/upload-base', (req, res, next) => {
             console.log(`✅ [Background] CTOs existentes carregadas: ${existingCTOsMap.size}`);
             
             // Atualizar progresso após carregamento completo
-            uploadProgress.uploadPercent = 10;
+            uploadProgress.uploadPercent = 5;
             uploadProgress.message = 'CTOs existentes carregadas. Processando arquivo...';
             
             // Processar Excel com comparação inteligente
@@ -6952,48 +6953,63 @@ app.post('/api/upload-base', (req, res, next) => {
             if (idsToDelete.length > 0) {
               uploadProgress.message = `Deletando ${idsToDelete.length} CTO(s) que saíram da base...`;
               uploadProgress.stage = 'deleting';
-              uploadProgress.uploadPercent = 85; // Início do estágio de deleção
+              uploadProgress.uploadPercent = 80; // Início do estágio de deleção
+              uploadProgress.processedRows = 0; // Reset para novo estágio
+              uploadProgress.totalRows = idsToDelete.length; // Total de CTOs a deletar
               
               // Callback para atualizar progresso durante deleção
               const deleteProgressCallback = (progress) => {
-                uploadProgress.uploadPercent = 85 + Math.round((progress.percent / 100) * 3); // 85% a 88%
+                uploadProgress.processedRows = progress.deleted;
+                uploadProgress.totalRows = progress.total;
+                uploadProgress.uploadPercent = 80 + Math.round((progress.percent / 100) * 5); // 80% a 85%
                 uploadProgress.message = `Deletando ${idsToDelete.length} CTO(s) que saíram da base... ${progress.percent}%`;
               };
               
               deleteResult = await deleteCTOsInBatches(supabase, idsToDelete, deleteProgressCallback);
-              uploadProgress.uploadPercent = 88; // Fim do estágio de deleção
+              uploadProgress.uploadPercent = 85; // Fim do estágio de deleção
+              uploadProgress.processedRows = idsToDelete.length; // Garantir que está completo
             }
             
             // Cenário 2: INSERIR CTOs novas
             if (result.ctosToInsert.length > 0) {
               uploadProgress.message = `Inserindo ${result.ctosToInsert.length} CTO(s) nova(s)...`;
               uploadProgress.stage = 'inserting';
-              uploadProgress.uploadPercent = 88; // Início do estágio de inserção
+              uploadProgress.uploadPercent = 85; // Início do estágio de inserção
+              uploadProgress.processedRows = 0; // Reset para novo estágio
+              uploadProgress.totalRows = result.ctosToInsert.length; // Total de CTOs a inserir
               
               // Callback para atualizar progresso durante inserção
               const insertProgressCallback = (progress) => {
-                uploadProgress.uploadPercent = 88 + Math.round((progress.percent / 100) * 6); // 88% a 94%
+                uploadProgress.processedRows = progress.inserted;
+                uploadProgress.totalRows = progress.total;
+                uploadProgress.uploadPercent = 85 + Math.round((progress.percent / 100) * 5); // 85% a 90%
                 uploadProgress.message = `Inserindo ${result.ctosToInsert.length} CTO(s) nova(s)... ${progress.percent}%`;
               };
               
               insertResult = await insertCTOsInBatches(supabase, result.ctosToInsert, insertProgressCallback);
-              uploadProgress.uploadPercent = 94; // Fim do estágio de inserção
+              uploadProgress.uploadPercent = 90; // Fim do estágio de inserção
+              uploadProgress.processedRows = result.ctosToInsert.length; // Garantir que está completo
             }
             
             // Cenário 3: ATUALIZAR CTOs que mudaram
             if (result.ctosToUpdate.length > 0) {
               uploadProgress.message = `Atualizando ${result.ctosToUpdate.length} CTO(s) que mudaram...`;
               uploadProgress.stage = 'updating';
-              uploadProgress.uploadPercent = 94; // Início do estágio de atualização
+              uploadProgress.uploadPercent = 90; // Início do estágio de atualização
+              uploadProgress.processedRows = 0; // Reset para novo estágio
+              uploadProgress.totalRows = result.ctosToUpdate.length; // Total de CTOs a atualizar
               
               // Callback para atualizar progresso durante atualização
               const updateProgressCallback = (progress) => {
-                uploadProgress.uploadPercent = 94 + Math.round((progress.percent / 100) * 4); // 94% a 98%
+                uploadProgress.processedRows = progress.updated;
+                uploadProgress.totalRows = progress.total;
+                uploadProgress.uploadPercent = 90 + Math.round((progress.percent / 100) * 5); // 90% a 95%
                 uploadProgress.message = `Atualizando ${result.ctosToUpdate.length} CTO(s) que mudaram... ${progress.percent}%`;
               };
               
               updateResult = await updateCTOsInBatches(supabase, result.ctosToUpdate, updateProgressCallback);
-              uploadProgress.uploadPercent = 98; // Fim do estágio de atualização
+              uploadProgress.uploadPercent = 95; // Fim do estágio de atualização
+              uploadProgress.processedRows = result.ctosToUpdate.length; // Garantir que está completo
             }
             
             // Calcular total processado
