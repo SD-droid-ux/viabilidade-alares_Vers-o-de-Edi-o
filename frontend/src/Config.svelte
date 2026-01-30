@@ -87,14 +87,17 @@
   // Baseado nos estágios e progresso de cada um, de 0% a 100%
   // Mais precisa e responsiva aos dados reais do backend
   function calculateTotalUploadPercent(progress) {
-    if (!progress || progress.stage === 'idle') {
+    // Se não temos progresso, retornar 0%
+    if (!progress) {
       return 0;
     }
     
+    // Se está completo, retornar 100%
     if (progress.stage === 'completed') {
       return 100;
     }
     
+    // Se há erro, retornar percentual atual (máximo 95%)
     if (progress.stage === 'error') {
       return Math.min(95, progress.uploadPercent || 0);
     }
@@ -108,27 +111,25 @@
     // 6. Finalizando: 95-100%
     
     // Estágio: Carregando CTOs existentes (0% a 5%)
-    // Se não temos stage definido ou stage é idle, mas temos mensagem de carregamento
+    // Se stage é 'idle' ou não definido, estamos no início
     if (!progress.stage || progress.stage === 'idle') {
-      // Se temos processedRows ou totalRows, já começou a processar Excel
-      if (progress.processedRows > 0 || progress.totalRows > 0) {
+      // Se temos processedRows ou totalRows do processamento Excel, já passou do carregamento
+      if (progress.processedRows > 0 && progress.totalRows > 0 && progress.stage !== 'idle') {
         // Já passou do carregamento inicial, está processando
         return 5;
       }
-      // Ainda carregando CTOs existentes
-      // Se temos uploadPercent do backend, mapear para 0-5%
-      if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
-        // uploadPercent vem como 0-10% do backend, mapear para 0-5%
-        const mappedPercent = Math.round((progress.uploadPercent / 10) * 5);
-        return Math.min(5, Math.max(0, mappedPercent));
+      // Ainda carregando CTOs existentes ou início do processo
+      // Se temos uploadPercent do backend (0-5%), usar diretamente
+      if (progress.uploadPercent !== undefined && progress.uploadPercent !== null && progress.uploadPercent > 0) {
+        return Math.min(5, Math.max(0, Math.round(progress.uploadPercent)));
       }
-      // Se a mensagem indica carregamento de CTOs, estimar progresso
+      // Se a mensagem indica carregamento de CTOs, mostrar progresso mínimo
       const message = (progress.message || '').toLowerCase();
-      if (message.includes('carregando cto') || message.includes('carregando cto')) {
-        // Estimativa inicial (começou agora)
-        return 1;
+      if (message.includes('carregando cto') || message.includes('iniciando')) {
+        // Se já começou mas ainda não temos percentual, mostrar 0% (início)
+        return 0;
       }
-      // Fallback: início do processo
+      // Fallback: início do processo - SEMPRE retornar 0%
       return 0;
     }
     
