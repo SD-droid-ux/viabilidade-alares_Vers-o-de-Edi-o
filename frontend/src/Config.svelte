@@ -1658,10 +1658,16 @@
                   uploadProgress = { ...progressData };
                   
                   // Atualizar mensagem baseada no estágio
-                  if (progressData.stage === 'deleting') {
-                    uploadMessage = 'Deletando base de dados antiga e polígonos...';
+                  if (progressData.stage === 'processing') {
+                    uploadMessage = progressData.message || 'Processando arquivo e comparando com base existente...';
+                  } else if (progressData.stage === 'deleting') {
+                    uploadMessage = progressData.message || 'Deletando CTOs que saíram da base...';
+                  } else if (progressData.stage === 'inserting') {
+                    uploadMessage = progressData.message || 'Inserindo CTOs novas...';
+                  } else if (progressData.stage === 'updating') {
+                    uploadMessage = progressData.message || 'Atualizando CTOs que mudaram...';
                   } else if (progressData.stage === 'uploading') {
-                    uploadMessage = `Carregando base de dados... ${progressData.uploadPercent}%`;
+                    uploadMessage = progressData.message || `Carregando base de dados... ${progressData.uploadPercent}%`;
                   } else if (progressData.stage === 'completed') {
                     // Processo completo!
                     clearInterval(uploadPollInterval);
@@ -2084,21 +2090,26 @@
           {/if}
           
           {#if uploadingBase}
-            <div class="upload-status">
+            <div class="upload-status" style="margin-top: 1rem;">
               <div class="loading-spinner"></div>
               <span>{uploadMessage || 'Validando e atualizando base de dados...'}</span>
             </div>
             
-                {#if uploadProgress.stage === 'uploading'}
-                  <div class="progress-container" style="margin-top: 1rem;">
-                    <div class="progress-bar-wrapper">
-                      <div class="progress-label">Carregando base de dados: {uploadProgress.uploadPercent}%</div>
-                      <div class="progress-bar">
-                        <div class="progress-fill" style="width: {uploadProgress.uploadPercent}%;"></div>
-                      </div>
-                    </div>
+            {#if uploadProgress.stage === 'processing' || uploadProgress.stage === 'deleting' || uploadProgress.stage === 'inserting' || uploadProgress.stage === 'updating' || uploadProgress.stage === 'uploading'}
+              <div class="progress-container" style="margin-top: 1rem;">
+                <div class="progress-bar-wrapper">
+                  <div class="progress-label">
+                    {uploadProgress.message || 'Carregando base de dados'}: {Math.round(uploadProgress.uploadPercent)}%
+                    {#if uploadProgress.processedRows > 0 && uploadProgress.totalRows > 0}
+                      ({uploadProgress.processedRows}/{uploadProgress.totalRows} linhas)
+                    {/if}
                   </div>
-                {/if}
+                  <div class="progress-bar">
+                    <div class="progress-fill" style="width: {uploadProgress.uploadPercent}%;"></div>
+                  </div>
+                </div>
+              </div>
+            {/if}
           {/if}
 
           {#if uploadMessage}
