@@ -5700,7 +5700,7 @@ async function loadExistingCTOs(supabaseClient) {
         .from('ctos')
         .select('id_cto, chave_unica')
         .order('id_cto', { ascending: true })
-        .limit(2000);
+        .limit(1000);
       
       // Se já temos um lastId, buscar apenas IDs maiores
       if (lastId) {
