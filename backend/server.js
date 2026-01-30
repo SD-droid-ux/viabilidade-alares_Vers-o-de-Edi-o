@@ -5673,6 +5673,380 @@ function generateChaveUnica(cto) {
   return chaveUnica;
 }
 
+/**
+ * Carrega todos os IDs e chaves_unicas do Supabase (paginado)
+ * Esta função é usada para comparar CTOs existentes com as novas do Excel
+ * 
+ * @param {Object} supabaseClient - Cliente Supabase
+ * @returns {Promise<Map<string, string|null>>} - Map<id_cto, chave_unica>
+ * @throws {Error} - Se houver erro ao carregar do Supabase
+ */
+async function loadExistingCTOs(supabaseClient) {
+  const existingCTOs = new Map(); // Map<id_cto, chave_unica>
+  let lastId = null;
+  let hasMore = true;
+  let batchNumber = 0;
+  const startTime = Date.now();
+  
+  console.log('📥 [Upload] Carregando CTOs existentes do Supabase...');
+  console.log('📥 [Upload] Usando paginação baseada em cursor (id_cto) para evitar timeout...');
+  
+  try {
+    while (hasMore) {
+      batchNumber++;
+      
+      // Buscar lote de 1000 CTOs (limite do Supabase)
+      const query = supabaseClient
+        .from('ctos')
+        .select('id_cto, chave_unica')
+        .order('id_cto', { ascending: true })
+        .limit(1000);
+      
+      // Se já temos um lastId, buscar apenas IDs maiores
+      if (lastId) {
+        query.gt('id_cto', lastId);
+      }
+      
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error(`❌ [Upload] Erro ao buscar lote ${batchNumber} do Supabase:`, error);
+        throw new Error(`Erro ao carregar CTOs existentes (lote ${batchNumber}): ${error.message}`);
+      }
+      
+      if (!data || data.length === 0) {
+        hasMore = false;
+        break;
+      }
+      
+      // Adicionar ao Map
+      for (const row of data) {
+        // id_cto é obrigatório, mas chave_unica pode ser NULL (para CTOs antigas)
+        if (row.id_cto) {
+          existingCTOs.set(String(row.id_cto), row.chave_unica || null);
+        }
+      }
+      
+      // Atualizar lastId para próxima iteração
+      lastId = data[data.length - 1].id_cto;
+      
+      // Log de progresso a cada 10 lotes ou no primeiro lote
+      if (batchNumber === 1 || batchNumber % 10 === 0) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
+        console.log(`📥 [Upload] Lote ${batchNumber}: ${data.length} CTO(s) carregada(s) (total: ${existingCTOs.size}, tempo: ${elapsed}s)`);
+      }
+      
+      // Se retornou menos de 1000, é o último lote
+      if (data.length < 1000) {
+        hasMore = false;
+      }
+    }
+    
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`✅ [Upload] Total de CTOs carregadas do Supabase: ${existingCTOs.size} (${batchNumber} lote(s), ${totalTime}s)`);
+    
+    // Estatísticas sobre chaves_unicas
+    let ctosComChave = 0;
+    let ctosSemChave = 0;
+    for (const [id, chave] of existingCTOs) {
+      if (chave) {
+        ctosComChave++;
+      } else {
+        ctosSemChave++;
+      }
+    }
+    
+    if (ctosSemChave > 0) {
+      console.log(`⚠️ [Upload] ATENÇÃO: ${ctosSemChave} CTO(s) sem chave_unica (precisam ser migradas)`);
+      console.log(`ℹ️ [Upload] Execute o script SQL migrate_chave_unica.sql para calcular chaves_unicas`);
+    }
+    
+    console.log(`📊 [Upload] Estatísticas: ${ctosComChave} com chave_unica, ${ctosSemChave} sem chave_unica`);
+    
+    return existingCTOs;
+    
+  } catch (err) {
+    console.error('❌ [Upload] Erro ao carregar CTOs existentes:', err);
+    throw err;
+  }
+}
+
+/**
+ * Deleta CTOs que saíram da base (Cenário 1)
+ * CTOs que existem no Supabase mas não existem no Excel novo devem ser deletadas
+ * 
+ * @param {Object} supabaseClient - Cliente Supabase
+ * @param {string[]} idsToDelete - Array de id_cto para deletar
+ * @returns {Promise<Object>} - { deleted: number } - Quantidade de CTOs deletadas
+ * @throws {Error} - Se houver erro ao deletar
+ */
+async function deleteCTOsInBatches(supabaseClient, idsToDelete) {
+  if (!idsToDelete || idsToDelete.length === 0) {
+    console.log('ℹ️ [Upload] Nenhuma CTO para deletar (Cenário 1)');
+    return { deleted: 0 };
+  }
+  
+  console.log(`🗑️ [Upload] ===== DELETANDO CTOs QUE SAÍRAM DA BASE (Cenário 1) =====`);
+  console.log(`🗑️ [Upload] Total de CTOs para deletar: ${idsToDelete.length}`);
+  
+  const DELETE_BATCH_SIZE = 1000; // Limite do Supabase para operações .in()
+  let totalDeleted = 0;
+  let batchNumber = 0;
+  const startTime = Date.now();
+  
+  try {
+    for (let i = 0; i < idsToDelete.length; i += DELETE_BATCH_SIZE) {
+      batchNumber++;
+      const batch = idsToDelete.slice(i, i + DELETE_BATCH_SIZE);
+      
+      // Deletar lote usando .in() para deletar múltiplos IDs de uma vez
+      const { error, count } = await supabaseClient
+        .from('ctos')
+        .delete()
+        .in('id_cto', batch)
+        .select('id_cto', { count: 'exact', head: true });
+      
+      if (error) {
+        console.error(`❌ [Upload] Erro ao deletar lote ${batchNumber}:`, error);
+        throw new Error(`Erro ao deletar CTOs (lote ${batchNumber}): ${error.message}`);
+      }
+      
+      // count pode ser null, então usar batch.length como fallback
+      const deletedInBatch = count !== null ? count : batch.length;
+      totalDeleted += deletedInBatch;
+      
+      // Log de progresso
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const progressPercent = Math.round((totalDeleted / idsToDelete.length) * 100);
+      console.log(`🗑️ [Upload] Lote ${batchNumber}: ${deletedInBatch} CTO(s) deletada(s) | Total: ${totalDeleted}/${idsToDelete.length} (${progressPercent}%) | Tempo: ${elapsed}s`);
+      
+      // Pequeno delay entre lotes para não sobrecarregar o banco
+      if (i + DELETE_BATCH_SIZE < idsToDelete.length) {
+        await new Promise(resolve => setTimeout(resolve, 100)); // 100ms de delay
+      }
+    }
+    
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`✅ [Upload] ===== DELEÇÃO CONCLUÍDA =====`);
+    console.log(`✅ [Upload] Total deletado: ${totalDeleted} CTO(s) em ${batchNumber} lote(s) (${totalTime}s)`);
+    
+    // Verificar se todas foram deletadas
+    if (totalDeleted < idsToDelete.length) {
+      const diff = idsToDelete.length - totalDeleted;
+      console.warn(`⚠️ [Upload] ATENÇÃO: ${diff} CTO(s) não foram deletadas (pode ser que já não existiam no banco)`);
+    }
+    
+    return { deleted: totalDeleted };
+    
+  } catch (err) {
+    console.error('❌ [Upload] Erro ao deletar CTOs:', err);
+    throw err;
+  }
+}
+
+/**
+ * Atualiza CTOs que mudaram (Cenário 3)
+ * CTOs que existem no Supabase mas têm chave_unica diferente devem ser atualizadas
+ * 
+ * @param {Object} supabaseClient - Cliente Supabase
+ * @param {Object[]} ctosToUpdate - Array de objetos CTO para atualizar (deve incluir chave_unica)
+ * @returns {Promise<Object>} - { updated: number } - Quantidade de CTOs atualizadas
+ * @throws {Error} - Se houver erro ao atualizar
+ */
+async function updateCTOsInBatches(supabaseClient, ctosToUpdate) {
+  if (!ctosToUpdate || ctosToUpdate.length === 0) {
+    console.log('ℹ️ [Upload] Nenhuma CTO para atualizar (Cenário 3)');
+    return { updated: 0 };
+  }
+  
+  console.log(`🔄 [Upload] ===== ATUALIZANDO CTOs QUE MUDARAM (Cenário 3) =====`);
+  console.log(`🔄 [Upload] Total de CTOs para atualizar: ${ctosToUpdate.length}`);
+  
+  const UPDATE_BATCH_SIZE = 1000; // Processar em lotes de 1000
+  let totalUpdated = 0;
+  let totalErrors = 0;
+  let batchNumber = 0;
+  const startTime = Date.now();
+  
+  try {
+    // Processar em lotes
+    for (let i = 0; i < ctosToUpdate.length; i += UPDATE_BATCH_SIZE) {
+      batchNumber++;
+      const batch = ctosToUpdate.slice(i, i + UPDATE_BATCH_SIZE);
+      
+      // Supabase não suporta UPDATE em lote direto com múltiplos IDs diferentes
+      // Precisamos fazer UPDATE individual ou usar uma função SQL
+      // Vamos fazer UPDATE individual para cada CTO do lote
+      let batchUpdated = 0;
+      let batchErrors = 0;
+      
+      for (const cto of batch) {
+        try {
+          // Verificar se id_cto existe
+          if (!cto.id_cto) {
+            console.warn(`⚠️ [Upload] CTO sem id_cto, pulando atualização:`, cto);
+            batchErrors++;
+            continue;
+          }
+          
+          // Preparar objeto de atualização (todas as colunas + chave_unica)
+          const updateData = {
+            cid_rede: cto.cid_rede,
+            estado: cto.estado,
+            pop: cto.pop,
+            olt: cto.olt,
+            slot: cto.slot,
+            pon: cto.pon,
+            cto: cto.cto,
+            latitude: cto.latitude,
+            longitude: cto.longitude,
+            status_cto: cto.status_cto,
+            data_cadastro: cto.data_cadastro,
+            portas: cto.portas,
+            ocupado: cto.ocupado,
+            livre: cto.livre,
+            pct_ocup: cto.pct_ocup,
+            chave_unica: cto.chave_unica // Atualizar chave_unica também
+          };
+          
+          // Atualizar CTO individual
+          const { error } = await supabaseClient
+            .from('ctos')
+            .update(updateData)
+            .eq('id_cto', cto.id_cto);
+          
+          if (error) {
+            console.error(`❌ [Upload] Erro ao atualizar CTO ${cto.id_cto}:`, error.message);
+            batchErrors++;
+            // Continuar mesmo se uma falhar (não quebrar todo o processo)
+          } else {
+            batchUpdated++;
+          }
+        } catch (ctoErr) {
+          console.error(`❌ [Upload] Erro ao processar CTO ${cto.id_cto}:`, ctoErr.message);
+          batchErrors++;
+        }
+      }
+      
+      totalUpdated += batchUpdated;
+      totalErrors += batchErrors;
+      
+      // Log de progresso
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const progressPercent = Math.round((totalUpdated / ctosToUpdate.length) * 100);
+      console.log(`🔄 [Upload] Lote ${batchNumber}: ${batchUpdated} atualizada(s), ${batchErrors} erro(s) | Total: ${totalUpdated}/${ctosToUpdate.length} (${progressPercent}%) | Tempo: ${elapsed}s`);
+      
+      // Pequeno delay entre lotes para não sobrecarregar o banco
+      if (i + UPDATE_BATCH_SIZE < ctosToUpdate.length) {
+        await new Promise(resolve => setTimeout(resolve, 100)); // 100ms de delay
+      }
+    }
+    
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`✅ [Upload] ===== ATUALIZAÇÃO CONCLUÍDA =====`);
+    console.log(`✅ [Upload] Total atualizado: ${totalUpdated} CTO(s) em ${batchNumber} lote(s) (${totalTime}s)`);
+    
+    if (totalErrors > 0) {
+      console.warn(`⚠️ [Upload] ATENÇÃO: ${totalErrors} CTO(s) tiveram erro ao atualizar`);
+    }
+    
+    // Verificar se todas foram atualizadas
+    if (totalUpdated < ctosToUpdate.length) {
+      const diff = ctosToUpdate.length - totalUpdated;
+      console.warn(`⚠️ [Upload] ATENÇÃO: ${diff} CTO(s) não foram atualizadas (erros ou CTOs não encontradas)`);
+    }
+    
+    return { updated: totalUpdated, errors: totalErrors };
+    
+  } catch (err) {
+    console.error('❌ [Upload] Erro ao atualizar CTOs:', err);
+    throw err;
+  }
+}
+
+/**
+ * Insere CTOs novas (Cenário 2)
+ * CTOs que não existem no Supabase devem ser inseridas
+ * 
+ * @param {Object} supabaseClient - Cliente Supabase
+ * @param {Object[]} ctosToInsert - Array de objetos CTO para inserir (deve incluir chave_unica)
+ * @returns {Promise<Object>} - { inserted: number } - Quantidade de CTOs inseridas
+ * @throws {Error} - Se houver erro ao inserir
+ */
+async function insertCTOsInBatches(supabaseClient, ctosToInsert) {
+  if (!ctosToInsert || ctosToInsert.length === 0) {
+    console.log('ℹ️ [Upload] Nenhuma CTO nova para inserir (Cenário 2)');
+    return { inserted: 0 };
+  }
+  
+  console.log(`➕ [Upload] ===== INSERINDO CTOs NOVAS (Cenário 2) =====`);
+  console.log(`➕ [Upload] Total de CTOs novas para inserir: ${ctosToInsert.length}`);
+  
+  const INSERT_BATCH_SIZE = 2500; // Mesmo tamanho usado no código atual (otimizado)
+  let totalInserted = 0;
+  let batchNumber = 0;
+  const startTime = Date.now();
+  
+  try {
+    for (let i = 0; i < ctosToInsert.length; i += INSERT_BATCH_SIZE) {
+      batchNumber++;
+      const batch = ctosToInsert.slice(i, i + INSERT_BATCH_SIZE);
+      
+      // Garantir que todas as CTOs do lote tenham chave_unica
+      // Se alguma não tiver, gerar agora
+      const batchWithChave = batch.map(cto => {
+        if (!cto.chave_unica) {
+          // Se não tem chave_unica, gerar agora
+          cto.chave_unica = generateChaveUnica(cto);
+        }
+        return cto;
+      });
+      
+      // Inserir lote no Supabase
+      const { error, data } = await supabaseClient
+        .from('ctos')
+        .insert(batchWithChave)
+        .select('id_cto');
+      
+      if (error) {
+        console.error(`❌ [Upload] Erro ao inserir lote ${batchNumber}:`, error);
+        throw new Error(`Erro ao inserir CTOs novas (lote ${batchNumber}): ${error.message}`);
+      }
+      
+      // Contar quantas foram inseridas (data pode ser null se não retornar dados)
+      const insertedInBatch = data ? data.length : batchWithChave.length;
+      totalInserted += insertedInBatch;
+      
+      // Log de progresso
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const progressPercent = Math.round((totalInserted / ctosToInsert.length) * 100);
+      console.log(`➕ [Upload] Lote ${batchNumber}: ${insertedInBatch} CTO(s) inserida(s) | Total: ${totalInserted}/${ctosToInsert.length} (${progressPercent}%) | Tempo: ${elapsed}s`);
+      
+      // Pequeno delay entre lotes para não sobrecarregar o banco
+      if (i + INSERT_BATCH_SIZE < ctosToInsert.length) {
+        await new Promise(resolve => setTimeout(resolve, 100)); // 100ms de delay
+      }
+    }
+    
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    const avgRate = totalInserted > 0 ? (totalInserted / (totalTime / 60)).toFixed(0) : 0;
+    console.log(`✅ [Upload] ===== INSERÇÃO CONCLUÍDA =====`);
+    console.log(`✅ [Upload] Total inserido: ${totalInserted} CTO(s) em ${batchNumber} lote(s) (${totalTime}s, média: ~${avgRate} CTOs/min)`);
+    
+    // Verificar se todas foram inseridas
+    if (totalInserted < ctosToInsert.length) {
+      const diff = ctosToInsert.length - totalInserted;
+      console.warn(`⚠️ [Upload] ATENÇÃO: ${diff} CTO(s) não foram inseridas (pode ser erro de validação ou duplicatas)`);
+    }
+    
+    return { inserted: totalInserted };
+    
+  } catch (err) {
+    console.error('❌ [Upload] Erro ao inserir CTOs novas:', err);
+    throw err;
+  }
+}
+
 // Função para validar colunas do arquivo Excel
 async function validateExcelColumns(filePath) {
   try {
@@ -5767,7 +6141,7 @@ async function validateExcelColumns(filePath) {
   }
 }
 
-async function processExcelStreaming(filePath, supabaseClient, progressCallback = null) {
+async function processExcelStreaming(filePath, supabaseClient, existingCTOsMap = null, progressCallback = null) {
   let totalRows = 0;
   let totalValid = 0;
   let totalInvalid = 0;
@@ -5778,6 +6152,16 @@ async function processExcelStreaming(filePath, supabaseClient, progressCallback 
   let headers = {};
   let isFirstRow = true;
   const startTime = Date.now();
+  
+  // NOVO: Listas para os 3 cenários de atualização inteligente
+  const ctosToInsert = [];  // Cenário 2: CTOs novas (não existem no Supabase)
+  const ctosToUpdate = [];  // Cenário 3: CTOs atualizadas (existem mas mudaram)
+  const idsInExcel = new Set(); // Para identificar CTOs deletadas (Cenário 1)
+  
+  // Contadores para estatísticas
+  let ctosUnchanged = 0; // CTOs que não mudaram
+  let ctosNew = 0; // CTOs novas
+  let ctosChanged = 0; // CTOs atualizadas
   
   // Função auxiliar para converter data
   const parseDate = (value) => {
@@ -5825,7 +6209,7 @@ async function processExcelStreaming(filePath, supabaseClient, progressCallback 
     return null;
   };
   
-  // Função para inserir lote no Supabase (otimizada para velocidade)
+  // Função para inserir lote no Supabase (MODO LEGADO - usado apenas se existingCTOsMap não for fornecido)
   const insertBatch = async (batch) => {
     if (batch.length === 0) return;
     
@@ -5851,6 +6235,46 @@ async function processExcelStreaming(filePath, supabaseClient, progressCallback 
     // GC apenas a cada 20 lotes (não a cada lote para não perder velocidade)
     if (batchNumber % 20 === 0 && global.gc) {
       global.gc();
+    }
+  };
+  
+  // NOVO: Função para processar CTO com comparação inteligente
+  const processCTOWithComparison = (cto) => {
+    // Gerar chave_unica para esta CTO
+    const chaveUnica = generateChaveUnica(cto);
+    
+    // Adicionar chave_unica ao objeto CTO
+    cto.chave_unica = chaveUnica;
+    
+    // Adicionar ID ao Set (para identificar CTOs deletadas depois - Cenário 1)
+    if (cto.id_cto) {
+      idsInExcel.add(String(cto.id_cto));
+    }
+    
+    // Se não temos Map de CTOs existentes, usar modo legado (inserir tudo)
+    if (!existingCTOsMap) {
+      currentBatch.push(cto);
+      if (currentBatch.length >= BATCH_SIZE) {
+        // Não inserir aqui, apenas acumular para inserir depois
+        // Isso será feito no final se não houver comparação
+      }
+      return;
+    }
+    
+    // Verificar se CTO existe no Supabase
+    const existingChaveUnica = existingCTOsMap.get(String(cto.id_cto));
+    
+    if (!existingChaveUnica && existingChaveUnica !== null) {
+      // CENÁRIO 2: CTO nova (não existe no Supabase)
+      ctosToInsert.push(cto);
+      ctosNew++;
+    } else if (existingChaveUnica !== null && existingChaveUnica !== chaveUnica) {
+      // CENÁRIO 3: CTO atualizada (existe mas chave_unica mudou)
+      ctosToUpdate.push(cto);
+      ctosChanged++;
+    } else {
+      // CTO não mudou (existe e chave_unica é igual)
+      ctosUnchanged++;
     }
   };
   
@@ -5942,12 +6366,20 @@ async function processExcelStreaming(filePath, supabaseClient, progressCallback 
               cto.latitude >= -90 && cto.latitude <= 90 &&
               cto.longitude >= -180 && cto.longitude <= 180) {
             totalValid++;
-            currentBatch.push(cto);
             
-            // Inserir lote quando atingir tamanho
-            if (currentBatch.length >= BATCH_SIZE) {
-              await insertBatch(currentBatch);
-              currentBatch = []; // Limpar batch explicitamente
+            // NOVO: Processar CTO com comparação inteligente
+            if (existingCTOsMap) {
+              // Modo inteligente: comparar e classificar
+              processCTOWithComparison(cto);
+            } else {
+              // Modo legado: inserir tudo (compatibilidade)
+              currentBatch.push(cto);
+              
+              // Inserir lote quando atingir tamanho
+              if (currentBatch.length >= BATCH_SIZE) {
+                await insertBatch(currentBatch);
+                currentBatch = []; // Limpar batch explicitamente
+              }
             }
           } else {
             totalInvalid++;
@@ -5982,33 +6414,68 @@ async function processExcelStreaming(filePath, supabaseClient, progressCallback 
       }
     }
     
-    // Inserir lote restante
-    if (currentBatch.length > 0) {
+    // Inserir lote restante (apenas no modo legado)
+    if (!existingCTOsMap && currentBatch.length > 0) {
       await insertBatch(currentBatch);
     }
     
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
     const avgRate = totalRows > 0 ? (importedRows / (totalTime / 60)).toFixed(0) : 0;
-    console.log(`📊 [Streaming] Processamento concluído: ${totalRows} linhas, ${totalValid} válidas, ${totalInvalid} inválidas`);
-    console.log(`✅ [Streaming] ${importedRows} CTOs importadas no Supabase em ${totalTime}s (média: ~${avgRate} CTOs/min)`);
     
-    // Atualizar progresso final
-    if (progressCallback) {
-      progressCallback({
-        processedRows: totalRows,
-        totalRows: totalRows,
-        importedRows,
-        uploadPercent: 100,
-        message: 'Base de dados carregada!'
-      });
+    // Logs diferentes dependendo do modo
+    if (existingCTOsMap) {
+      // Modo inteligente: mostrar estatísticas de comparação
+      console.log(`📊 [Streaming] Processamento concluído: ${totalRows} linhas, ${totalValid} válidas, ${totalInvalid} inválidas`);
+      console.log(`📊 [Streaming] Análise de mudanças:`);
+      console.log(`   ➕ CTOs novas: ${ctosNew}`);
+      console.log(`   🔄 CTOs atualizadas: ${ctosChanged}`);
+      console.log(`   ✅ CTOs não alteradas: ${ctosUnchanged}`);
+      console.log(`   📋 Total de IDs no Excel: ${idsInExcel.size}`);
+      
+      // Atualizar progresso final
+      if (progressCallback) {
+        progressCallback({
+          processedRows: totalRows,
+          totalRows: totalRows,
+          importedRows: ctosNew + ctosChanged, // Total que precisa ser processado
+          uploadPercent: 100,
+          message: 'Análise concluída! Identificadas mudanças.'
+        });
+      }
+      
+      return {
+        totalRows,
+        validRows: totalValid,
+        invalidRows: totalInvalid,
+        importedRows: ctosNew + ctosChanged, // Total que precisa ser processado
+        ctosToInsert,    // NOVO: Lista de CTOs novas
+        ctosToUpdate,    // NOVO: Lista de CTOs atualizadas
+        idsInExcel,      // NOVO: Set de IDs no Excel (para identificar deletadas)
+        ctosUnchanged    // NOVO: Quantidade de CTOs não alteradas
+      };
+    } else {
+      // Modo legado: comportamento original
+      console.log(`📊 [Streaming] Processamento concluído: ${totalRows} linhas, ${totalValid} válidas, ${totalInvalid} inválidas`);
+      console.log(`✅ [Streaming] ${importedRows} CTOs importadas no Supabase em ${totalTime}s (média: ~${avgRate} CTOs/min)`);
+      
+      // Atualizar progresso final
+      if (progressCallback) {
+        progressCallback({
+          processedRows: totalRows,
+          totalRows: totalRows,
+          importedRows,
+          uploadPercent: 100,
+          message: 'Base de dados carregada!'
+        });
+      }
+      
+      return {
+        totalRows,
+        validRows: totalValid,
+        invalidRows: totalInvalid,
+        importedRows
+      };
     }
-    
-    return {
-      totalRows,
-      validRows: totalValid,
-      invalidRows: totalInvalid,
-      importedRows
-    };
   } catch (err) {
     console.error('❌ [Streaming] Erro ao processar Excel:', err);
     throw err;
@@ -6268,7 +6735,7 @@ app.post('/api/upload-base', (req, res, next) => {
               // Continuar mesmo se falhar - não é crítico
             }
             
-            uploadProgress.message = 'Deletando CTOs antigas...';
+            uploadProgress.message = 'Carregando CTOs existentes para comparação inteligente...';
             
             // Limpar registros antigos de cálculo em progresso (se existirem)
             try {
@@ -6287,116 +6754,18 @@ app.post('/api/upload-base', (req, res, next) => {
               console.warn(`⚠️ [Background] Erro ao limpar progresso antigo (não crítico):`, clearErr.message);
             }
             
-            // Deletar todas as CTOs existentes antes de importar
-            console.log('🗑️ [Background] Limpando CTOs antigas do Supabase...');
+            // NOVO FLUXO: Carregar CTOs existentes para comparação inteligente
+            console.log('📥 [Background] ===== INICIANDO ATUALIZAÇÃO INTELIGENTE =====');
+            console.log('📥 [Background] Carregando CTOs existentes do Supabase para comparação...');
             
-            // Primeiro, verificar quantos registros existem
-            const { count: countBefore } = await supabase
-              .from('ctos')
-              .select('*', { count: 'exact', head: true });
+            // Carregar CTOs existentes (IDs e chaves_unicas)
+            const existingCTOsMap = await loadExistingCTOs(supabase);
+            console.log(`✅ [Background] CTOs existentes carregadas: ${existingCTOsMap.size}`);
             
-            console.log(`📊 [Background] Registros existentes antes da limpeza: ${countBefore || 0}`);
+            // Processar Excel com comparação inteligente
+            uploadProgress.message = 'Processando arquivo e comparando com base existente...';
+            uploadProgress.stage = 'processing';
             
-            if (countBefore && countBefore > 0) {
-              // Deletar TODOS os registros usando uma condição que sempre seja verdadeira
-              // Método 1: Usar gte com created_at (sempre verdadeiro para timestamps)
-              let deleteSuccess = false;
-              let deleteCount = 0;
-              
-              try {
-                const { error: deleteError, count: countResult } = await supabase
-                  .from('ctos')
-                  .delete()
-                  .gte('created_at', '1970-01-01T00:00:00Z'); // Condição sempre verdadeira
-                
-                if (deleteError) {
-                  throw deleteError;
-                }
-                
-                deleteCount = countResult || countBefore;
-                deleteSuccess = true;
-                console.log(`✅ [Background] CTOs deletadas: ${deleteCount} registros`);
-              } catch (deleteError) {
-                console.warn('⚠️ [Background] Método 1 falhou, tentando método alternativo...', deleteError.message);
-                
-                // Método 2: Deletar usando neq com UUID impossível
-                try {
-                  const { error: deleteError2, count: countResult2 } = await supabase
-                    .from('ctos')
-                    .delete()
-                    .neq('id', '00000000-0000-0000-0000-000000000000');
-                  
-                  if (deleteError2) {
-                    throw deleteError2;
-                  }
-                  
-                  deleteCount = countResult2 || countBefore;
-                  deleteSuccess = true;
-                  console.log(`✅ [Background] CTOs deletadas (método alternativo): ${deleteCount} registros`);
-                } catch (deleteError2) {
-                  console.error('❌ [Background] Método alternativo também falhou:', deleteError2);
-                  
-                  // Método 3: Deletar em lotes (última tentativa)
-                  console.log('⚠️ [Background] Tentando deletar em lotes...');
-                  let deletedInBatches = 0;
-                  let batchSize = 1000;
-                  let hasMore = true;
-                  
-                  while (hasMore) {
-                    const { data: batch, error: batchError } = await supabase
-                      .from('ctos')
-                      .select('id')
-                      .limit(batchSize);
-                    
-                    if (batchError) {
-                      throw batchError;
-                    }
-                    
-                    if (!batch || batch.length === 0) {
-                      hasMore = false;
-                      break;
-                    }
-                    
-                    const idsToDelete = batch.map(row => row.id);
-                    const { error: batchDeleteError } = await supabase
-                      .from('ctos')
-                      .delete()
-                      .in('id', idsToDelete);
-                    
-                    if (batchDeleteError) {
-                      throw batchDeleteError;
-                    }
-                    
-                    deletedInBatches += idsToDelete.length;
-                    console.log(`🗑️ [Background] Lote deletado: ${idsToDelete.length} registros (total: ${deletedInBatches})`);
-                    
-                    if (batch.length < batchSize) {
-                      hasMore = false;
-                    }
-                  }
-                  
-                  deleteCount = deletedInBatches;
-                  deleteSuccess = true;
-                  console.log(`✅ [Background] CTOs deletadas em lotes: ${deleteCount} registros`);
-                }
-              }
-              
-              // Verificar que a deleção foi bem-sucedida
-              const { count: countAfter } = await supabase
-                .from('ctos')
-                .select('*', { count: 'exact', head: true });
-              
-              if (countAfter && countAfter > 0) {
-                console.warn(`⚠️ [Background] AINDA EXISTEM ${countAfter} registros após deleção!`);
-                console.warn(`⚠️ [Background] Isso pode indicar um problema. Continuando com importação...`);
-              } else {
-                console.log(`✅ [Background] Confirmação: Tabela ctos está vazia (${countAfter || 0} registros)`);
-              }
-            } else {
-              console.log(`ℹ️ [Background] Tabela ctos já está vazia, pulando deleção`);
-            }
-            
-            // Processar usando streaming (exceljs) - NÃO carrega arquivo inteiro na memória
             // Callback para atualizar progresso
             const progressCallback = (progress) => {
               uploadProgress.processedRows = progress.processedRows;
@@ -6406,9 +6775,70 @@ app.post('/api/upload-base', (req, res, next) => {
               uploadProgress.message = progress.message;
             };
             
-            const result = await processExcelStreaming(tempFilePath, supabase, progressCallback);
+            // Processar Excel com comparação (passar existingCTOsMap)
+            const result = await processExcelStreaming(tempFilePath, supabase, existingCTOsMap, progressCallback);
             totalRows = result.totalRows;
-            importedRows = result.importedRows;
+            
+            // NOVO: Identificar CTOs deletadas (Cenário 1)
+            // CTOs que existem no Supabase mas não existem no Excel
+            uploadProgress.message = 'Identificando CTOs que saíram da base...';
+            const idsToDelete = [];
+            for (const [idCto, chaveUnica] of existingCTOsMap) {
+              if (!result.idsInExcel.has(idCto)) {
+                // ID existe no Supabase mas não no Excel → deletar
+                idsToDelete.push(idCto);
+              }
+            }
+            
+            console.log('📊 [Background] ===== ANÁLISE DE MUDANÇAS CONCLUÍDA =====');
+            console.log(`📊 [Background] Total de linhas no Excel: ${result.totalRows}`);
+            console.log(`📊 [Background] CTOs válidas: ${result.validRows}`);
+            console.log(`📊 [Background] CTOs inválidas: ${result.invalidRows}`);
+            console.log(`📊 [Background] CTOs novas (Cenário 2): ${result.ctosToInsert.length}`);
+            console.log(`📊 [Background] CTOs atualizadas (Cenário 3): ${result.ctosToUpdate.length}`);
+            console.log(`📊 [Background] CTOs deletadas (Cenário 1): ${idsToDelete.length}`);
+            console.log(`📊 [Background] CTOs não alteradas: ${result.ctosUnchanged}`);
+            
+            // NOVO: Executar os 3 cenários
+            let deleteResult = { deleted: 0 };
+            let updateResult = { updated: 0, errors: 0 };
+            let insertResult = { inserted: 0 };
+            
+            // Cenário 1: DELETAR CTOs que saíram
+            if (idsToDelete.length > 0) {
+              uploadProgress.message = `Deletando ${idsToDelete.length} CTO(s) que saíram da base...`;
+              uploadProgress.stage = 'deleting';
+              deleteResult = await deleteCTOsInBatches(supabase, idsToDelete);
+            }
+            
+            // Cenário 2: INSERIR CTOs novas
+            if (result.ctosToInsert.length > 0) {
+              uploadProgress.message = `Inserindo ${result.ctosToInsert.length} CTO(s) nova(s)...`;
+              uploadProgress.stage = 'inserting';
+              insertResult = await insertCTOsInBatches(supabase, result.ctosToInsert);
+            }
+            
+            // Cenário 3: ATUALIZAR CTOs que mudaram
+            if (result.ctosToUpdate.length > 0) {
+              uploadProgress.message = `Atualizando ${result.ctosToUpdate.length} CTO(s) que mudaram...`;
+              uploadProgress.stage = 'updating';
+              updateResult = await updateCTOsInBatches(supabase, result.ctosToUpdate);
+            }
+            
+            // Calcular total processado
+            importedRows = deleteResult.deleted + insertResult.inserted + updateResult.updated;
+            
+            // Log resumo final
+            console.log('📊 [Background] ===== RESUMO DA ATUALIZAÇÃO INTELIGENTE =====');
+            console.log(`📊 [Background] Total de linhas processadas: ${totalRows}`);
+            console.log(`📊 [Background] CTOs válidas: ${result.validRows}`);
+            console.log(`📊 [Background] CTOs inválidas: ${result.invalidRows}`);
+            console.log(`➕ [Background] CTOs novas inseridas: ${insertResult.inserted}`);
+            console.log(`🔄 [Background] CTOs atualizadas: ${updateResult.updated} (${updateResult.errors} erro(s))`);
+            console.log(`🗑️ [Background] CTOs deletadas: ${deleteResult.deleted}`);
+            console.log(`✅ [Background] CTOs não alteradas: ${result.ctosUnchanged}`);
+            console.log(`📊 [Background] Total de operações: ${importedRows} (${insertResult.inserted} inserções + ${updateResult.updated} atualizações + ${deleteResult.deleted} deleções)`);
+            console.log('📊 [Background] ===========================================');
             
             // Atualizar progresso final do upload
             uploadProgress.stage = 'completed';
@@ -6417,12 +6847,12 @@ app.post('/api/upload-base', (req, res, next) => {
             uploadProgress.totalRows = totalRows;
             uploadProgress.importedRows = importedRows;
             uploadProgress.totalCTOs = importedRows;
-            uploadProgress.message = 'Base de dados carregada com sucesso!';
+            uploadProgress.message = 'Base de dados atualizada com sucesso!';
             
-            if (importedRows > 0) {
+            // Registrar no histórico de uploads
+            if (importedRows > 0 || idsToDelete.length > 0 || result.ctosToUpdate.length > 0) {
               supabaseImported = true;
               
-              // Registrar no histórico de uploads
               try {
                 const { error: historyError } = await supabase
                   .from('upload_history')
@@ -6430,7 +6860,7 @@ app.post('/api/upload-base', (req, res, next) => {
                     file_name: fileName,
                     file_size: fileSize,
                     total_rows: totalRows,
-                    valid_rows: importedRows,
+                    valid_rows: result.validRows,
                     uploaded_by: req.body?.usuario || req.user?.nome || 'Sistema'
                   }]);
                 
@@ -6444,10 +6874,10 @@ app.post('/api/upload-base', (req, res, next) => {
               }
               
               // CÁLCULO AUTOMÁTICO REMOVIDO - Agora é feito manualmente via botão "Criar Nova Mancha de Cobertura"
-              console.log(`✅ [Background] ===== IMPORTAÇÃO SUPABASE CONCLUÍDA =====`);
-              console.log(`✅ [Background] ${importedRows} CTOs importadas com sucesso no Supabase!`);
+              console.log(`✅ [Background] ===== ATUALIZAÇÃO INTELIGENTE CONCLUÍDA =====`);
+              console.log(`✅ [Background] Operações realizadas: ${importedRows} (${insertResult.inserted} inserções + ${updateResult.updated} atualizações + ${deleteResult.deleted} deleções)`);
             } else {
-              console.warn('⚠️ [Background] Nenhuma CTO válida encontrada para importar');
+              console.warn('⚠️ [Background] Nenhuma mudança detectada na base de dados');
               console.warn(`⚠️ [Background] Total de linhas: ${totalRows}, Válidas: ${result.validRows}, Inválidas: ${result.invalidRows}`);
             }
           } catch (supabaseErr) {
