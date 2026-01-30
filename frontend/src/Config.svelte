@@ -83,6 +83,9 @@
     processedCTOs: 0
   };
   
+  // Variável para garantir que o progresso nunca diminua (sempre crescente)
+  let lastUploadPercent = 0;
+  
   // Função para calcular percentual total real do processo de upload
   // Baseado nos estágios e progresso de cada um, de 0% a 100%
   // Mais precisa e responsiva aos dados reais do backend
@@ -138,17 +141,10 @@
       const basePercent = 5;
       const stageRange = 75; // 5% a 80% = 75% de range
       
-      // PRIORIDADE 1: Usar processedRows/totalRows se disponível (mais preciso e responsivo)
+      // ÚNICA FONTE: Usar processedRows/totalRows (não confiar em uploadPercent do backend)
       if (progress.totalRows > 0 && progress.processedRows >= 0) {
         const processingProgress = Math.min(100, Math.max(0, (progress.processedRows / progress.totalRows) * 100));
         const calculatedPercent = basePercent + (processingProgress / 100) * stageRange;
-        return Math.min(80, Math.max(basePercent, Math.round(calculatedPercent)));
-      }
-      
-      // PRIORIDADE 2: Usar uploadPercent se disponível (vem do backend durante processamento)
-      if (progress.uploadPercent !== undefined && progress.uploadPercent !== null && progress.uploadPercent > 0) {
-        const uploadProgressValue = Math.min(100, Math.max(0, progress.uploadPercent));
-        const calculatedPercent = basePercent + (uploadProgressValue / 100) * stageRange;
         return Math.min(80, Math.max(basePercent, Math.round(calculatedPercent)));
       }
       
@@ -168,13 +164,9 @@
         return Math.min(85, Math.max(basePercent, Math.round(calculatedPercent)));
       }
       
-      // PRIORIDADE 2: Usar uploadPercent do backend (precisa mapear de 85-88% para 80-85%)
+      // PRIORIDADE 2: Usar uploadPercent do backend (já calculado corretamente: 80-85%)
       if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
-        // uploadPercent vem como 85-88% do backend, mapear para 80-85%
-        if (progress.uploadPercent >= 85 && progress.uploadPercent <= 88) {
-          const mappedPercent = 80 + ((progress.uploadPercent - 85) / 3) * 5;
-          return Math.min(85, Math.max(80, Math.round(mappedPercent)));
-        }
+        // uploadPercent já está no range 80-85% do backend
         return Math.min(85, Math.max(80, Math.round(progress.uploadPercent)));
       }
       
@@ -194,13 +186,9 @@
         return Math.min(90, Math.max(basePercent, Math.round(calculatedPercent)));
       }
       
-      // PRIORIDADE 2: Usar uploadPercent do backend (precisa mapear de 88-94% para 85-90%)
+      // PRIORIDADE 2: Usar uploadPercent do backend (já calculado corretamente: 85-90%)
       if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
-        // uploadPercent vem como 88-94% do backend, mapear para 85-90%
-        if (progress.uploadPercent >= 88 && progress.uploadPercent <= 94) {
-          const mappedPercent = 85 + ((progress.uploadPercent - 88) / 6) * 5;
-          return Math.min(90, Math.max(85, Math.round(mappedPercent)));
-        }
+        // uploadPercent já está no range 85-90% do backend
         return Math.min(90, Math.max(85, Math.round(progress.uploadPercent)));
       }
       
@@ -220,13 +208,9 @@
         return Math.min(95, Math.max(basePercent, Math.round(calculatedPercent)));
       }
       
-      // PRIORIDADE 2: Usar uploadPercent do backend (precisa mapear de 94-98% para 90-95%)
+      // PRIORIDADE 2: Usar uploadPercent do backend (já calculado corretamente: 90-95%)
       if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
-        // uploadPercent vem como 94-98% do backend, mapear para 90-95%
-        if (progress.uploadPercent >= 94 && progress.uploadPercent <= 98) {
-          const mappedPercent = 90 + ((progress.uploadPercent - 94) / 4) * 5;
-          return Math.min(95, Math.max(90, Math.round(mappedPercent)));
-        }
+        // uploadPercent já está no range 90-95% do backend
         return Math.min(95, Math.max(90, Math.round(progress.uploadPercent)));
       }
       
@@ -1672,6 +1656,7 @@
     uploadMessage = '';
     uploadSuccess = false;
     uploadingBase = true;
+    lastUploadPercent = 0; // Resetar progresso quando inicia novo upload
 
     try {
       const formData = new FormData();
@@ -2261,8 +2246,12 @@
           {/if}
           
           {#if uploadingBase}
-            {@const totalPercent = calculateTotalUploadPercent(uploadProgress)}
+            {@const calculatedPercent = calculateTotalUploadPercent(uploadProgress)}
+            {@const totalPercent = Math.max(calculatedPercent, lastUploadPercent)}
             {@const displayMessage = uploadProgress.message || uploadMessage || 'Validando e atualizando base de dados...'}
+            {#if totalPercent > lastUploadPercent}
+              {@const _ = (lastUploadPercent = totalPercent)}
+            {/if}
             <div class="upload-status" style="margin-top: 1rem;">
               <div class="loading-spinner"></div>
               <span>{displayMessage}</span>
