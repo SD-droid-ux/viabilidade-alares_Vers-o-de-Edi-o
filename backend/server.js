@@ -6240,11 +6240,11 @@ async function processExcelStreaming(filePath, supabaseClient, existingCTOsMap =
   
   // NOVO: Função para processar CTO com comparação inteligente
   const processCTOWithComparison = (cto) => {
-    // Gerar chave_unica para esta CTO
-    const chaveUnica = generateChaveUnica(cto);
-    
-    // Adicionar chave_unica ao objeto CTO
-    cto.chave_unica = chaveUnica;
+    // Gerar chave_unica para esta CTO (se ainda não foi gerada)
+    if (!cto.chave_unica) {
+      cto.chave_unica = generateChaveUnica(cto);
+    }
+    const chaveUnica = cto.chave_unica;
     
     // Adicionar ID ao Set (para identificar CTOs deletadas depois - Cenário 1)
     if (cto.id_cto) {
@@ -6367,12 +6367,17 @@ async function processExcelStreaming(filePath, supabaseClient, existingCTOsMap =
               cto.longitude >= -180 && cto.longitude <= 180) {
             totalValid++;
             
+            // SEMPRE gerar chave_unica (mesmo no modo legado)
+            // Isso garante que todas as CTOs inseridas tenham chave_unica
+            cto.chave_unica = generateChaveUnica(cto);
+            
             // NOVO: Processar CTO com comparação inteligente
             if (existingCTOsMap) {
               // Modo inteligente: comparar e classificar
               processCTOWithComparison(cto);
             } else {
               // Modo legado: inserir tudo (compatibilidade)
+              // chave_unica já foi gerada acima
               currentBatch.push(cto);
               
               // Inserir lote quando atingir tamanho
