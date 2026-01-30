@@ -6193,6 +6193,11 @@ async function processExcelStreaming(filePath, supabaseClient, existingCTOsMap =
   let ctosNew = 0; // CTOs novas
   let ctosChanged = 0; // CTOs atualizadas
   
+  // Contadores detalhados de invalidação
+  let invalidCoords = 0; // CTOs com coordenadas inválidas
+  let invalidProcessing = 0; // CTOs com erro ao processar
+  let invalidSamples = []; // Amostras de CTOs inválidas (máximo 10)
+  
   // Função auxiliar para converter data
   const parseDate = (value) => {
     if (!value) return null;
@@ -6417,10 +6422,42 @@ async function processExcelStreaming(filePath, supabaseClient, existingCTOsMap =
               }
             }
           } else {
+            // Coordenadas inválidas
             totalInvalid++;
+            invalidCoords++;
+            
+            // Guardar amostra para log (máximo 10)
+            if (invalidSamples.length < 10) {
+              invalidSamples.push({
+                id_cto: cto.id_cto || 'N/A',
+                cto: cto.cto || 'N/A',
+                motivo: 'Coordenadas inválidas',
+                latitude: cto.latitude,
+                longitude: cto.longitude,
+                detalhes: !cto.latitude || !cto.longitude 
+                  ? 'Latitude ou longitude ausente'
+                  : isNaN(cto.latitude) || isNaN(cto.longitude)
+                  ? 'Latitude ou longitude não é número'
+                  : cto.latitude < -90 || cto.latitude > 90
+                  ? `Latitude fora do range válido: ${cto.latitude}`
+                  : `Longitude fora do range válido: ${cto.longitude}`
+              });
+            }
           }
         } catch (rowErr) {
+          // Erro ao processar linha
           totalInvalid++;
+          invalidProcessing++;
+          
+          // Guardar amostra para log (máximo 10)
+          if (invalidSamples.length < 10) {
+            invalidSamples.push({
+              id_cto: rowData?.id_cto || 'N/A',
+              cto: rowData?.cto || 'N/A',
+              motivo: 'Erro ao processar linha',
+              erro: rowErr.message || String(rowErr)
+            });
+          }
         }
         
         // Atualizar progresso a cada 5000 linhas processadas (menos frequente = menos overhead)
@@ -6467,6 +6504,27 @@ async function processExcelStreaming(filePath, supabaseClient, existingCTOsMap =
       console.log(`   ✅ CTOs não alteradas: ${ctosUnchanged}`);
       console.log(`   📋 Total de IDs no Excel: ${idsInExcel.size}`);
       
+      // Detalhes de CTOs inválidas
+      if (totalInvalid > 0) {
+        console.log(`📊 [Streaming] Detalhes de CTOs inválidas:`);
+        console.log(`   🗺️ Coordenadas inválidas: ${invalidCoords}`);
+        console.log(`   ⚠️ Erros ao processar: ${invalidProcessing}`);
+        
+        if (invalidSamples.length > 0) {
+          console.log(`📋 [Streaming] Amostra de CTOs inválidas (${invalidSamples.length} de ${totalInvalid}):`);
+          invalidSamples.forEach((sample, idx) => {
+            console.log(`   ${idx + 1}. ID: ${sample.id_cto}, CTO: ${sample.cto}`);
+            console.log(`      Motivo: ${sample.motivo}`);
+            if (sample.detalhes) {
+              console.log(`      Detalhes: ${sample.detalhes}`);
+            }
+            if (sample.erro) {
+              console.log(`      Erro: ${sample.erro}`);
+            }
+          });
+        }
+      }
+      
       // Atualizar progresso final
       if (progressCallback) {
         progressCallback({
@@ -6492,6 +6550,27 @@ async function processExcelStreaming(filePath, supabaseClient, existingCTOsMap =
       // Modo legado: comportamento original
       console.log(`📊 [Streaming] Processamento concluído: ${totalRows} linhas, ${totalValid} válidas, ${totalInvalid} inválidas`);
       console.log(`✅ [Streaming] ${importedRows} CTOs importadas no Supabase em ${totalTime}s (média: ~${avgRate} CTOs/min)`);
+      
+      // Detalhes de CTOs inválidas
+      if (totalInvalid > 0) {
+        console.log(`📊 [Streaming] Detalhes de CTOs inválidas:`);
+        console.log(`   🗺️ Coordenadas inválidas: ${invalidCoords}`);
+        console.log(`   ⚠️ Erros ao processar: ${invalidProcessing}`);
+        
+        if (invalidSamples.length > 0) {
+          console.log(`📋 [Streaming] Amostra de CTOs inválidas (${invalidSamples.length} de ${totalInvalid}):`);
+          invalidSamples.forEach((sample, idx) => {
+            console.log(`   ${idx + 1}. ID: ${sample.id_cto}, CTO: ${sample.cto}`);
+            console.log(`      Motivo: ${sample.motivo}`);
+            if (sample.detalhes) {
+              console.log(`      Detalhes: ${sample.detalhes}`);
+            }
+            if (sample.erro) {
+              console.log(`      Erro: ${sample.erro}`);
+            }
+          });
+        }
+      }
       
       // Atualizar progresso final
       if (progressCallback) {
