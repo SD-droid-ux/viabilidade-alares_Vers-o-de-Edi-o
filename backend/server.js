@@ -6849,12 +6849,12 @@ app.post('/api/upload-base', (req, res, next) => {
     uploadInProgress = true;
     console.log('⏸️ [Upload] Flag de upload ativada - requisições /api/users/online serão pausadas');
     
-    // Inicializar progresso
+    // Inicializar progresso (começar do zero)
     uploadProgress = {
-      stage: 'deleting',
+      stage: 'idle', // Começar como 'idle' para garantir que frontend mostre 0%
       uploadPercent: 0,
       calculationPercent: 0,
-      message: 'Deletando base de dados antiga e polígonos...',
+      message: 'Iniciando atualização da base de dados...',
       totalRows: 0,
       processedRows: 0,
       importedRows: 0,
@@ -6884,6 +6884,10 @@ app.post('/api/upload-base', (req, res, next) => {
             
             // NOVO FLUXO: Carregar CTOs existentes para comparação inteligente
             // POLÍGONOS NÃO SÃO TRATADOS AQUI - apenas no botão "Criar Nova Mancha de Cobertura"
+            uploadProgress.stage = 'idle'; // Garantir que comece como 'idle' para mostrar 0%
+            uploadProgress.uploadPercent = 0;
+            uploadProgress.processedRows = 0;
+            uploadProgress.totalRows = 0;
             uploadProgress.message = 'Carregando CTOs existentes para comparação inteligente...';
             console.log('📥 [Background] ===== INICIANDO ATUALIZAÇÃO INTELIGENTE =====');
             console.log('📥 [Background] Carregando CTOs existentes do Supabase para comparação...');
