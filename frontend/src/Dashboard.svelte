@@ -16,20 +16,33 @@
 
   // Estado para permissões de ferramentas do usuário atual
   let userToolPermissions = {};
+  let permissionsLoaded = false; // Flag para indicar se permissões foram carregadas
+  let loadingPermissions = true; // Flag para indicar que está carregando permissões
   
   // Lista de ferramentas disponíveis (vem do registry)
-  $: tools = getAvailableTools().filter(tool => {
-    // Se não há permissões carregadas, mostrar todas as ferramentas (padrão)
-    if (!userToolPermissions || Object.keys(userToolPermissions).length === 0) {
-      return true;
-    }
-    // Filtrar baseado nas permissões do usuário
-    return userToolPermissions[tool.id] !== false; // Mostrar se não estiver explicitamente desabilitado
-  });
+  // IMPORTANTE: Só mostrar ferramentas se tiver permissão EXPLICITAMENTE habilitada (true)
+  // Se não há permissões carregadas ainda, não mostrar nada (aguardar carregamento)
+  $: tools = permissionsLoaded 
+    ? getAvailableTools().filter(tool => {
+        // Se é admin, mostrar todas as ferramentas
+        if (userTipo === 'admin') {
+          return true;
+        }
+        // Se não há permissões definidas para esta ferramenta, considerar como não permitida
+        // Só mostrar se estiver EXPLICITAMENTE habilitada (true)
+        return userToolPermissions[tool.id] === true;
+      })
+    : []; // Enquanto não carregar permissões, não mostrar ferramentas
   
   // Função para carregar permissões de ferramentas do usuário atual
   async function loadUserToolPermissions() {
-    if (!currentUser) return;
+    if (!currentUser) {
+      loadingPermissions = false;
+      permissionsLoaded = true;
+      return;
+    }
+    
+    loadingPermissions = true;
     
     try {
       const response = await fetch(getApiUrl(`/api/projetistas/${encodeURIComponent(currentUser)}/permissions`), {
@@ -44,12 +57,24 @@
         const data = await response.json();
         if (data.success && data.permissions) {
           userToolPermissions = data.permissions;
+          console.log('✅ [Dashboard] Permissões carregadas:', userToolPermissions);
+        } else {
+          // Se não há permissões salvas, inicializar como objeto vazio
+          userToolPermissions = {};
+          console.log('ℹ️ [Dashboard] Nenhuma permissão específica encontrada, usando padrão');
         }
+      } else {
+        console.warn('⚠️ [Dashboard] Erro ao carregar permissões (status:', response.status, ')');
+        userToolPermissions = {};
       }
     } catch (err) {
-      console.warn('Erro ao carregar permissões de ferramentas:', err);
-      // Em caso de erro, manter todas as ferramentas disponíveis (padrão)
+      console.error('❌ [Dashboard] Erro ao carregar permissões de ferramentas:', err);
+      // Em caso de erro, não permitir acesso a nenhuma ferramenta (segurança)
       userToolPermissions = {};
+    } finally {
+      loadingPermissions = false;
+      permissionsLoaded = true;
+      console.log('✅ [Dashboard] Permissões carregadas. Ferramentas disponíveis:', tools.length);
     }
   }
   
@@ -62,6 +87,10 @@
   onMount(() => {
     if (currentUser) {
       loadUserToolPermissions();
+    } else {
+      // Se não há usuário, marcar como carregado para não ficar em loading infinito
+      loadingPermissions = false;
+      permissionsLoaded = true;
     }
   });
 
@@ -312,31 +341,43 @@
 
       <div class="tools-section">
         <h2 class="section-title">Ferramentas Disponíveis</h2>
-        <div class="tools-grid">
-          {#each tools as tool (tool.id)}
-            <button
-              class="tool-card"
-              class:disabled={!tool.available}
-              on:click={() => handleToolClick(tool)}
-              disabled={!tool.available}
-            >
-              <div class="tool-icon-wrapper">
-                <div class="tool-icon" style="background: linear-gradient(135deg, {tool.color}15 0%, {tool.color}25 100%);">
-                  <span class="icon-emoji">{tool.icon}</span>
+        {#if loadingPermissions}
+          <div class="loading-permissions">
+            <div class="spinner"></div>
+            <p>Carregando permissões...</p>
+          </div>
+        {:else if tools.length === 0}
+          <div class="no-tools-message">
+            <p>Você não tem acesso a nenhuma ferramenta no momento.</p>
+            <p class="no-tools-subtitle">Entre em contato com o administrador para solicitar acesso.</p>
+          </div>
+        {:else}
+          <div class="tools-grid">
+            {#each tools as tool (tool.id)}
+              <button
+                class="tool-card"
+                class:disabled={!tool.available}
+                on:click={() => handleToolClick(tool)}
+                disabled={!tool.available}
+              >
+                <div class="tool-icon-wrapper">
+                  <div class="tool-icon" style="background: linear-gradient(135deg, {tool.color}15 0%, {tool.color}25 100%);">
+                    <span class="icon-emoji">{tool.icon}</span>
+                  </div>
                 </div>
-              </div>
-              <div class="tool-content">
-                <h3 class="tool-title">{tool.title}</h3>
-                <p class="tool-description">{tool.description}</p>
-              </div>
-              <div class="tool-arrow">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </div>
-            </button>
-          {/each}
-        </div>
+                <div class="tool-content">
+                  <h3 class="tool-title">{tool.title}</h3>
+                  <p class="tool-description">{tool.description}</p>
+                </div>
+                <div class="tool-arrow">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </div>
+              </button>
+            {/each}
+          </div>
+        {/if}
       </div>
     </div>
   </main>
@@ -1478,6 +1519,57 @@
 
   .btn-add-confirm:active {
     transform: translateY(0);
+  }
+
+  /* Loading de permissões */
+  .loading-permissions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 2rem;
+    gap: 1.5rem;
+  }
+
+  .loading-permissions .spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(255, 255, 255, 0.2);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  .loading-permissions p {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 1rem;
+    font-weight: 500;
+    margin: 0;
+    text-shadow: 0 2px 6px rgba(123, 104, 238, 0.4);
+  }
+
+  /* Mensagem quando não há ferramentas */
+  .no-tools-message {
+    text-align: center;
+    padding: 4rem 2rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .no-tools-message p {
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 1.125rem;
+    font-weight: 500;
+    margin: 0.5rem 0;
+    text-shadow: 0 2px 6px rgba(123, 104, 238, 0.4);
+  }
+
+  .no-tools-subtitle {
+    font-size: 0.9375rem !important;
+    opacity: 0.85;
+    font-weight: 400 !important;
   }
 </style>
 
