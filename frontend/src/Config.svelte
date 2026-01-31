@@ -175,7 +175,7 @@
       }
       
       // PRIORIDADE 2: Usar uploadPercent do backend (já calculado corretamente: 80-85%)
-      if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
+      if (progress.uploadPercent !== undefined && progress.uploadPercent !== null && progress.uploadPercent >= 80) {
         // uploadPercent já está no range 80-85% do backend
         return Math.min(85, Math.max(80, Math.round(progress.uploadPercent * 100) / 100));
       }
@@ -1595,17 +1595,17 @@
               const progressData = await progressRes.json();
               if (progressData.success) {
                 // O backend retorna uploadProgress diretamente (não dentro de .progress)
-                // Atualizar progresso com os dados recebidos
+                // Atualizar progresso com os dados recebidos (usar valores do backend diretamente, não fallback)
                 uploadProgress = {
-                  stage: progressData.stage || uploadProgress.stage,
-                  uploadPercent: progressData.uploadPercent || uploadProgress.uploadPercent,
-                  calculationPercent: progressData.calculationPercent || uploadProgress.calculationPercent,
-                  message: progressData.message || uploadProgress.message,
-                  totalRows: progressData.totalRows || uploadProgress.totalRows,
-                  processedRows: progressData.processedRows || uploadProgress.processedRows,
-                  importedRows: progressData.importedRows || uploadProgress.importedRows,
-                  totalCTOs: progressData.totalCTOs || uploadProgress.totalCTOs,
-                  processedCTOs: progressData.processedCTOs || uploadProgress.processedCTOs
+                  stage: progressData.stage !== undefined ? progressData.stage : uploadProgress.stage,
+                  uploadPercent: progressData.uploadPercent !== undefined ? progressData.uploadPercent : uploadProgress.uploadPercent,
+                  calculationPercent: progressData.calculationPercent !== undefined ? progressData.calculationPercent : uploadProgress.calculationPercent,
+                  message: progressData.message !== undefined ? progressData.message : uploadProgress.message,
+                  totalRows: progressData.totalRows !== undefined ? progressData.totalRows : uploadProgress.totalRows,
+                  processedRows: progressData.processedRows !== undefined ? progressData.processedRows : uploadProgress.processedRows,
+                  importedRows: progressData.importedRows !== undefined ? progressData.importedRows : uploadProgress.importedRows,
+                  totalCTOs: progressData.totalCTOs !== undefined ? progressData.totalCTOs : uploadProgress.totalCTOs,
+                  processedCTOs: progressData.processedCTOs !== undefined ? progressData.processedCTOs : uploadProgress.processedCTOs
                 };
                 
                 coverageMessage = uploadProgress.message || 'Calculando área de cobertura...';
@@ -1799,18 +1799,19 @@
           uploadMessage = 'Validando e atualizando base de dados...';
           uploadingBase = true; // Manter flag de upload ativo
           
-          // Inicializar progresso
+          // Inicializar progresso (começar do zero)
           uploadProgress = {
-            stage: 'deleting',
+            stage: 'idle',
             uploadPercent: 0,
             calculationPercent: 0,
-            message: 'Deletando base de dados antiga e polígonos...',
+            message: 'Iniciando atualização da base de dados...',
             totalRows: 0,
             processedRows: 0,
             importedRows: 0,
             totalCTOs: 0,
             processedCTOs: 0
           };
+          lastUploadPercent = 0; // Resetar progresso quando inicia novo upload
           
           // Limpar qualquer polling anterior
           if (uploadPollInterval) {
@@ -1825,8 +1826,18 @@
               if (progressRes.ok) {
                 const progressData = await progressRes.json();
                 if (progressData.success) {
-                  // Atualizar progresso
-                  uploadProgress = { ...progressData };
+                  // Atualizar progresso (garantir que todos os campos estejam presentes)
+                  uploadProgress = {
+                    stage: progressData.stage !== undefined ? progressData.stage : uploadProgress.stage,
+                    uploadPercent: progressData.uploadPercent !== undefined ? progressData.uploadPercent : (uploadProgress.uploadPercent || 0),
+                    calculationPercent: progressData.calculationPercent !== undefined ? progressData.calculationPercent : (uploadProgress.calculationPercent || 0),
+                    message: progressData.message !== undefined ? progressData.message : uploadProgress.message,
+                    totalRows: progressData.totalRows !== undefined ? progressData.totalRows : (uploadProgress.totalRows || 0),
+                    processedRows: progressData.processedRows !== undefined ? progressData.processedRows : (uploadProgress.processedRows || 0),
+                    importedRows: progressData.importedRows !== undefined ? progressData.importedRows : (uploadProgress.importedRows || 0),
+                    totalCTOs: progressData.totalCTOs !== undefined ? progressData.totalCTOs : (uploadProgress.totalCTOs || 0),
+                    processedCTOs: progressData.processedCTOs !== undefined ? progressData.processedCTOs : (uploadProgress.processedCTOs || 0)
+                  };
                   
                   // Atualizar mensagem baseada no estágio
                   if (progressData.stage === 'processing') {
@@ -2265,9 +2276,11 @@
           
           {#if uploadingBase}
             {@const calculatedPercent = calculateTotalUploadPercent(uploadProgress)}
-            {@const totalPercent = Math.max(calculatedPercent, lastUploadPercent)}
+            {@const totalPercent = Math.max(calculatedPercent, lastUploadPercent || 0)}
             {@const displayMessage = uploadProgress.message || uploadMessage || 'Validando e atualizando base de dados...'}
-            {@const _ = (lastUploadPercent = Math.max(lastUploadPercent, totalPercent))}
+            {#if totalPercent > (lastUploadPercent || 0)}
+              {@const _ = (lastUploadPercent = totalPercent)}
+            {/if}
             <div class="upload-status" style="margin-top: 1rem;">
               <div class="loading-spinner"></div>
               <span>{displayMessage}</span>
