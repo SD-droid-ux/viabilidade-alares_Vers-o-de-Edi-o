@@ -1884,7 +1884,7 @@
               console.error('❌ [Upload] Erro ao verificar progresso:', pollErr);
               // Continuar tentando
             }
-          }, 2000); // Verificar a cada 2 segundos (suficiente para atualização suave sem sobrecarregar)
+          }, 500); // Verificar a cada 500ms para atualização mais suave e responsiva
           
           // Timeout de segurança (5 minutos)
           setTimeout(() => {
@@ -2283,13 +2283,13 @@
             {/if}
             <div class="upload-status" style="margin-top: 1rem;">
               <div class="loading-spinner"></div>
-              <span>{displayMessage}</span>
+              <span>{displayMessage.replace(/\s*\d+%[:\s]*$/, '').trim()}</span>
             </div>
             
             <div class="progress-container" style="margin-top: 1rem;">
               <div class="progress-bar-wrapper">
                 <div class="progress-label">
-                  {displayMessage}: {totalPercent}%
+                  {displayMessage.replace(/\s*\d+%[:\s]*$/, '').trim()}: {Math.round(totalPercent * 100) / 100}%
                   {#if uploadProgress.processedRows > 0 && uploadProgress.totalRows > 0}
                     ({uploadProgress.processedRows}/{uploadProgress.totalRows} linhas)
                   {/if}
