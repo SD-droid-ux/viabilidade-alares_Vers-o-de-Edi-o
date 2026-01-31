@@ -2792,53 +2792,73 @@
       // Limpar referência anterior (usar variável global)
       nearestCTOOutsideLimit = null;
       
-      // Se não encontrou nenhuma CTO dentro de 250m, buscar a mais próxima (mesmo fora do limite)
+      // Se não encontrou nenhuma CTO dentro de 250m, buscar a mais próxima com raio LINEAR progressivo
+      // Raios: 500m → 700m → 900m → 1200m até encontrar
       if (ctosNormaisLimitadas.length === 0 && predios.length === 0) {
-        console.log(`⚠️ [Frontend] Nenhuma CTO encontrada dentro de 250m. Buscando CTO mais próxima...`);
+        console.log(`⚠️ [Frontend] Nenhuma CTO encontrada dentro de 250m. Buscando CTO mais próxima com raio LINEAR progressivo...`);
         
-        // Buscar com raio maior (5000m) para encontrar a CTO mais próxima
-        const nearestResponse = await fetch(getApiUrl(`/api/ctos/nearby?lat=${clientCoords.lat}&lng=${clientCoords.lng}&radius=5000`));
+        // Raios progressivos: 500m, 700m, 900m, 1200m
+        const searchRadii = [500, 700, 900, 1200];
+        let nearestCTO = null;
+        let usedRadius = 0;
         
-        if (nearestResponse.ok) {
-          const nearestData = await nearestResponse.json();
-          if (nearestData.success && nearestData.ctos && nearestData.ctos.length > 0) {
-            // Filtrar apenas CTOs normais (não prédios)
-            const nearestCTOsNormais = nearestData.ctos
-              .filter(cto => !cto.is_condominio || cto.is_condominio === false)
-              .slice(0, 1); // Pegar apenas a primeira (mais próxima)
-            
-            if (nearestCTOsNormais.length > 0) {
-              const nearestCTO = nearestCTOsNormais[0];
+        // Tentar cada raio até encontrar uma CTO
+        for (const radius of searchRadii) {
+          console.log(`🔍 [Frontend] Buscando CTOs com raio LINEAR de ${radius}m...`);
+          
+          const nearestResponse = await fetch(getApiUrl(`/api/ctos/nearby?lat=${clientCoords.lat}&lng=${clientCoords.lng}&radius=${radius}`));
+          
+          if (nearestResponse.ok) {
+            const nearestData = await nearestResponse.json();
+            if (nearestData.success && nearestData.ctos && nearestData.ctos.length > 0) {
+              // Filtrar apenas CTOs normais (não prédios)
+              const nearestCTOsNormais = nearestData.ctos
+                .filter(cto => !cto.is_condominio || cto.is_condominio === false);
               
-              // Calcular distância real mesmo que esteja fora de 250m
-              try {
-                const realDistance = await calculateRealRouteDistance(
-                  clientCoords.lat,
-                  clientCoords.lng,
-                  nearestCTO.latitude,
-                  nearestCTO.longitude
-                );
+              if (nearestCTOsNormais.length > 0) {
+                // Pegar apenas a mais próxima (primeira do array, já ordenada por distância)
+                nearestCTO = nearestCTOsNormais[0];
+                usedRadius = radius;
                 
-                nearestCTOOutsideLimit = {
-                  ...nearestCTO,
-                  distancia_metros: Math.round(realDistance * 100) / 100,
-                  distancia_km: Math.round((realDistance / 1000) * 1000) / 1000,
-                  distancia_real: realDistance,
-                  is_out_of_limit: true // Flag para indicar que está fora do limite de 250m
-                };
-                
-                console.log(`📍 [Frontend] CTO mais próxima encontrada: ${nearestCTO.nome} a ${realDistance.toFixed(2)}m (fora do limite de 250m)`);
-              } catch (err) {
-                console.error(`❌ Erro ao calcular distância real da CTO mais próxima:`, err);
-                // Em caso de erro, usar distância linear
-                nearestCTOOutsideLimit = {
-                  ...nearestCTO,
-                  distancia_real: nearestCTO.distancia_metros,
-                  is_out_of_limit: true
-                };
+                console.log(`📍 [Frontend] CTO mais próxima encontrada (raio linear ${radius}m): ${nearestCTO.nome} a ${nearestCTO.distancia_metros}m`);
+                break; // Parar a busca assim que encontrar uma CTO
               }
             }
           }
+        }
+        
+        // Se encontrou uma CTO, calcular distância REAL (rota) para ela
+        if (nearestCTO) {
+          try {
+            const realDistance = await calculateRealRouteDistance(
+              clientCoords.lat,
+              clientCoords.lng,
+              nearestCTO.latitude,
+              nearestCTO.longitude
+            );
+            
+            nearestCTOOutsideLimit = {
+              ...nearestCTO,
+              distancia_metros: Math.round(realDistance * 100) / 100,
+              distancia_km: Math.round((realDistance / 1000) * 1000) / 1000,
+              distancia_real: realDistance,
+              is_out_of_limit: true, // Flag para indicar que está fora do limite de 250m
+              search_radius_used: usedRadius // Armazenar o raio usado para debug
+            };
+            
+            console.log(`✅ [Frontend] Rota real calculada para CTO mais próxima: ${nearestCTO.nome} - Raio usado: ${usedRadius}m, Distância linear: ${nearestCTO.distancia_metros}m, Distância real: ${realDistance.toFixed(2)}m`);
+          } catch (err) {
+            console.error(`❌ Erro ao calcular distância real da CTO mais próxima:`, err);
+            // Em caso de erro, usar distância linear
+            nearestCTOOutsideLimit = {
+              ...nearestCTO,
+              distancia_real: nearestCTO.distancia_metros,
+              is_out_of_limit: true,
+              search_radius_used: usedRadius
+            };
+          }
+        } else {
+          console.warn(`⚠️ [Frontend] Nenhuma CTO encontrada mesmo após buscar até 1200m`);
         }
       }
       
@@ -2851,8 +2871,9 @@
       const todasCTOs = [...predios, ...ctosNormaisLimitadas];
       
       // Se não encontrou nenhuma CTO dentro de 250m, adicionar a mais próxima (fora do limite)
-      if (todasCTOs.length === 0 && nearestCTOOutsideLimit) {
+      if (ctosNormaisLimitadas.length === 0 && predios.length === 0 && nearestCTOOutsideLimit) {
         todasCTOs.push(nearestCTOOutsideLimit);
+        console.log(`✅ [Frontend] CTO mais próxima adicionada ao array: ${nearestCTOOutsideLimit.nome}`);
       } else if (todasCTOs.length > 0) {
         // Limpar referência se encontrou CTOs dentro do limite
         nearestCTOOutsideLimit = null;
@@ -4432,9 +4453,13 @@
       
       // Separar CTOs que precisam de rotas das que não precisam
       // Incluir CTOs normais dentro de 250m OU CTOs fora do limite (is_out_of_limit)
+      // IMPORTANTE: CTOs com is_out_of_limit também precisam de rota (já foi calculada)
       if (!cto.is_condominio && !isPredio && cto.distancia_metros && cto.distancia_metros > 0 && (cto.distancia_real || cto.is_out_of_limit)) {
         // CTOs normais que precisam de rotas (dentro de 250m ou fora do limite)
         ctosParaRotas.push({ cto, index: i, originalPosition, ctoLat, ctoLng, isPredio });
+        if (cto.is_out_of_limit) {
+          console.log(`🔄 [Frontend] CTO fora do limite adicionada para rota: ${cto.nome}`);
+        }
       }
       
       // Todas as CTOs precisam de marcadores
