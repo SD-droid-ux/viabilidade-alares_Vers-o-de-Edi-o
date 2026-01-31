@@ -143,7 +143,10 @@
       
       // ÚNICA FONTE: Usar processedRows/totalRows (não confiar em uploadPercent do backend)
       if (progress.totalRows > 0 && progress.processedRows >= 0) {
-        const processingProgress = Math.min(100, Math.max(0, (progress.processedRows / progress.totalRows) * 100));
+        // Se totalRows é uma estimativa (maior que processedRows), usar processedRows como base
+        // Caso contrário, calcular normalmente
+        const actualTotal = progress.totalRows >= progress.processedRows ? progress.totalRows : progress.processedRows;
+        const processingProgress = Math.min(100, Math.max(0, (progress.processedRows / actualTotal) * 100));
         const calculatedPercent = basePercent + (processingProgress / 100) * stageRange;
         return Math.min(80, Math.max(basePercent, Math.round(calculatedPercent)));
       }
@@ -2249,9 +2252,7 @@
             {@const calculatedPercent = calculateTotalUploadPercent(uploadProgress)}
             {@const totalPercent = Math.max(calculatedPercent, lastUploadPercent)}
             {@const displayMessage = uploadProgress.message || uploadMessage || 'Validando e atualizando base de dados...'}
-            {#if totalPercent > lastUploadPercent}
-              {@const _ = (lastUploadPercent = totalPercent)}
-            {/if}
+            {@const _ = (lastUploadPercent = Math.max(lastUploadPercent, totalPercent))}
             <div class="upload-status" style="margin-top: 1rem;">
               <div class="loading-spinner"></div>
               <span>{displayMessage}</span>
