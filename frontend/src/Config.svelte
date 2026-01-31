@@ -52,6 +52,7 @@
   let uploadMessage = '';
   let uploadSuccess = false;
   let baseLastModified = null;
+  let coverageLastModified = null; // Data da última atualização da mancha de cobertura
   let uploadPollInterval = null; // Intervalo de polling para verificar status
   let showDeleteBaseModal = false; // Modal de confirmação para deletar base
   let deletingBase = false; // Flag para indicar que está deletando base
@@ -429,6 +430,7 @@
       loadProjetistas(),
       loadTabulacoes(),
       loadBaseLastModified(),
+      loadCoverageLastModified(),
       loadViAlas()
     ]).catch(err => {
       console.error('Erro ao carregar dados:', err);
@@ -621,6 +623,32 @@
     } catch (err) {
       console.error('❌ [Frontend] Erro ao carregar data de modificação:', err);
       // Se falhar, manter dados do localStorage que já foram carregados
+    }
+  }
+
+  // Função para carregar data da última atualização da mancha de cobertura
+  async function loadCoverageLastModified() {
+    try {
+      console.log('🔄 [Frontend] Carregando data da última atualização da mancha de cobertura...');
+      const response = await fetch(getApiUrl('/api/coverage/calculate-status'));
+      if (!response.ok) {
+        console.warn('⚠️ [Frontend] Erro ao buscar status da mancha de cobertura');
+        coverageLastModified = null;
+        return;
+      }
+      
+      const data = await response.json();
+      if (data.success && data.status === 'completed' && data.created_at) {
+        const newDate = new Date(data.created_at);
+        coverageLastModified = newDate;
+        console.log(`📅 [Frontend] Data da mancha atualizada: ${coverageLastModified.toLocaleString('pt-BR')}`);
+      } else {
+        coverageLastModified = null;
+        console.log('ℹ️ [Frontend] Nenhuma mancha de cobertura encontrada');
+      }
+    } catch (err) {
+      console.error('❌ [Frontend] Erro ao carregar data da mancha de cobertura:', err);
+      coverageLastModified = null;
     }
   }
 
@@ -1730,6 +1758,9 @@
                       console.error('Erro ao recarregar CTOs:', err);
                     }
                   }
+                  
+                  // Recarregar data da última atualização da mancha
+                  await loadCoverageLastModified();
                 } else if (uploadProgress.stage === 'error') {
                   console.log('❌ [Config] Erro no cálculo detectado!');
                   clearInterval(coveragePollInterval);
@@ -2432,6 +2463,19 @@
           {:else}
             <p class="last-modified-text" style="color: #7B68EE;">
               Não consta nenhuma base de dados
+            </p>
+          {/if}
+          
+          {#if coverageLastModified}
+            <p class="last-modified-text" style="margin-top: 0.5rem;">
+              Última atualização da Mancha de Cobertura: {coverageLastModified.toLocaleDateString('pt-BR', { 
+                day: '2-digit', 
+                month: '2-digit', 
+                year: 'numeric'
+              })} - {coverageLastModified.toLocaleTimeString('pt-BR', {
+                hour: '2-digit', 
+                minute: '2-digit'
+              })}
             </p>
           {/if}
           
