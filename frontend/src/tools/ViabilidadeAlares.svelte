@@ -2816,25 +2816,51 @@
                 .filter(cto => !cto.is_condominio || cto.is_condominio === false);
               
               if (nearestCTOsNormais.length > 0) {
-                // Pegar apenas a mais próxima (primeira do array, já ordenada por distância)
+                // IMPORTANTE: Ordenar por distância LINEAR (distancia_metros) para garantir que pegamos a MAIS PRÓXIMA
+                // Mesmo que a API já retorne ordenada, vamos garantir ordenação correta
+                nearestCTOsNormais.sort((a, b) => {
+                  const distA = a.distancia_metros || 0;
+                  const distB = b.distancia_metros || 0;
+                  return distA - distB; // Ordenar do menor para o maior
+                });
+                
+                // Pegar a MAIS PRÓXIMA (menor distância linear)
                 nearestCTO = nearestCTOsNormais[0];
                 usedRadius = radius;
                 
-                console.log(`📍 [Frontend] CTO mais próxima encontrada (raio linear ${radius}m): ${nearestCTO.nome} a ${nearestCTO.distancia_metros}m`);
-                break; // Parar a busca assim que encontrar uma CTO
+                console.log(`📍 [Frontend] ${nearestCTOsNormais.length} CTO(s) encontrada(s) no raio de ${radius}m`);
+                console.log(`📍 [Frontend] CTO mais próxima selecionada: ${nearestCTO.nome} a ${nearestCTO.distancia_metros}m (distância linear)`);
+                
+                // Se houver mais de uma CTO, mostrar as outras para debug
+                if (nearestCTOsNormais.length > 1) {
+                  console.log(`📊 [Frontend] Outras CTOs encontradas no mesmo raio:`);
+                  nearestCTOsNormais.slice(1, 4).forEach((cto, idx) => {
+                    console.log(`   ${idx + 2}. ${cto.nome} - ${cto.distancia_metros}m`);
+                  });
+                }
+                
+                break; // Parar a busca assim que encontrar CTOs
               }
             }
           }
         }
         
-        // Se encontrou uma CTO, calcular distância REAL (rota) para ela
+        // Se encontrou uma CTO, calcular distância REAL (rota) APENAS para ela
+        // A rota vai da CTO até o endereço do cliente (não alterar o endereço do cliente)
         if (nearestCTO) {
+          console.log(`🔄 [Frontend] Calculando rota REAL da CTO mais próxima (${nearestCTO.nome}) até o endereço do cliente...`);
+          console.log(`   📍 CTO (origem): ${nearestCTO.latitude}, ${nearestCTO.longitude}`);
+          console.log(`   📍 Cliente (destino): ${clientCoords.lat}, ${clientCoords.lng}`);
+          console.log(`   📏 Distância linear: ${nearestCTO.distancia_metros}m`);
+          
           try {
+            // Calcular rota REAL: da CTO até o cliente (origem: CTO, destino: cliente)
+            // IMPORTANTE: A rota vai da CTO até o endereço pesquisado pelo usuário
             const realDistance = await calculateRealRouteDistance(
-              clientCoords.lat,
-              clientCoords.lng,
-              nearestCTO.latitude,
-              nearestCTO.longitude
+              nearestCTO.latitude,  // Origem: CTO
+              nearestCTO.longitude, // Origem: CTO
+              clientCoords.lat,    // Destino: Endereço do cliente
+              clientCoords.lng      // Destino: Endereço do cliente
             );
             
             nearestCTOOutsideLimit = {
@@ -2842,17 +2868,23 @@
               distancia_metros: Math.round(realDistance * 100) / 100,
               distancia_km: Math.round((realDistance / 1000) * 1000) / 1000,
               distancia_real: realDistance,
+              distancia_linear_original: nearestCTO.distancia_metros, // Manter distância linear original
               is_out_of_limit: true, // Flag para indicar que está fora do limite de 250m
               search_radius_used: usedRadius // Armazenar o raio usado para debug
             };
             
-            console.log(`✅ [Frontend] Rota real calculada para CTO mais próxima: ${nearestCTO.nome} - Raio usado: ${usedRadius}m, Distância linear: ${nearestCTO.distancia_metros}m, Distância real: ${realDistance.toFixed(2)}m`);
+            console.log(`✅ [Frontend] Rota real calculada para CTO mais próxima:`);
+            console.log(`   📍 CTO: ${nearestCTO.nome}`);
+            console.log(`   📏 Distância LINEAR (raio): ${nearestCTO.distancia_metros}m`);
+            console.log(`   🛣️  Distância REAL (rota): ${realDistance.toFixed(2)}m`);
+            console.log(`   📊 Diferença: ${(realDistance - nearestCTO.distancia_metros).toFixed(2)}m (${((realDistance / nearestCTO.distancia_metros - 1) * 100).toFixed(1)}% maior)`);
           } catch (err) {
             console.error(`❌ Erro ao calcular distância real da CTO mais próxima:`, err);
             // Em caso de erro, usar distância linear
             nearestCTOOutsideLimit = {
               ...nearestCTO,
               distancia_real: nearestCTO.distancia_metros,
+              distancia_linear_original: nearestCTO.distancia_metros,
               is_out_of_limit: true,
               search_radius_used: usedRadius
             };
