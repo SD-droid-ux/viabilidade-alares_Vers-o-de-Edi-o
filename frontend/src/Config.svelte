@@ -2394,7 +2394,11 @@
           {#if calculatingCoverage}
             <div class="progress-container" style="margin-top: 1rem;">
               <div class="progress-bar-wrapper">
-                <div class="progress-label">Calculando área de cobertura: {Math.round(uploadProgress.calculationPercent || 0)}%</div>
+                <div class="progress-label">
+                  Calculando área de cobertura<span class="loading-dots">
+                    <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+                  </span> {Math.round(uploadProgress.calculationPercent || 0)}%
+                </div>
                 <div class="progress-bar">
                   <div class="progress-fill" style="width: {uploadProgress.calculationPercent || 0}%;"></div>
                 </div>
