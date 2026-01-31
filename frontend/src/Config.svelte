@@ -149,6 +149,30 @@
     animationFrameId = requestAnimationFrame(animate);
   }
   
+  // Reagir a mudanças no uploadProgress e atualizar targetPercent em tempo real
+  // Isso garante que a barra evolua durante o processo, não apenas no final
+  // IMPORTANTE: Reagir a TODAS as propriedades relevantes do uploadProgress
+  $: if (uploadingBase && uploadProgress) {
+    // Forçar reatividade observando todas as propriedades relevantes
+    const stage = uploadProgress.stage;
+    const processedRows = uploadProgress.processedRows || 0;
+    const totalRows = uploadProgress.totalRows || 0;
+    const uploadPercent = uploadProgress.uploadPercent || 0;
+    
+    // Calcular percentual total baseado no progresso atual
+    const calculatedPercent = calculateTotalUploadPercent(uploadProgress);
+    const newTargetPercent = Math.round(Math.max(calculatedPercent, lastUploadPercent || 0));
+    
+    // Atualizar lastUploadPercent se o novo valor for maior (nunca diminuir)
+    if (newTargetPercent > (lastUploadPercent || 0)) {
+      lastUploadPercent = newTargetPercent;
+    }
+    
+    // Atualizar targetPercent (isso vai disparar a animação se necessário)
+    // Sempre atualizar, mesmo que seja o mesmo valor, para garantir reatividade
+    targetPercent = newTargetPercent;
+  }
+  
   // Reagir a mudanças no targetPercent (quando o backend atualiza o progresso)
   // GARANTE que sempre anima, mesmo que o backend avance rapidamente
   $: if (uploadingBase) {
@@ -2408,13 +2432,7 @@
           {/if}
           
           {#if uploadingBase}
-            {@const calculatedPercent = calculateTotalUploadPercent(uploadProgress)}
-            {@const totalPercent = Math.max(calculatedPercent, lastUploadPercent || 0)}
             {@const displayMessage = uploadProgress.message || uploadMessage || 'Validando e atualizando base de dados...'}
-            {#if totalPercent > (lastUploadPercent || 0)}
-              {@const _ = (lastUploadPercent = totalPercent)}
-            {/if}
-            {@const _ = (targetPercent = Math.round(totalPercent))}
             
             <div class="progress-container" style="margin-top: 1rem;">
               <div class="progress-bar-wrapper">
