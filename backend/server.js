@@ -6806,29 +6806,30 @@ app.post('/api/upload-base', (req, res, next) => {
     }
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     
-    // Validar colunas do arquivo ANTES de processar
-    console.log('🔍 [Upload] Validando colunas do arquivo...');
-    const validationResult = await validateExcelColumns(tempFilePath);
+    // Inicializar progresso ANTES de validar (começar do zero)
+    uploadProgress = {
+      stage: 'idle', // Começar como 'idle' para garantir que frontend mostre 0%
+      uploadPercent: 0,
+      calculationPercent: 0,
+      message: 'Validando colunas do arquivo...',
+      totalRows: 0,
+      processedRows: 0,
+      importedRows: 0,
+      calculationId: null,
+      totalCTOs: 0,
+      processedCTOs: 0
+    };
     
-    if (!validationResult.valid) {
-      // Deletar arquivo temporário em caso de erro de validação
-      try {
-        await fsPromises.unlink(tempFilePath);
-        console.log('🗑️ [Upload] Arquivo temporário removido após erro de validação');
-      } catch (unlinkErr) {
-        console.warn('⚠️ [Upload] Erro ao remover arquivo temporário:', unlinkErr.message);
-      }
-      
-      return res.status(400).json({
-        success: false,
-        error: validationResult.error || 'Erro ao validar colunas do arquivo'
-      });
-    }
-    
-    console.log('✅ [Upload] Validação de colunas concluída com sucesso');
+    // Criar promise para controlar quando upload termina (ANTES da validação)
+    let resolveUpload;
+    uploadPromise = new Promise((resolve) => {
+      resolveUpload = resolve;
+    });
+    uploadInProgress = true;
+    console.log('⏸️ [Upload] Flag de upload ativada - requisições /api/users/online serão pausadas');
     
     // RESPONDER IMEDIATAMENTE para evitar timeout do Railway
-    // Processar em background
+    // Processar validação e processamento em background
     res.json({
       success: true,
       message: `Upload recebido! Validando e processando arquivo em background...`,
@@ -6839,28 +6840,45 @@ app.post('/api/upload-base', (req, res, next) => {
     
     console.log(`💾 [Upload] Arquivo salvo temporariamente em: ${tempFilePath} (${fileSize} bytes)`);
     
-    // Processar validação e salvamento em background (não bloqueia resposta)
-    // Criar promise para controlar quando upload termina
-    let resolveUpload;
-    uploadPromise = new Promise((resolve) => {
-      resolveUpload = resolve;
-    });
-    uploadInProgress = true;
-    console.log('⏸️ [Upload] Flag de upload ativada - requisições /api/users/online serão pausadas');
+    // Validar colunas do arquivo ANTES de processar (0% a 5%)
+    console.log('🔍 [Upload] Validando colunas do arquivo...');
+    uploadProgress.message = 'Validando colunas do arquivo...';
+    uploadProgress.uploadPercent = 0;
     
-    // Inicializar progresso (começar do zero)
-    uploadProgress = {
-      stage: 'idle', // Começar como 'idle' para garantir que frontend mostre 0%
-      uploadPercent: 0,
-      calculationPercent: 0,
-      message: 'Iniciando atualização da base de dados...',
-      totalRows: 0,
-      processedRows: 0,
-      importedRows: 0,
-      calculationId: null,
-      totalCTOs: 0,
-      processedCTOs: 0
-    };
+    // Simular progresso durante validação (0% a 5%)
+    const validationStartTime = Date.now();
+    const validationProgressInterval = setInterval(() => {
+      const elapsed = Date.now() - validationStartTime;
+      // Estimar progresso baseado no tempo (máximo 5% durante validação)
+      const estimatedProgress = Math.min(5, Math.round((elapsed / 2000) * 5)); // Assume validação leva ~2s
+      uploadProgress.uploadPercent = estimatedProgress;
+    }, 100); // Atualizar a cada 100ms para progresso suave
+    
+    const validationResult = await validateExcelColumns(tempFilePath);
+    clearInterval(validationProgressInterval);
+    
+    if (!validationResult.valid) {
+      // Deletar arquivo temporário em caso de erro de validação
+      try {
+        await fsPromises.unlink(tempFilePath);
+        console.log('🗑️ [Upload] Arquivo temporário removido após erro de validação');
+      } catch (unlinkErr) {
+        console.warn('⚠️ [Upload] Erro ao remover arquivo temporário:', unlinkErr.message);
+      }
+      
+      // Atualizar progresso com erro
+      uploadProgress.stage = 'error';
+      uploadProgress.message = validationResult.error || 'Erro ao validar colunas do arquivo';
+      uploadProgress.uploadPercent = 0;
+      uploadInProgress = false;
+      if (resolveUpload) resolveUpload();
+      
+      return; // Já respondemos, então apenas retornar
+    }
+    
+    console.log('✅ [Upload] Validação de colunas concluída com sucesso');
+    uploadProgress.uploadPercent = 5; // Validação completa (5%)
+    uploadProgress.message = 'Validação concluída. Carregando CTOs existentes...';
     
     (async () => {
       let tempFileDeleted = false;
@@ -6883,8 +6901,8 @@ app.post('/api/upload-base', (req, res, next) => {
             
             // NOVO FLUXO: Carregar CTOs existentes para comparação inteligente
             // POLÍGONOS NÃO SÃO TRATADOS AQUI - apenas no botão "Criar Nova Mancha de Cobertura"
-            uploadProgress.stage = 'idle'; // Garantir que comece como 'idle' para mostrar 0%
-            uploadProgress.uploadPercent = 0;
+            uploadProgress.stage = 'idle'; // Manter como 'idle' durante carregamento
+            uploadProgress.uploadPercent = 5; // Já estamos em 5% (validação completa)
             uploadProgress.processedRows = 0;
             uploadProgress.totalRows = 0;
             uploadProgress.message = 'Carregando CTOs existentes para comparação inteligente...';
@@ -6892,17 +6910,17 @@ app.post('/api/upload-base', (req, res, next) => {
             console.log('📥 [Background] Carregando CTOs existentes do Supabase para comparação...');
             
             // Carregar CTOs existentes (IDs e chaves_unicas)
-            // Callback para atualizar progresso durante carregamento
+            // Callback para atualizar progresso durante carregamento (mantém em 5% - validação já completa)
             const loadProgressCallback = (progress) => {
-              // Mapear progresso para 0-5% (antes era 0-10%)
-              uploadProgress.uploadPercent = Math.round((progress.percent / 10) * 5);
+              // Manter em 5% durante carregamento (validação já completou 5%)
+              uploadProgress.uploadPercent = 5;
               uploadProgress.message = `Carregando CTOs existentes... ${progress.loaded} CTO(s)`;
             };
             
             const existingCTOsMap = await loadExistingCTOs(supabase, loadProgressCallback);
             console.log(`✅ [Background] CTOs existentes carregadas: ${existingCTOsMap.size}`);
             
-            // Atualizar progresso após carregamento completo
+            // Atualizar progresso após carregamento completo (ainda em 5%, próximo passo é processar Excel)
             uploadProgress.uploadPercent = 5;
             uploadProgress.message = 'CTOs existentes carregadas. Processando arquivo...';
             
