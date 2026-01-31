@@ -32,6 +32,10 @@
   let clientCoords = null; // Coordenadas do cliente
   let ctos = []; // CTOs encontradas
   
+  // Variáveis para status de cobertura do endereço do cliente
+  let isClientCovered = null; // null = não verificado, true = dentro, false = fora
+  let distanceToCoverage = null; // Distância em metros até a área de cobertura (se estiver fora)
+  
   // Variáveis para mancha de cobertura (similar ao MapaConsulta.svelte)
   let coveragePolygons = []; // Array para armazenar polígonos de cobertura
   let coverageData = null; // Dados do polígono de cobertura (metadados)
@@ -1922,6 +1926,90 @@
     }
   }
 
+  // ========== FUNÇÕES PARA VERIFICAÇÃO DE COBERTURA DO CLIENTE ==========
+  
+  // Função para verificar se o endereço do cliente está dentro da área de cobertura
+  async function checkClientCoverage(lat, lng) {
+    // Se não há coordenadas, não verificar
+    if (!lat || !lng) {
+      isClientCovered = null;
+      distanceToCoverage = null;
+      return;
+    }
+    
+    try {
+      const coverageCheckResponse = await fetch(getApiUrl(`/api/coverage/check-point?lat=${lat}&lng=${lng}`));
+      if (coverageCheckResponse.ok) {
+        const coverageCheckData = await coverageCheckResponse.json();
+        if (coverageCheckData.success) {
+          isClientCovered = coverageCheckData.is_covered;
+          distanceToCoverage = coverageCheckData.distance_to_coverage_meters;
+          console.log(`✅ [Cobertura] Cliente ${isClientCovered ? 'DENTRO' : 'FORA'} da área de cobertura${!isClientCovered && distanceToCoverage ? ` (${(distanceToCoverage / 1000).toFixed(2)} km)` : ''}`);
+        } else {
+          // Se não há mancha de cobertura calculada, considerar como não verificado
+          isClientCovered = null;
+          distanceToCoverage = null;
+        }
+      } else {
+        // Se a API não respondeu, considerar como não verificado
+        isClientCovered = null;
+        distanceToCoverage = null;
+      }
+    } catch (coverageErr) {
+      console.warn('⚠️ [Cobertura] Erro ao verificar cobertura:', coverageErr);
+      // Em caso de erro, considerar como não verificado (manter azul)
+      isClientCovered = null;
+      distanceToCoverage = null;
+    }
+    
+    // Atualizar cor do marcador baseado no status de cobertura
+    updateClientMarkerColor();
+  }
+  
+  // Função para atualizar a cor do marcador do cliente baseado no status de cobertura
+  function updateClientMarkerColor() {
+    if (!clientMarker) return;
+    
+    // Path de uma casa: triângulo (telhado) + retângulo (base)
+    const housePath = 'M12 2L2 7v13h6v-6h8v6h6V7L12 2z';
+    
+    // Determinar cor baseado no status de cobertura
+    // null = não verificado (azul), true = dentro (verde), false = fora (vermelho)
+    let fillColor;
+    if (isClientCovered === true) {
+      fillColor = '#28A745'; // Verde - dentro da cobertura
+    } else if (isClientCovered === false) {
+      fillColor = '#DC3545'; // Vermelho - fora da cobertura
+    } else {
+      fillColor = '#4285F4'; // Azul - não verificado ou endereço não localizado
+    }
+    
+    const houseIcon = {
+      path: housePath,
+      fillColor: fillColor,
+      fillOpacity: 1,
+      strokeColor: '#FFFFFF',
+      strokeWeight: 2.5,
+      scale: 1.8,
+      anchor: new google.maps.Point(12, 22)
+    };
+    
+    // Atualizar ícone do marcador
+    clientMarker.setIcon(houseIcon);
+    
+    // Atualizar título do marcador
+    let title = 'Localização do Cliente (Arraste para ajustar)';
+    if (isClientCovered === true) {
+      title += ' - DENTRO da área de cobertura';
+    } else if (isClientCovered === false) {
+      const distanceKm = distanceToCoverage ? (distanceToCoverage / 1000).toFixed(2) : 'desconhecida';
+      title += ` - FORA da área de cobertura (${distanceKm} km)`;
+    }
+    clientMarker.setTitle(title);
+  }
+  
+  // ========== FIM FUNÇÕES PARA VERIFICAÇÃO DE COBERTURA DO CLIENTE ==========
+
   // ========== FUNÇÕES PARA MANCHA DE COBERTURA ==========
   
   // Função para carregar polígono de cobertura do backend
@@ -2261,13 +2349,27 @@
       map.setCenter(clientCoords);
       map.setZoom(18); // Zoom maior para mostrar localização exata
 
-      // Criar ícone de casinha azul usando path SVG
+      // Verificar cobertura ANTES de criar o marcador
+      await checkClientCoverage(clientCoords.lat, clientCoords.lng);
+
+      // Criar ícone de casinha usando path SVG
       // Path de uma casa: triângulo (telhado) + retângulo (base)
       const housePath = 'M12 2L2 7v13h6v-6h8v6h6V7L12 2z';
 
+      // Determinar cor baseado no status de cobertura
+      // null = não verificado (azul), true = dentro (verde), false = fora (vermelho)
+      let fillColor;
+      if (isClientCovered === true) {
+        fillColor = '#28A745'; // Verde - dentro da cobertura
+      } else if (isClientCovered === false) {
+        fillColor = '#DC3545'; // Vermelho - fora da cobertura
+      } else {
+        fillColor = '#4285F4'; // Azul - não verificado ou endereço não localizado
+      }
+
       const houseIcon = {
         path: housePath,
-        fillColor: '#4285F4',
+        fillColor: fillColor,
         fillOpacity: 1,
         strokeColor: '#FFFFFF',
         strokeWeight: 2.5,
@@ -2275,11 +2377,20 @@
         anchor: new google.maps.Point(12, 22)
       };
 
-      // Adicionar marcador (ícone de casinha azul) - ARRASTÁVEL
+      // Criar título do marcador baseado no status
+      let markerTitle = 'Localização do Cliente (Arraste para ajustar)';
+      if (isClientCovered === true) {
+        markerTitle += ' - DENTRO da área de cobertura';
+      } else if (isClientCovered === false) {
+        const distanceKm = distanceToCoverage ? (distanceToCoverage / 1000).toFixed(2) : 'desconhecida';
+        markerTitle += ` - FORA da área de cobertura (${distanceKm} km)`;
+      }
+
+      // Adicionar marcador (ícone de casinha) - ARRASTÁVEL
       const marker = new google.maps.Marker({
         position: clientCoords,
         map: map,
-        title: 'Localização do Cliente (Arraste para ajustar)',
+        title: markerTitle,
         icon: houseIcon,
         animation: google.maps.Animation.DROP,
         zIndex: 1000,
@@ -2347,6 +2458,9 @@
 
         // Atualizar coordenadas globais do cliente
         clientCoords = newPosition;
+
+        // Verificar cobertura na nova posição
+        await checkClientCoverage(newPosition.lat, newPosition.lng);
 
         // Atualizar coordenadas no input se estiver no modo coordenadas
         if (searchMode === 'coordinates') {
@@ -6382,6 +6496,28 @@
               {error}
             </div>
           {/if}
+          
+          <!-- Box informativo de cobertura -->
+          {#if clientCoords && isClientCovered === false && distanceToCoverage !== null}
+            <div class="coverage-info-box">
+              <div class="coverage-info-header">
+                <span class="coverage-info-icon">⚠️</span>
+                <span class="coverage-info-title">Fora da Área de Cobertura</span>
+              </div>
+              <div class="coverage-info-content">
+                <p>O endereço está localizado <strong>{distanceToCoverage >= 1000 ? `${(distanceToCoverage / 1000).toFixed(2)} km` : `${distanceToCoverage.toFixed(0)} m`}</strong> da área de cobertura mais próxima.</p>
+              </div>
+            </div>
+          {/if}
+          
+          {#if clientCoords && isClientCovered === true}
+            <div class="coverage-info-box coverage-info-box-success">
+              <div class="coverage-info-header">
+                <span class="coverage-info-icon">✅</span>
+                <span class="coverage-info-title">Dentro da Área de Cobertura</span>
+              </div>
+            </div>
+          {/if}
 
           {#if ctos.length > 0}
             <div class="results-info">
@@ -8801,6 +8937,68 @@
     color: #F44336;
     font-size: 0.85rem;
     margin-top: 0.25rem;
+  }
+
+  /* Box informativo de cobertura */
+  .coverage-info-box {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    border: 2px solid #ffc107;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+  }
+
+  .coverage-info-box-success {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border-color: #28A745;
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.2);
+  }
+
+  .coverage-info-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .coverage-info-icon {
+    font-size: 1.25rem;
+    flex-shrink: 0;
+  }
+
+  .coverage-info-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #856404;
+  }
+
+  .coverage-info-box-success .coverage-info-title {
+    color: #155724;
+  }
+
+  .coverage-info-content {
+    margin-top: 0.5rem;
+  }
+
+  .coverage-info-content p {
+    margin: 0;
+    font-size: 0.875rem;
+    color: #856404;
+    line-height: 1.5;
+  }
+
+  .coverage-info-box-success .coverage-info-content p {
+    color: #155724;
+  }
+
+  .coverage-info-content strong {
+    font-weight: 700;
+    color: #856404;
+  }
+
+  .coverage-info-box-success .coverage-info-content strong {
+    color: #155724;
   }
 
   .password-input-wrapper {
