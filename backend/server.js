@@ -6506,18 +6506,17 @@ async function processExcelStreaming(filePath, supabaseClient, existingCTOsMap =
         }
         
         // Atualizar progresso a cada 5000 linhas processadas (menos frequente = menos overhead)
-        // Como não sabemos o total antes, usamos uma estimativa baseada na taxa de processamento
+        // NÃO enviar uploadPercent - deixar o frontend calcular baseado em processedRows/totalRows
         if (processedRows % 5000 === 0 && progressCallback) {
-          // Estimar progresso baseado na taxa de processamento (ajustar conforme necessário)
-          // Para arquivos grandes, assumir que ainda há mais linhas
-          const estimatedTotal = Math.max(totalRows, processedRows * 1.2); // Estimativa conservadora
-          const uploadPercent = Math.min(95, Math.round((processedRows / estimatedTotal) * 100));
+          // Usar totalRows real se disponível, senão estimar conservadoramente
+          // Mas NÃO enviar uploadPercent - o frontend calculará baseado no estágio
+          const estimatedTotal = totalRows > 0 ? totalRows : Math.max(processedRows, processedRows * 1.2);
           progressCallback({
             processedRows,
             totalRows: estimatedTotal,
             importedRows,
-            uploadPercent,
-            message: `Carregando base de dados... ${uploadPercent}%`
+            // NÃO enviar uploadPercent - será calculado pelo frontend: 5% + (processedRows/totalRows * 75%)
+            message: `Processando arquivo... ${processedRows}${totalRows > 0 ? `/${totalRows}` : ''} linhas`
           });
         }
         
@@ -6570,13 +6569,13 @@ async function processExcelStreaming(filePath, supabaseClient, existingCTOsMap =
         }
       }
       
-      // Atualizar progresso final
+      // Atualizar progresso final (NÃO enviar uploadPercent - frontend calculará)
       if (progressCallback) {
         progressCallback({
           processedRows: totalRows,
           totalRows: totalRows,
           importedRows: ctosNew + ctosChanged, // Total que precisa ser processado
-          uploadPercent: 100,
+          // NÃO enviar uploadPercent - será calculado pelo frontend como 80% (fim do processamento)
           message: 'Análise concluída! Identificadas mudanças.'
         });
       }
@@ -6617,13 +6616,13 @@ async function processExcelStreaming(filePath, supabaseClient, existingCTOsMap =
         }
       }
       
-      // Atualizar progresso final
+      // Atualizar progresso final (NÃO enviar uploadPercent - frontend calculará)
       if (progressCallback) {
         progressCallback({
           processedRows: totalRows,
           totalRows: totalRows,
           importedRows,
-          uploadPercent: 100,
+          // NÃO enviar uploadPercent - será calculado pelo frontend
           message: 'Base de dados carregada!'
         });
       }
