@@ -146,9 +146,12 @@
         // Se totalRows é uma estimativa (maior que processedRows), usar processedRows como base
         // Caso contrário, calcular normalmente
         const actualTotal = progress.totalRows >= progress.processedRows ? progress.totalRows : progress.processedRows;
-        const processingProgress = Math.min(100, Math.max(0, (progress.processedRows / actualTotal) * 100));
-        const calculatedPercent = basePercent + (processingProgress / 100) * stageRange;
-        return Math.min(80, Math.max(basePercent, Math.round(calculatedPercent)));
+        // Calcular progresso do processamento (0-100%)
+        const processingProgressPercent = Math.min(100, Math.max(0, (progress.processedRows / actualTotal) * 100));
+        // Aplicar fórmula: 5% + (progresso_processamento / 100) * 75%
+        const calculatedPercent = basePercent + (processingProgressPercent / 100) * stageRange;
+        // Garantir que está no range 5-80% e arredondar com precisão
+        return Math.min(80, Math.max(basePercent, Math.round(calculatedPercent * 100) / 100));
       }
       
       // Se não temos dados ainda, retornar início do estágio
@@ -156,21 +159,25 @@
     }
     
     // Estágio: Deletando CTOs (80% a 85%)
+    // Fórmula: Progresso total = 80% + (progresso_deleção / 100) * 5%
     if (progress.stage === 'deleting') {
       const basePercent = 80;
       const stageRange = 5; // 80% a 85% = 5% de range
       
       // PRIORIDADE 1: Usar processedRows/totalRows se disponível (mais preciso e responsivo)
       if (progress.totalRows > 0 && progress.processedRows >= 0) {
-        const deleteProgress = Math.min(100, Math.max(0, (progress.processedRows / progress.totalRows) * 100));
-        const calculatedPercent = basePercent + (deleteProgress / 100) * stageRange;
-        return Math.min(85, Math.max(basePercent, Math.round(calculatedPercent)));
+        // Calcular progresso da deleção (0-100%)
+        const deleteProgressPercent = Math.min(100, Math.max(0, (progress.processedRows / progress.totalRows) * 100));
+        // Aplicar fórmula: 80% + (progresso_deleção / 100) * 5%
+        const calculatedPercent = basePercent + (deleteProgressPercent / 100) * stageRange;
+        // Garantir que está no range 80-85% e arredondar
+        return Math.min(85, Math.max(basePercent, Math.round(calculatedPercent * 100) / 100));
       }
       
       // PRIORIDADE 2: Usar uploadPercent do backend (já calculado corretamente: 80-85%)
       if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
         // uploadPercent já está no range 80-85% do backend
-        return Math.min(85, Math.max(80, Math.round(progress.uploadPercent)));
+        return Math.min(85, Math.max(80, Math.round(progress.uploadPercent * 100) / 100));
       }
       
       // Estimativa inicial (início do estágio)
@@ -178,21 +185,25 @@
     }
     
     // Estágio: Inserindo CTOs (85% a 90%)
+    // Fórmula: Progresso total = 85% + (progresso_inserção / 100) * 5%
     if (progress.stage === 'inserting') {
       const basePercent = 85;
       const stageRange = 5; // 85% a 90% = 5% de range
       
       // PRIORIDADE 1: Usar processedRows/totalRows se disponível (mais preciso e responsivo)
       if (progress.totalRows > 0 && progress.processedRows >= 0) {
-        const insertProgress = Math.min(100, Math.max(0, (progress.processedRows / progress.totalRows) * 100));
-        const calculatedPercent = basePercent + (insertProgress / 100) * stageRange;
-        return Math.min(90, Math.max(basePercent, Math.round(calculatedPercent)));
+        // Calcular progresso da inserção (0-100%)
+        const insertProgressPercent = Math.min(100, Math.max(0, (progress.processedRows / progress.totalRows) * 100));
+        // Aplicar fórmula: 85% + (progresso_inserção / 100) * 5%
+        const calculatedPercent = basePercent + (insertProgressPercent / 100) * stageRange;
+        // Garantir que está no range 85-90% e arredondar
+        return Math.min(90, Math.max(basePercent, Math.round(calculatedPercent * 100) / 100));
       }
       
       // PRIORIDADE 2: Usar uploadPercent do backend (já calculado corretamente: 85-90%)
       if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
         // uploadPercent já está no range 85-90% do backend
-        return Math.min(90, Math.max(85, Math.round(progress.uploadPercent)));
+        return Math.min(90, Math.max(85, Math.round(progress.uploadPercent * 100) / 100));
       }
       
       // Estimativa inicial (início do estágio)
@@ -200,21 +211,25 @@
     }
     
     // Estágio: Atualizando CTOs (90% a 95%)
+    // Fórmula: Progresso total = 90% + (progresso_atualização / 100) * 5%
     if (progress.stage === 'updating') {
       const basePercent = 90;
       const stageRange = 5; // 90% a 95% = 5% de range
       
       // PRIORIDADE 1: Usar processedRows/totalRows se disponível (mais preciso e responsivo)
       if (progress.totalRows > 0 && progress.processedRows >= 0) {
-        const updateProgress = Math.min(100, Math.max(0, (progress.processedRows / progress.totalRows) * 100));
-        const calculatedPercent = basePercent + (updateProgress / 100) * stageRange;
-        return Math.min(95, Math.max(basePercent, Math.round(calculatedPercent)));
+        // Calcular progresso da atualização (0-100%)
+        const updateProgressPercent = Math.min(100, Math.max(0, (progress.processedRows / progress.totalRows) * 100));
+        // Aplicar fórmula: 90% + (progresso_atualização / 100) * 5%
+        const calculatedPercent = basePercent + (updateProgressPercent / 100) * stageRange;
+        // Garantir que está no range 90-95% e arredondar
+        return Math.min(95, Math.max(basePercent, Math.round(calculatedPercent * 100) / 100));
       }
       
       // PRIORIDADE 2: Usar uploadPercent do backend (já calculado corretamente: 90-95%)
       if (progress.uploadPercent !== undefined && progress.uploadPercent !== null) {
         // uploadPercent já está no range 90-95% do backend
-        return Math.min(95, Math.max(90, Math.round(progress.uploadPercent)));
+        return Math.min(95, Math.max(90, Math.round(progress.uploadPercent * 100) / 100));
       }
       
       // Estimativa inicial (início do estágio)
