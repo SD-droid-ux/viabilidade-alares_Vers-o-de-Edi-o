@@ -6505,7 +6505,7 @@
                 <span class="coverage-info-title">Fora da Área de Cobertura</span>
               </div>
               <div class="coverage-info-content">
-                <p>O endereço está localizado <strong>{distanceToCoverage >= 1000 ? `${(distanceToCoverage / 1000).toFixed(2)} km` : `${distanceToCoverage.toFixed(0)} m`}</strong> da área de cobertura mais próxima.</p>
+                <p>O endereço está localizado a <strong>{distanceToCoverage >= 1000 ? `${(distanceToCoverage / 1000).toFixed(2)} km` : `${distanceToCoverage.toFixed(0)} m`}</strong> da área de cobertura mais próxima.</p>
               </div>
             </div>
           {/if}
