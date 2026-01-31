@@ -362,6 +362,9 @@
         dotsInterval = null;
       }
       
+      // Carregar permissões ANTES de verificar acesso a ferramentas
+      await loadUserToolPermissions();
+      
       // Verificar se há hash na URL para carregar ferramenta específica
       if (typeof window !== 'undefined') {
         const hash = window.location.hash;
@@ -369,7 +372,21 @@
           const toolId = hash.substring(2);
           const tool = getToolById(toolId);
           if (tool && tool.available) {
-            // Carregar ferramenta específica
+            // Verificar permissão antes de permitir acesso
+            if (!hasToolPermission(toolId)) {
+              console.warn(`⚠️ [App] Usuário não tem permissão para acessar a ferramenta: ${toolId}`);
+              // Redirecionar para dashboard e mostrar mensagem
+              currentView = 'dashboard';
+              isLoading = false;
+              // Mostrar mensagem após um tick para garantir que o dashboard esteja renderizado
+              await tick();
+              alert('Você não tem permissão para acessar esta ferramenta. Entre em contato com o administrador.');
+              // Limpar hash da URL
+              window.location.hash = '';
+              return;
+            }
+            
+            // Carregar ferramenta específica (tem permissão)
             currentTool = toolId;
             currentView = 'tool';
             isToolInNewTab = true; // Marcar que está em nova aba (tem hash na URL)
@@ -431,12 +448,69 @@
     }
   }
 
+  // Estado para permissões de ferramentas do usuário atual
+  let userToolPermissions = {};
+  let permissionsLoaded = false;
+
+  // Função para carregar permissões de ferramentas do usuário atual
+  async function loadUserToolPermissions() {
+    if (!currentUser) {
+      permissionsLoaded = true;
+      return;
+    }
+    
+    try {
+      const response = await fetch(getApiUrl(`/api/projetistas/${encodeURIComponent(currentUser)}/permissions`), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Usuario': currentUser || '',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.permissions) {
+          userToolPermissions = data.permissions;
+          console.log('✅ [App] Permissões carregadas:', userToolPermissions);
+        } else {
+          userToolPermissions = {};
+        }
+      } else {
+        console.warn('⚠️ [App] Erro ao carregar permissões (status:', response.status, ')');
+        userToolPermissions = {};
+      }
+    } catch (err) {
+      console.error('❌ [App] Erro ao carregar permissões de ferramentas:', err);
+      userToolPermissions = {};
+    } finally {
+      permissionsLoaded = true;
+    }
+  }
+
+  // Função para verificar se o usuário tem permissão para acessar uma ferramenta
+  function hasToolPermission(toolId) {
+    // Admin tem acesso a todas as ferramentas
+    if (userTipo === 'admin') {
+      return true;
+    }
+    // Verificar se a ferramenta está explicitamente habilitada (true)
+    return userToolPermissions[toolId] === true;
+  }
+
   // Função para selecionar uma ferramenta do Dashboard
   async function handleToolSelect(toolId) {
     const tool = getToolById(toolId);
     
     if (!tool || !tool.available) {
       console.error(`Ferramenta ${toolId} não encontrada ou não disponível`);
+      return;
+    }
+    
+    // Verificar permissão antes de permitir acesso
+    if (!hasToolPermission(toolId)) {
+      console.warn(`⚠️ [App] Usuário não tem permissão para acessar a ferramenta: ${toolId}`);
+      alert('Você não tem permissão para acessar esta ferramenta. Entre em contato com o administrador.');
       return;
     }
     
@@ -654,7 +728,7 @@
   }
 
   // Função para processar a URL e carregar ferramenta se necessário
-  function processUrl() {
+  async function processUrl() {
     if (typeof window === 'undefined') return;
     
     const hash = window.location.hash;
@@ -671,11 +745,30 @@
           const storedUser = localStorage.getItem('usuario');
           
           if (storedIsLoggedIn && storedUser) {
-            // Usuário está logado, mostrar loading e depois carregar ferramenta
+            // Usuário está logado, carregar permissões primeiro
+            currentUser = storedUser;
+            userTipo = localStorage.getItem('userTipo') || 'user';
+            isLoggedIn = true;
+            
+            // Carregar permissões antes de verificar acesso
+            await loadUserToolPermissions();
+            
+            // Verificar permissão antes de permitir acesso
+            if (!hasToolPermission(toolId)) {
+              console.warn(`⚠️ [App] Usuário não tem permissão para acessar a ferramenta: ${toolId}`);
+              // Redirecionar para dashboard
+              setTimeout(() => {
+                currentView = 'dashboard';
+                isLoading = false;
+                window.location.hash = ''; // Limpar hash
+                alert('Você não tem permissão para acessar esta ferramenta. Entre em contato com o administrador.');
+                startHeartbeat();
+              }, 1500);
+              return;
+            }
+            
+            // Tem permissão, carregar ferramenta
             setTimeout(() => {
-              currentUser = storedUser;
-              userTipo = localStorage.getItem('userTipo') || 'user';
-              isLoggedIn = true;
               currentTool = toolId;
               currentView = 'tool';
               isToolInNewTab = true; // Marcar que está em nova aba (tem hash na URL)
@@ -701,11 +794,15 @@
         const storedUser = localStorage.getItem('usuario');
         
         if (storedIsLoggedIn && storedUser) {
-          // Usuário está logado, mostrar loading e depois carregar dashboard
+          // Usuário está logado, carregar permissões e depois mostrar dashboard
+          currentUser = storedUser;
+          userTipo = localStorage.getItem('userTipo') || 'user';
+          isLoggedIn = true;
+          
+          // Carregar permissões antes de mostrar dashboard
+          await loadUserToolPermissions();
+          
           setTimeout(() => {
-            currentUser = storedUser;
-            userTipo = localStorage.getItem('userTipo') || 'user';
-            isLoggedIn = true;
             currentView = 'dashboard';
             isToolInNewTab = false; // Dashboard não está em nova aba
             isLoading = false;
