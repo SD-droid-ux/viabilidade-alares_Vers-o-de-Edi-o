@@ -1902,7 +1902,6 @@
         // Se o backend indicou que está processando em background
         if (data.processing) {
           uploadSuccess = true; // Verde indicando que está tudo correto, é só aguardar
-          uploadMessage = 'Validando e atualizando base de dados...';
           uploadingBase = true; // Manter flag de upload ativo
           
           // Resetar variáveis de animação
@@ -1958,21 +1957,10 @@
                     processedCTOs: progressData.processedCTOs !== undefined ? progressData.processedCTOs : (uploadProgress.processedCTOs || 0)
                   };
                   
-                  // Atualizar mensagem baseada no estágio
-                  if (progressData.stage === 'processing') {
-                    uploadMessage = progressData.message || 'Processando arquivo e comparando com base existente...';
-                  } else if (progressData.stage === 'deleting') {
-                    uploadMessage = progressData.message || 'Deletando CTOs que saíram da base...';
-                  } else if (progressData.stage === 'inserting') {
-                    uploadMessage = progressData.message || 'Inserindo CTOs novas...';
-                  } else if (progressData.stage === 'updating') {
-                    uploadMessage = progressData.message || 'Atualizando CTOs que mudaram...';
-                  } else if (progressData.stage === 'uploading') {
-                    uploadMessage = progressData.message || `Carregando base de dados... ${progressData.uploadPercent}%`;
-                  } else if (!progressData.stage || progressData.stage === 'idle') {
-                    // Carregando CTOs existentes (antes de processing)
-                    uploadMessage = progressData.message || 'Carregando CTOs existentes para comparação inteligente...';
-                  } else if (progressData.stage === 'completed') {
+                  // Mensagem fixa: sempre "Carregando..." com a porcentagem
+                  // A porcentagem será calculada e exibida no template
+                  // Não precisamos atualizar uploadMessage aqui, será calculado no template
+                  if (progressData.stage === 'completed') {
                     // Processo completo!
                     clearInterval(uploadPollInterval);
                     uploadPollInterval = null;
@@ -2451,15 +2439,10 @@
           {/if}
           
           {#if uploadingBase}
-            {@const displayMessage = uploadProgress.message || uploadMessage || 'Validando e atualizando base de dados...'}
-            
             <div class="progress-container" style="margin-top: 1rem;">
               <div class="progress-bar-wrapper">
                 <div class="progress-label">
-                  {displayMessage.replace(/\s*\d+%[:\s]*$/, '').trim()}: {Math.round(displayedPercent)}%
-                  {#if uploadProgress.processedRows > 0 && uploadProgress.totalRows > 0}
-                    ({uploadProgress.processedRows}/{uploadProgress.totalRows} linhas)
-                  {/if}
+                  Carregando... {Math.round(displayedPercent)}%
                 </div>
                 <div class="progress-bar">
                   <div class="progress-fill" style="width: {displayedPercent}%;"></div>
