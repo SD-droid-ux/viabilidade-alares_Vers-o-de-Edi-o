@@ -6973,7 +6973,8 @@ app.post('/api/upload-base', (req, res, next) => {
                 uploadProgress.processedRows = progress.deleted;
                 uploadProgress.totalRows = progress.total;
                 uploadProgress.uploadPercent = 80 + Math.round((progress.percent / 100) * 5); // 80% a 85%
-                uploadProgress.message = `Deletando ${idsToDelete.length} CTO(s) que saíram da base... ${progress.percent}%`;
+                // NÃO incluir percentual na mensagem - o frontend calculará e mostrará o percentual total
+                uploadProgress.message = `Deletando ${idsToDelete.length} CTO(s) que saíram da base...`;
               };
               
               deleteResult = await deleteCTOsInBatches(supabase, idsToDelete, deleteProgressCallback);
@@ -6994,7 +6995,8 @@ app.post('/api/upload-base', (req, res, next) => {
                 uploadProgress.processedRows = progress.inserted;
                 uploadProgress.totalRows = progress.total;
                 uploadProgress.uploadPercent = 85 + Math.round((progress.percent / 100) * 5); // 85% a 90%
-                uploadProgress.message = `Inserindo ${result.ctosToInsert.length} CTO(s) nova(s)... ${progress.percent}%`;
+                // NÃO incluir percentual na mensagem - o frontend calculará e mostrará o percentual total
+                uploadProgress.message = `Inserindo ${result.ctosToInsert.length} CTO(s) nova(s)...`;
               };
               
               insertResult = await insertCTOsInBatches(supabase, result.ctosToInsert, insertProgressCallback);
@@ -7015,7 +7017,8 @@ app.post('/api/upload-base', (req, res, next) => {
                 uploadProgress.processedRows = progress.updated;
                 uploadProgress.totalRows = progress.total;
                 uploadProgress.uploadPercent = 90 + Math.round((progress.percent / 100) * 5); // 90% a 95%
-                uploadProgress.message = `Atualizando ${result.ctosToUpdate.length} CTO(s) que mudaram... ${progress.percent}%`;
+                // NÃO incluir percentual na mensagem - o frontend calculará e mostrará o percentual total
+                uploadProgress.message = `Atualizando ${result.ctosToUpdate.length} CTO(s) que mudaram...`;
               };
               
               updateResult = await updateCTOsInBatches(supabase, result.ctosToUpdate, updateProgressCallback);
