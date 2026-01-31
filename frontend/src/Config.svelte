@@ -2442,7 +2442,9 @@
             <div class="progress-container" style="margin-top: 1rem;">
               <div class="progress-bar-wrapper">
                 <div class="progress-label">
-                  Carregando... {Math.round(displayedPercent)}%
+                  Carregando<span class="loading-dots">
+                    <span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>
+                  </span> {Math.round(displayedPercent)}%
                 </div>
                 <div class="progress-bar">
                   <div class="progress-fill" style="width: {displayedPercent}%;"></div>
@@ -3789,6 +3791,37 @@
     color: #7B68EE;
     margin-bottom: 0.5rem;
     font-weight: 500;
+  }
+
+  .loading-dots {
+    display: inline-block;
+  }
+
+  .loading-dots .dot {
+    display: inline-block;
+    animation: loading-dot 1.4s infinite;
+    animation-fill-mode: both;
+  }
+
+  .loading-dots .dot:nth-child(1) {
+    animation-delay: 0s;
+  }
+
+  .loading-dots .dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .loading-dots .dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  @keyframes loading-dot {
+    0%, 80%, 100% {
+      opacity: 0.3;
+    }
+    40% {
+      opacity: 1;
+    }
   }
 
   .progress-bar {
