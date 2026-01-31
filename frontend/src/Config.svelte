@@ -2281,10 +2281,6 @@
             {#if totalPercent > (lastUploadPercent || 0)}
               {@const _ = (lastUploadPercent = totalPercent)}
             {/if}
-            <div class="upload-status" style="margin-top: 1rem;">
-              <div class="loading-spinner"></div>
-              <span>{displayMessage.replace(/\s*\d+%[:\s]*$/, '').trim()}</span>
-            </div>
             
             <div class="progress-container" style="margin-top: 1rem;">
               <div class="progress-bar-wrapper">
