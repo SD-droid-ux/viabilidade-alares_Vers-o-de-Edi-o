@@ -866,15 +866,26 @@
     return new Promise((resolve, reject) => {
       const directionsService = new google.maps.DirectionsService();
 
+      // Calcular distância linear aproximada para decidir o modo de transporte
+      const linearDistance = calculateGeodesicDistance(originLat, originLng, destLat, destLng);
+      
+      // Para distâncias muito longas (> 5000m), usar DRIVING em vez de WALKING
+      // WALKING pode falhar ou retornar rotas muito longas para distâncias grandes
+      const travelMode = linearDistance > 5000 
+        ? google.maps.TravelMode.DRIVING 
+        : google.maps.TravelMode.WALKING;
+      
+      console.log(`🚗 [Frontend] Calculando rota com modo ${travelMode === google.maps.TravelMode.DRIVING ? 'DRIVING' : 'WALKING'} (distância linear: ${linearDistance.toFixed(2)}m)`);
+
       directionsService.route(
         {
           origin: { lat: originLat, lng: originLng },
           destination: { lat: destLat, lng: destLng },
-          travelMode: google.maps.TravelMode.WALKING, // Modo de caminhada para distância real
+          travelMode: travelMode, // Usar DRIVING para longas distâncias, WALKING para curtas
           unitSystem: google.maps.UnitSystem.METRIC,
           region: 'BR', // Melhorar resultados para o Brasil
           provideRouteAlternatives: false, // Não calcular rotas alternativas (otimização)
-          avoidHighways: true // Para modo de caminhada, evitar rodovias
+          avoidHighways: travelMode === google.maps.TravelMode.WALKING // Evitar rodovias apenas no modo caminhada
         },
         (result, status) => {
           if (status === 'OK' && result.routes && result.routes.length > 0) {
@@ -2815,14 +2826,29 @@
         for (const radius of searchRadii) {
           console.log(`🔍 [Frontend] Buscando CTOs com raio LINEAR de ${radius}m...`);
           
-          const nearestResponse = await fetch(getApiUrl(`/api/ctos/nearby?lat=${clientCoords.lat}&lng=${clientCoords.lng}&radius=${radius}`));
-          
-          if (nearestResponse.ok) {
+          try {
+            const nearestResponse = await fetch(getApiUrl(`/api/ctos/nearby?lat=${clientCoords.lat}&lng=${clientCoords.lng}&radius=${radius}`));
+            
+            if (!nearestResponse.ok) {
+              console.warn(`⚠️ [Frontend] Erro HTTP ${nearestResponse.status} ao buscar CTOs com raio ${radius}m`);
+              continue; // Tentar próximo raio
+            }
+            
             const nearestData = await nearestResponse.json();
-            if (nearestData.success && nearestData.ctos && nearestData.ctos.length > 0) {
+            
+            if (!nearestData.success) {
+              console.warn(`⚠️ [Frontend] API retornou success=false para raio ${radius}m:`, nearestData.error || 'Erro desconhecido');
+              continue; // Tentar próximo raio
+            }
+            
+            if (nearestData.ctos && nearestData.ctos.length > 0) {
+              console.log(`📦 [Frontend] API retornou ${nearestData.ctos.length} CTO(s) no raio de ${radius}m`);
+              
               // Filtrar apenas CTOs normais (não prédios)
               const nearestCTOsNormais = nearestData.ctos
                 .filter(cto => !cto.is_condominio || cto.is_condominio === false);
+              
+              console.log(`📦 [Frontend] Após filtrar prédios: ${nearestCTOsNormais.length} CTO(s) normal(is)`);
               
               if (nearestCTOsNormais.length > 0) {
                 // IMPORTANTE: Ordenar por distância LINEAR (distancia_metros) para garantir que pegamos a MAIS PRÓXIMA
@@ -2849,8 +2875,16 @@
                 }
                 
                 break; // Parar a busca assim que encontrar CTOs
+              } else {
+                console.log(`ℹ️ [Frontend] Nenhuma CTO normal encontrada no raio de ${radius}m (apenas prédios)`);
               }
+            } else {
+              console.log(`ℹ️ [Frontend] Nenhuma CTO retornada pela API no raio de ${radius}m`);
             }
+          } catch (fetchErr) {
+            console.error(`❌ [Frontend] Erro ao buscar CTOs com raio ${radius}m:`, fetchErr);
+            // Continuar tentando próximo raio mesmo em caso de erro
+            continue;
           }
         }
         
@@ -2865,12 +2899,25 @@
           try {
             // Calcular rota REAL: da CTO até o cliente (origem: CTO, destino: cliente)
             // IMPORTANTE: A rota vai da CTO até o endereço pesquisado pelo usuário
-            const realDistance = await calculateRealRouteDistance(
+            console.log(`🔄 [Frontend] Iniciando cálculo de rota real para CTO a ${nearestCTO.distancia_metros}m...`);
+            
+            // Para distâncias muito longas (> 5000m), adicionar timeout maior
+            const isLongDistance = nearestCTO.distancia_metros > 5000;
+            const timeoutMs = isLongDistance ? 30000 : 15000; // 30s para longas distâncias, 15s para normais
+            
+            const realDistancePromise = calculateRealRouteDistance(
               nearestCTO.latitude,  // Origem: CTO
               nearestCTO.longitude, // Origem: CTO
               clientCoords.lat,    // Destino: Endereço do cliente
               clientCoords.lng      // Destino: Endereço do cliente
             );
+            
+            // Adicionar timeout para evitar travamento em rotas muito longas
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Timeout ao calcular rota: distância muito longa ou sem conexão')), timeoutMs);
+            });
+            
+            const realDistance = await Promise.race([realDistancePromise, timeoutPromise]);
             
             nearestCTOOutsideLimit = {
               ...nearestCTO,
@@ -2889,14 +2936,21 @@
             console.log(`   📊 Diferença: ${(realDistance - nearestCTO.distancia_metros).toFixed(2)}m (${((realDistance / nearestCTO.distancia_metros - 1) * 100).toFixed(1)}% maior)`);
           } catch (err) {
             console.error(`❌ Erro ao calcular distância real da CTO mais próxima:`, err);
-            // Em caso de erro, usar distância linear
+            console.error(`   📍 CTO: ${nearestCTO.nome} a ${nearestCTO.distancia_metros}m (linear)`);
+            console.error(`   ⚠️ Usando distância linear como fallback`);
+            
+            // Em caso de erro, usar distância linear mas ainda marcar como fora do limite
+            // A rota será desenhada mesmo sem distância real calculada
             nearestCTOOutsideLimit = {
               ...nearestCTO,
-              distancia_real: nearestCTO.distancia_metros,
+              distancia_real: nearestCTO.distancia_metros, // Usar linear como fallback
               distancia_linear_original: nearestCTO.distancia_metros,
               is_out_of_limit: true,
-              search_radius_used: usedRadius
+              search_radius_used: usedRadius,
+              route_calculation_failed: true // Flag para indicar que o cálculo da rota falhou
             };
+            
+            console.warn(`⚠️ [Frontend] CTO será exibida com distância linear (${nearestCTO.distancia_metros}m) devido a erro no cálculo da rota`);
           }
         } else {
           console.warn(`⚠️ [Frontend] Nenhuma CTO encontrada mesmo após buscar até 10000m`);
@@ -2992,17 +3046,30 @@
         return;
       }
 
+      // Calcular distância linear para decidir o modo de transporte
+      const linearDistance = calculateGeodesicDistance(ctoLat, ctoLng, clientCoords.lat, clientCoords.lng);
+      
+      // Para distâncias muito longas (> 5000m), usar DRIVING em vez de WALKING
+      // WALKING pode falhar ou retornar rotas muito longas para distâncias grandes
+      const travelMode = linearDistance > 5000 
+        ? google.maps.TravelMode.DRIVING 
+        : google.maps.TravelMode.WALKING;
+      
+      if (cto.is_out_of_limit) {
+        console.log(`🚗 [Frontend] Desenhando rota para CTO fora do limite com modo ${travelMode === google.maps.TravelMode.DRIVING ? 'DRIVING' : 'WALKING'} (distância linear: ${linearDistance.toFixed(2)}m)`);
+      }
+
       // Calcular rota da CTO até o cliente (partindo da CTO)
       // IMPORTANTE: Usar coordenadas parseadas para garantir que sejam exatamente as mesmas do marcador
       directionsService.route(
         {
           origin: { lat: ctoLat, lng: ctoLng }, // Origem: CTO (coordenadas parseadas)
           destination: { lat: clientCoords.lat, lng: clientCoords.lng }, // Destino: Cliente
-          travelMode: google.maps.TravelMode.WALKING, // Modo de caminhada para rota real
+          travelMode: travelMode, // Usar DRIVING para longas distâncias, WALKING para curtas
           unitSystem: google.maps.UnitSystem.METRIC,
           region: 'BR', // Melhorar resultados para o Brasil
           provideRouteAlternatives: false, // Não calcular rotas alternativas (otimização)
-          avoidHighways: true // Para modo de caminhada, evitar rodovias
+          avoidHighways: travelMode === google.maps.TravelMode.WALKING // Evitar rodovias apenas no modo caminhada
         },
         (result, status) => {
           if (status === 'OK' && result.routes && result.routes.length > 0) {
