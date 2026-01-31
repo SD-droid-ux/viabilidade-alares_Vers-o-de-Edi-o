@@ -2250,6 +2250,11 @@
     loading = true;
     error = null;
 
+    // Limpar boxes informativos ao pesquisar novo endereço
+    isClientCovered = null;
+    distanceToCoverage = null;
+    nearestCTOOutsideLimit = null;
+
     // Limpar marcadores anteriores
     if (map) {
       clearMap();
@@ -2621,6 +2626,9 @@
 
     // Limpar array de CTOs
     ctos = [];
+    
+    // Limpar boxes informativos relacionados a CTOs
+    nearestCTOOutsideLimit = null;
   }
 
   async function searchCTOs() {
@@ -2794,12 +2802,12 @@
       
       // Se não encontrou nenhuma CTO dentro de 250m, buscar a mais próxima com raio LINEAR progressivo
       // IMPORTANTE: Buscar sempre, independente de estar dentro ou fora da área de cobertura
-      // Raios: 500m → 700m → 900m → 1200m até encontrar
+      // Raios progressivos expandidos: 500m → 700m → 900m → 1200m → 1400m → 2000m → 3000m → 4000m → 5000m → 6000m → 7000m → 8000m → 9000m → 10000m
       if (ctosNormaisLimitadas.length === 0) {
         console.log(`⚠️ [Frontend] Nenhuma CTO encontrada dentro de 250m. Buscando CTO mais próxima com raio LINEAR progressivo...`);
         
-        // Raios progressivos: 500m, 700m, 900m, 1200m
-        const searchRadii = [500, 700, 900, 1200];
+        // Raios progressivos expandidos
+        const searchRadii = [500, 700, 900, 1200, 1400, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000];
         let nearestCTO = null;
         let usedRadius = 0;
         
@@ -2891,7 +2899,7 @@
             };
           }
         } else {
-          console.warn(`⚠️ [Frontend] Nenhuma CTO encontrada mesmo após buscar até 1200m`);
+          console.warn(`⚠️ [Frontend] Nenhuma CTO encontrada mesmo após buscar até 10000m`);
         }
       }
       
@@ -2913,9 +2921,9 @@
         nearestCTOOutsideLimit = null;
       }
       
-      // Só mostrar erro se não encontrou NENHUMA CTO até 1200m (nem dentro de 250m, nem na busca progressiva)
+      // Só mostrar erro se não encontrou NENHUMA CTO até 10000m (nem dentro de 250m, nem na busca progressiva)
       if (todasCTOs.length === 0) {
-        error = 'Nenhuma CTO encontrada próxima ao endereço dentro de um raio de 1200m';
+        error = 'Nenhuma CTO encontrada próxima ao endereço dentro de um raio de 10000m';
         loadingCTOs = false;
         return;
       }
