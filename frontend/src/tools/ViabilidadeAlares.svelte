@@ -2698,14 +2698,14 @@
       const data = await response.json();
       
       if (!data.success || !data.ctos || data.ctos.length === 0) {
-        // Se não há CTOs mas há prédios, está OK
+        // Se não há CTOs mas há prédios, está OK - não precisa buscar mais
         if (predios.length > 0) {
           loadingCTOs = false;
           return;
         }
-        error = 'Nenhuma CTO encontrada próxima ao endereço';
-        loadingCTOs = false;
-        return;
+        // Se não há CTOs dentro de 250m, continuar para buscar progressivamente (500m, 700m, 900m, 1200m)
+        // Não mostrar erro ainda - só mostrar se não encontrar até 1200m
+        console.log(`⚠️ [Frontend] Nenhuma CTO retornada pela API dentro de 250m. Continuando busca progressiva...`);
       }
       
       // Filtrar apenas CTOs dentro de 250m
@@ -2717,14 +2717,14 @@
         }));
       
       if (validCTOs.length === 0) {
-        // Se não há CTOs mas há prédios, está OK
+        // Se não há CTOs mas há prédios, está OK - não precisa buscar mais
         if (predios.length > 0) {
           loadingCTOs = false;
           return;
         }
-        error = 'Nenhuma CTO encontrada dentro de 250m de distância';
-        loadingCTOs = false;
-        return;
+        // Se não há CTOs dentro de 250m, continuar para buscar progressivamente (500m, 700m, 900m, 1200m)
+        // Não mostrar erro ainda - só mostrar se não encontrar até 1200m
+        console.log(`⚠️ [Frontend] Nenhuma CTO encontrada dentro de 250m. Continuando busca progressiva...`);
       }
       
       console.log(`✅ [Frontend] ${validCTOs.length} CTOs encontradas dentro de 250m`);
@@ -2785,7 +2785,7 @@
         .filter(cto => cto !== null);
 
       // ============================================
-      // ETAPA 5: Se não encontrou CTOs dentro de 250m, buscar a mais próxima
+      // ETAPA 5: Se não encontrou CTOs dentro de 250m, buscar a mais próxima com busca progressiva
       // ============================================
       let ctosNormaisLimitadas = ctosWithRealDistance.slice(0, 5);
       
@@ -2793,8 +2793,9 @@
       nearestCTOOutsideLimit = null;
       
       // Se não encontrou nenhuma CTO dentro de 250m, buscar a mais próxima com raio LINEAR progressivo
+      // IMPORTANTE: Buscar sempre, independente de estar dentro ou fora da área de cobertura
       // Raios: 500m → 700m → 900m → 1200m até encontrar
-      if (ctosNormaisLimitadas.length === 0 && predios.length === 0) {
+      if (ctosNormaisLimitadas.length === 0) {
         console.log(`⚠️ [Frontend] Nenhuma CTO encontrada dentro de 250m. Buscando CTO mais próxima com raio LINEAR progressivo...`);
         
         // Raios progressivos: 500m, 700m, 900m, 1200m
@@ -2903,16 +2904,18 @@
       const todasCTOs = [...predios, ...ctosNormaisLimitadas];
       
       // Se não encontrou nenhuma CTO dentro de 250m, adicionar a mais próxima (fora do limite)
-      if (ctosNormaisLimitadas.length === 0 && predios.length === 0 && nearestCTOOutsideLimit) {
+      // IMPORTANTE: Adicionar mesmo se houver prédios (a busca progressiva sempre acontece)
+      if (ctosNormaisLimitadas.length === 0 && nearestCTOOutsideLimit) {
         todasCTOs.push(nearestCTOOutsideLimit);
         console.log(`✅ [Frontend] CTO mais próxima adicionada ao array: ${nearestCTOOutsideLimit.nome}`);
-      } else if (todasCTOs.length > 0) {
+      } else if (ctosNormaisLimitadas.length > 0) {
         // Limpar referência se encontrou CTOs dentro do limite
         nearestCTOOutsideLimit = null;
       }
       
+      // Só mostrar erro se não encontrou NENHUMA CTO até 1200m (nem dentro de 250m, nem na busca progressiva)
       if (todasCTOs.length === 0) {
-        error = 'Nenhuma CTO ou prédio encontrado próximo ao endereço';
+        error = 'Nenhuma CTO encontrada próxima ao endereço dentro de um raio de 1200m';
         loadingCTOs = false;
         return;
       }
