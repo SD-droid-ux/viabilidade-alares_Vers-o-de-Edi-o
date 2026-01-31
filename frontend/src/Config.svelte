@@ -2363,7 +2363,6 @@
               />
             </label>
           </div>
-          <p class="upload-hint">Selecione um arquivo Excel (.xlsx ou .xls) com a estrutura da base atual</p>
           
           {#if userTipo === 'admin'}
             <div class="delete-base-container" style="margin-top: 1rem;">
