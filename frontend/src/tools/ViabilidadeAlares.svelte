@@ -36,6 +36,9 @@
   let isClientCovered = null; // null = não verificado, true = dentro, false = fora
   let distanceToCoverage = null; // Distância em metros até a área de cobertura (se estiver fora)
   
+  // Variável para CTO mais próxima fora do limite de 250m
+  let nearestCTOOutsideLimit = null; // Armazena a CTO mais próxima quando não há CTOs dentro de 250m
+  
   // Variáveis para mancha de cobertura (similar ao MapaConsulta.svelte)
   let coveragePolygons = []; // Array para armazenar polígonos de cobertura
   let coverageData = null; // Dados do polígono de cobertura (metadados)
@@ -2782,18 +2785,81 @@
         .filter(cto => cto !== null);
 
       // ============================================
-      // ETAPA 5: Combinar prédios + CTOs normais
+      // ETAPA 5: Se não encontrou CTOs dentro de 250m, buscar a mais próxima
+      // ============================================
+      let ctosNormaisLimitadas = ctosWithRealDistance.slice(0, 5);
+      
+      // Limpar referência anterior (usar variável global)
+      nearestCTOOutsideLimit = null;
+      
+      // Se não encontrou nenhuma CTO dentro de 250m, buscar a mais próxima (mesmo fora do limite)
+      if (ctosNormaisLimitadas.length === 0 && predios.length === 0) {
+        console.log(`⚠️ [Frontend] Nenhuma CTO encontrada dentro de 250m. Buscando CTO mais próxima...`);
+        
+        // Buscar com raio maior (5000m) para encontrar a CTO mais próxima
+        const nearestResponse = await fetch(getApiUrl(`/api/ctos/nearby?lat=${clientCoords.lat}&lng=${clientCoords.lng}&radius=5000`));
+        
+        if (nearestResponse.ok) {
+          const nearestData = await nearestResponse.json();
+          if (nearestData.success && nearestData.ctos && nearestData.ctos.length > 0) {
+            // Filtrar apenas CTOs normais (não prédios)
+            const nearestCTOsNormais = nearestData.ctos
+              .filter(cto => !cto.is_condominio || cto.is_condominio === false)
+              .slice(0, 1); // Pegar apenas a primeira (mais próxima)
+            
+            if (nearestCTOsNormais.length > 0) {
+              const nearestCTO = nearestCTOsNormais[0];
+              
+              // Calcular distância real mesmo que esteja fora de 250m
+              try {
+                const realDistance = await calculateRealRouteDistance(
+                  clientCoords.lat,
+                  clientCoords.lng,
+                  nearestCTO.latitude,
+                  nearestCTO.longitude
+                );
+                
+                nearestCTOOutsideLimit = {
+                  ...nearestCTO,
+                  distancia_metros: Math.round(realDistance * 100) / 100,
+                  distancia_km: Math.round((realDistance / 1000) * 1000) / 1000,
+                  distancia_real: realDistance,
+                  is_out_of_limit: true // Flag para indicar que está fora do limite de 250m
+                };
+                
+                console.log(`📍 [Frontend] CTO mais próxima encontrada: ${nearestCTO.nome} a ${realDistance.toFixed(2)}m (fora do limite de 250m)`);
+              } catch (err) {
+                console.error(`❌ Erro ao calcular distância real da CTO mais próxima:`, err);
+                // Em caso de erro, usar distância linear
+                nearestCTOOutsideLimit = {
+                  ...nearestCTO,
+                  distancia_real: nearestCTO.distancia_metros,
+                  is_out_of_limit: true
+                };
+              }
+            }
+          }
+        }
+      }
+      
+      // ============================================
+      // ETAPA 6: Combinar prédios + CTOs normais + CTO mais próxima (se houver)
       // ============================================
       // IMPORTANTE: Limitar a no máximo 5 CTOs de RUA (não contar prédios no limite)
       // Prédios são mostrados separadamente e não contam no limite de 5
-      const ctosNormaisLimitadas = ctosWithRealDistance.slice(0, 5);
-      
-      // Combinar prédios (já plotados) + CTOs normais (com rotas)
-      // Prédios não contam no limite de 5 CTOs
+      // Se houver CTO mais próxima fora do limite, adicionar ela também
       const todasCTOs = [...predios, ...ctosNormaisLimitadas];
       
+      // Se não encontrou nenhuma CTO dentro de 250m, adicionar a mais próxima (fora do limite)
+      if (todasCTOs.length === 0 && nearestCTOOutsideLimit) {
+        todasCTOs.push(nearestCTOOutsideLimit);
+      } else if (todasCTOs.length > 0) {
+        // Limpar referência se encontrou CTOs dentro do limite
+        nearestCTOOutsideLimit = null;
+      }
+      
       if (todasCTOs.length === 0) {
-        error = 'Nenhuma CTO ou prédio encontrado dentro de 250m de distância';
+        error = 'Nenhuma CTO ou prédio encontrado próximo ao endereço';
         loadingCTOs = false;
         return;
       }
@@ -2955,7 +3021,10 @@
             if (path.length === 0) {
               console.warn(`⚠️ Rota para ${cto.nome} não retornou pontos válidos. Usando fallback.`);
               // Calcular cor da rota baseada na cor da CTO
-              const routeColor = getCTOColor(cto.pct_ocup || 0);
+              // Se estiver fora do limite, usar cor laranja/amarela
+              const routeColor = cto.is_out_of_limit 
+                ? '#FF9800' // Laranja para CTO fora do limite
+                : getCTOColor(cto.pct_ocup || 0);
               
               // Fallback: desenhar linha reta conectando os marcadores
               // Usar coordenadas parseadas para garantir alinhamento
@@ -2967,15 +3036,32 @@
               // Aplicar offset lateral para evitar sobreposição
               const offsetFallbackPath = applyRouteOffset(fallbackPath, index);
               
-              const routePolyline = new google.maps.Polyline({
+              // Configuração da rota fallback
+              const fallbackRouteConfig = {
                 path: offsetFallbackPath,
                 geodesic: true,
-                strokeColor: routeColor, // Cor da rota igual à cor da CTO
-                strokeOpacity: 0.6,
+                strokeColor: routeColor,
+                strokeOpacity: cto.is_out_of_limit ? 0.5 : 0.6,
                 strokeWeight: 4,
                 map: map,
                 zIndex: 500 + index
-              });
+              };
+              
+              // Se estiver fora do limite, adicionar estilo pontilhado
+              if (cto.is_out_of_limit) {
+                fallbackRouteConfig.icons = [{
+                  icon: {
+                    path: 'M 0,-1 0,1',
+                    strokeOpacity: 1,
+                    strokeWeight: 3,
+                    scale: 4
+                  },
+                  offset: '0%',
+                  repeat: '20px'
+                }];
+              }
+              
+              const routePolyline = new google.maps.Polyline(fallbackRouteConfig);
               routes.push(routePolyline);
               const actualRouteIndex = routes.length - 1;
               
@@ -3041,21 +3127,42 @@
             const offsetPath = filteredPath; // Usar path original sem offset
 
             // Calcular cor da rota baseada na cor da CTO
-            const routeColor = getCTOColor(cto.pct_ocup || 0);
+            // Se estiver fora do limite, usar cor laranja/amarela
+            const routeColor = cto.is_out_of_limit 
+              ? '#FF9800' // Laranja para CTO fora do limite
+              : getCTOColor(cto.pct_ocup || 0);
             
-            // Desenhar Polyline usando TODOS os pontos detalhados SEM offset
-            // IMPORTANTE: geodesic: false garante que a rota siga EXATAMENTE os pontos fornecidos
-            // Isso faz com que a rota siga cada curva e mudança de direção das ruas
-            const routePolyline = new google.maps.Polyline({
+            // Configuração da rota
+            const routeConfig = {
               path: offsetPath,
               geodesic: false, // CRÍTICO: false = seguir exatamente os pontos (não fazer linha reta entre eles)
-              strokeColor: routeColor, // Cor da rota igual à cor da CTO
-              strokeOpacity: 0.7,
+              strokeColor: routeColor,
+              strokeOpacity: cto.is_out_of_limit ? 0.6 : 0.7, // Opacidade menor para fora do limite
               strokeWeight: 5, // Espessura aumentada para melhor visibilidade
               map: map,
               zIndex: 500 + index,
               editable: editingRoutes // Tornar editável se estiver no modo de edição
-            });
+            };
+            
+            // Se estiver fora do limite, adicionar estilo pontilhado
+            if (cto.is_out_of_limit) {
+              // Criar padrão pontilhado usando icons
+              routeConfig.icons = [{
+                icon: {
+                  path: 'M 0,-1 0,1',
+                  strokeOpacity: 1,
+                  strokeWeight: 3,
+                  scale: 4
+                },
+                offset: '0%',
+                repeat: '20px'
+              }];
+            }
+            
+            // Desenhar Polyline usando TODOS os pontos detalhados SEM offset
+            // IMPORTANTE: geodesic: false garante que a rota siga EXATAMENTE os pontos fornecidos
+            // Isso faz com que a rota siga cada curva e mudança de direção das ruas
+            const routePolyline = new google.maps.Polyline(routeConfig);
 
             // Adicionar rota ao array ANTES de criar listeners para garantir índice correto
             routes.push(routePolyline);
@@ -3135,7 +3242,10 @@
             console.warn(`⚠️ ${errorMessage}`);
             
             // Calcular cor da rota baseada na cor da CTO
-            const routeColor = getCTOColor(cto.pct_ocup || 0);
+            // Se estiver fora do limite, usar cor laranja/amarela
+            const routeColor = cto.is_out_of_limit 
+              ? '#FF9800' // Laranja para CTO fora do limite
+              : getCTOColor(cto.pct_ocup || 0);
             
             // Fallback: desenhar linha reta conectando exatamente os marcadores
             const fallbackPath = [
@@ -3146,15 +3256,32 @@
             // Aplicar offset lateral para evitar sobreposição
             const offsetFallbackPath = applyRouteOffset(fallbackPath, index);
             
-            const routePolyline = new google.maps.Polyline({
+            // Configuração da rota fallback
+            const fallbackRouteConfig = {
               path: offsetFallbackPath,
               geodesic: true,
-              strokeColor: routeColor, // Cor da rota igual à cor da CTO
-              strokeOpacity: 0.6,
+              strokeColor: routeColor,
+              strokeOpacity: cto.is_out_of_limit ? 0.5 : 0.6,
               strokeWeight: 4,
               map: map,
               zIndex: 500 + index
-            });
+            };
+            
+            // Se estiver fora do limite, adicionar estilo pontilhado
+            if (cto.is_out_of_limit) {
+              fallbackRouteConfig.icons = [{
+                icon: {
+                  path: 'M 0,-1 0,1',
+                  strokeOpacity: 1,
+                  strokeWeight: 3,
+                  scale: 4
+                },
+                offset: '0%',
+                repeat: '20px'
+              }];
+            }
+            
+            const routePolyline = new google.maps.Polyline(fallbackRouteConfig);
             routes.push(routePolyline);
             const actualRouteIndex = routes.length - 1;
 
@@ -4304,8 +4431,9 @@
       }
       
       // Separar CTOs que precisam de rotas das que não precisam
-      if (!cto.is_condominio && !isPredio && cto.distancia_metros && cto.distancia_metros > 0 && cto.distancia_real) {
-        // CTOs normais que precisam de rotas
+      // Incluir CTOs normais dentro de 250m OU CTOs fora do limite (is_out_of_limit)
+      if (!cto.is_condominio && !isPredio && cto.distancia_metros && cto.distancia_metros > 0 && (cto.distancia_real || cto.is_out_of_limit)) {
+        // CTOs normais que precisam de rotas (dentro de 250m ou fora do limite)
         ctosParaRotas.push({ cto, index: i, originalPosition, ctoLat, ctoLng, isPredio });
       }
       
@@ -4349,7 +4477,12 @@
           ctoColor = isAtivado ? '#28A745' : '#95A5A6'; // #28A745 = verde vivo, #95A5A6 = verde apagado/cinza
         } else {
           // Para CTOs normais, usar cor baseada na porcentagem de ocupação
-          ctoColor = getCTOColor(cto.pct_ocup || 0);
+          // Se estiver fora do limite, usar cor laranja
+          if (cto.is_out_of_limit) {
+            ctoColor = '#FF9800'; // Laranja para CTO fora do limite
+          } else {
+            ctoColor = getCTOColor(cto.pct_ocup || 0);
+          }
         }
 
         // Usar ctoNumbers para numeração que corresponde à coluna N° da tabela
@@ -6515,6 +6648,24 @@
               <div class="coverage-info-header">
                 <span class="coverage-info-icon">✅</span>
                 <span class="coverage-info-title">Dentro da Área de Cobertura</span>
+              </div>
+            </div>
+          {/if}
+          
+          <!-- Box informativo da CTO mais próxima (fora do limite) -->
+          {#if nearestCTOOutsideLimit && nearestCTOOutsideLimit.distancia_real}
+            <div class="coverage-info-box coverage-info-box-warning">
+              <div class="coverage-info-header">
+                <span class="coverage-info-icon">📍</span>
+                <span class="coverage-info-title">CTO Mais Próxima (Fora do Limite)</span>
+              </div>
+              <div class="coverage-info-content">
+                <p>
+                  Nenhuma CTO encontrada dentro de 250m. 
+                  A CTO mais próxima é <strong>{nearestCTOOutsideLimit.nome}</strong> a 
+                  <strong>{nearestCTOOutsideLimit.distancia_real >= 1000 ? `${(nearestCTOOutsideLimit.distancia_real / 1000).toFixed(2)} km` : `${nearestCTOOutsideLimit.distancia_real.toFixed(0)} m`}</strong> 
+                  de distância (rota pontilhada no mapa).
+                </p>
               </div>
             </div>
           {/if}
@@ -8999,6 +9150,24 @@
 
   .coverage-info-box-success .coverage-info-content strong {
     color: #155724;
+  }
+
+  .coverage-info-box-warning {
+    background: linear-gradient(135deg, #ffe0b2 0%, #ffcc80 100%);
+    border-color: #FF9800;
+    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.2);
+  }
+
+  .coverage-info-box-warning .coverage-info-title {
+    color: #E65100;
+  }
+
+  .coverage-info-box-warning .coverage-info-content p {
+    color: #E65100;
+  }
+
+  .coverage-info-box-warning .coverage-info-content strong {
+    color: #E65100;
   }
 
   .password-input-wrapper {
