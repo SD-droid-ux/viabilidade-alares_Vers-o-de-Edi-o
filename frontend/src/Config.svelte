@@ -86,6 +86,82 @@
   // Variável para garantir que o progresso nunca diminua (sempre crescente)
   let lastUploadPercent = 0;
   
+  // Variável para animação suave do progresso (mostra todos os valores inteiros de 0% a 100%)
+  let displayedPercent = 0;
+  let targetPercent = 0;
+  let animationFrameId = null;
+  let animationTimeoutId = null;
+  
+  // Função para animar o progresso gradualmente (mostra TODOS os valores inteiros de 0% a 100%)
+  // GARANTE que nunca haverá saltos abruptos - sempre passa por todos os valores sequencialmente
+  function animateProgress() {
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+    if (animationTimeoutId) {
+      clearTimeout(animationTimeoutId);
+      animationTimeoutId = null;
+    }
+    
+    const animate = () => {
+      // Se ainda há diferença entre o valor exibido e o alvo
+      if (displayedPercent < targetPercent) {
+        // PROTEÇÃO CRÍTICA: SEMPRE incrementar apenas 1% por vez (valores inteiros: 0%, 1%, 2%, 3%...)
+        // NUNCA pular valores, mesmo que o backend tenha avançado muito (ex: 80% → 90%)
+        // Garantir que sempre passe por: 80% → 81% → 82% → ... → 89% → 90%
+        const currentInt = Math.floor(displayedPercent);
+        const targetInt = Math.round(targetPercent); // Garantir que target também seja inteiro
+        displayedPercent = Math.min(targetInt, currentInt + 1);
+        
+        // Continuar animando se ainda não chegou ao alvo
+        if (displayedPercent < targetInt) {
+          // Calcular delay baseado na diferença restante
+          // Quanto maior a diferença, mais rápido (mas SEMPRE mostra todos os valores)
+          // Exemplo: se backend vai de 80% → 90%, anima: 80→81→82→...→89→90 (rápido, mas sequencial)
+          const diff = targetInt - displayedPercent;
+          let delay;
+          if (diff > 20) {
+            delay = 10; // Muito rápido para grandes saltos (10ms entre cada 1%)
+          } else if (diff > 10) {
+            delay = 20; // Rápido para saltos médios (20ms entre cada 1%)
+          } else if (diff > 5) {
+            delay = 30; // Moderado (30ms entre cada 1%)
+          } else {
+            delay = 50; // Velocidade normal (50ms entre cada 1%)
+          }
+          
+          animationTimeoutId = setTimeout(() => {
+            animationFrameId = requestAnimationFrame(animate);
+          }, delay);
+        } else {
+          // Chegou ao alvo - garantir valor exato (inteiro)
+          displayedPercent = Math.round(targetPercent);
+          animationFrameId = null;
+          animationTimeoutId = null;
+        }
+      } else {
+        animationFrameId = null;
+        animationTimeoutId = null;
+      }
+    };
+    
+    animationFrameId = requestAnimationFrame(animate);
+  }
+  
+  // Reagir a mudanças no targetPercent (quando o backend atualiza o progresso)
+  // GARANTE que sempre anima, mesmo que o backend avance rapidamente
+  $: if (uploadingBase) {
+    if (targetPercent > displayedPercent) {
+      // Se o alvo aumentou (mesmo que muito), iniciar animação
+      // A animação sempre passará por todos os valores: 80% → 81% → 82% → ... → 90%
+      animateProgress();
+    } else if (targetPercent < displayedPercent) {
+      // Se o alvo diminuiu (não deveria acontecer, mas por segurança), ajustar
+      displayedPercent = Math.round(targetPercent);
+    }
+  }
+  
   // Função para calcular percentual total real do processo de upload
   // Baseado nos estágios e progresso de cada um, de 0% a 100%
   // Mais precisa e responsiva aos dados reais do backend
@@ -1675,6 +1751,12 @@
     uploadSuccess = false;
     uploadingBase = true;
     lastUploadPercent = 0; // Resetar progresso quando inicia novo upload
+    displayedPercent = 0; // Resetar progresso animado
+    targetPercent = 0; // Resetar alvo
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
 
     try {
       const formData = new FormData();
@@ -1799,6 +1881,19 @@
           uploadMessage = 'Validando e atualizando base de dados...';
           uploadingBase = true; // Manter flag de upload ativo
           
+          // Resetar variáveis de animação
+          displayedPercent = 0;
+          targetPercent = 0;
+          lastUploadPercent = 0;
+          if (animationFrameId) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+          }
+          if (animationTimeoutId) {
+            clearTimeout(animationTimeoutId);
+            animationTimeoutId = null;
+          }
+          
           // Inicializar progresso (começar do zero)
           uploadProgress = {
             stage: 'idle',
@@ -1857,7 +1952,23 @@
                     // Processo completo!
                     clearInterval(uploadPollInterval);
                     uploadPollInterval = null;
-                    uploadingBase = false;
+                    // Garantir que o progresso chegue a 100%
+                    targetPercent = 100;
+                    // Aguardar um pouco para animação chegar a 100% antes de desativar
+                    setTimeout(() => {
+                      uploadingBase = false;
+                      displayedPercent = 0;
+                      targetPercent = 0;
+                      lastUploadPercent = 0;
+                      if (animationFrameId) {
+                        cancelAnimationFrame(animationFrameId);
+                        animationFrameId = null;
+                      }
+                      if (animationTimeoutId) {
+                        clearTimeout(animationTimeoutId);
+                        animationTimeoutId = null;
+                      }
+                    }, 2000); // Aumentar para 2s para garantir que chegue a 100%
                     uploadSuccess = true;
                     totalCTOsLoaded = progressData.totalCTOs || progressData.importedRows || 0;
                     uploadMessage = `✅ Base de dados carregada com sucesso! (${totalCTOsLoaded} CTOs carregadas)`;
@@ -1874,9 +1985,20 @@
                   } else if (progressData.stage === 'error') {
                     clearInterval(uploadPollInterval);
                     uploadPollInterval = null;
+                    if (animationFrameId) {
+                      cancelAnimationFrame(animationFrameId);
+                      animationFrameId = null;
+                    }
+                    if (animationTimeoutId) {
+                      clearTimeout(animationTimeoutId);
+                      animationTimeoutId = null;
+                    }
                     uploadingBase = false;
                     uploadSuccess = false;
                     uploadMessage = progressData.message || 'Erro ao processar upload';
+                    displayedPercent = 0;
+                    targetPercent = 0;
+                    lastUploadPercent = 0;
                   }
                 }
               }
@@ -1893,9 +2015,20 @@
               uploadPollInterval = null;
             }
             if (uploadingBase) {
+              if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+              }
+              if (animationTimeoutId) {
+                clearTimeout(animationTimeoutId);
+                animationTimeoutId = null;
+              }
               uploadingBase = false;
               uploadSuccess = false;
               uploadMessage = 'Processamento demorou mais que o esperado. Verifique os logs do servidor.';
+              displayedPercent = 0;
+              targetPercent = 0;
+              lastUploadPercent = 0;
             }
           }, 300000); // 5 minutos
           
@@ -2281,17 +2414,18 @@
             {#if totalPercent > (lastUploadPercent || 0)}
               {@const _ = (lastUploadPercent = totalPercent)}
             {/if}
+            {@const _ = (targetPercent = Math.round(totalPercent))}
             
             <div class="progress-container" style="margin-top: 1rem;">
               <div class="progress-bar-wrapper">
                 <div class="progress-label">
-                  {displayMessage.replace(/\s*\d+%[:\s]*$/, '').trim()}: {Math.round(totalPercent * 100) / 100}%
+                  {displayMessage.replace(/\s*\d+%[:\s]*$/, '').trim()}: {Math.round(displayedPercent)}%
                   {#if uploadProgress.processedRows > 0 && uploadProgress.totalRows > 0}
                     ({uploadProgress.processedRows}/{uploadProgress.totalRows} linhas)
                   {/if}
                 </div>
                 <div class="progress-bar">
-                  <div class="progress-fill" style="width: {totalPercent}%;"></div>
+                  <div class="progress-fill" style="width: {displayedPercent}%;"></div>
                 </div>
               </div>
             </div>
