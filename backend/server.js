@@ -866,12 +866,28 @@ app.get('/api/ctos/nearby', async (req, res) => {
     if (supabase && isSupabaseAvailable()) {
       try {
         // Calcular bounding box (caixa delimitadora) para filtrar eficientemente
-        // Aproximação: 1 grau ≈ 111km, então radiusMeters/111000 graus
-        const radiusDegrees = radiusMeters / 111000;
-        const latMin = lat - radiusDegrees;
-        const latMax = lat + radiusDegrees;
-        const lngMin = lng - radiusDegrees;
-        const lngMax = lng + radiusDegrees;
+        // MELHORIA: Cálculo correto considerando a latitude para longas distâncias
+        // 1 grau de latitude ≈ 111km (constante)
+        // 1 grau de longitude ≈ 111km * cos(latitude) (varia com latitude)
+        const R = 6371000; // Raio da Terra em metros
+        const latRad = lat * Math.PI / 180;
+        
+        // Delta de latitude (em graus) - constante para todas as latitudes
+        const deltaLat = radiusMeters / 111000;
+        
+        // Delta de longitude (em graus) - varia com a latitude
+        // Para latitudes próximas de 0 (equador), deltaLng ≈ radiusMeters / 111000
+        // Para latitudes maiores, deltaLng aumenta (longitude fica "mais comprimida")
+        const deltaLng = radiusMeters / (111000 * Math.cos(latRad));
+        
+        // Adicionar margem de segurança de 10% para garantir que não perdemos CTOs na borda
+        const margin = 1.1;
+        const latMin = lat - (deltaLat * margin);
+        const latMax = lat + (deltaLat * margin);
+        const lngMin = lng - (deltaLng * margin);
+        const lngMax = lng + (deltaLng * margin);
+        
+        console.log(`📐 [API] Bounding box calculado: lat [${latMin.toFixed(6)}, ${latMax.toFixed(6)}], lng [${lngMin.toFixed(6)}, ${lngMax.toFixed(6)}]`);
         
         // Buscar TODAS as CTOs dentro da bounding box (incluindo não ativas)
         const { data, error } = await supabase
@@ -1039,7 +1055,16 @@ app.get('/api/ctos/nearby', async (req, res) => {
         const finalCTOs = nearbyCTOs; // Retornar todas as CTOs dentro do raio
         
         const condominiosCount = finalCTOs.filter(cto => cto.is_condominio).length;
+        const ctosNormaisCount = finalCTOs.length - condominiosCount;
+        
         console.log(`✅ [API] ${finalCTOs.length} CTOs encontradas próximas (de ${data?.length || 0} na bounding box)`);
+        console.log(`   📊 CTOs normais: ${ctosNormaisCount}, Prédios: ${condominiosCount}`);
+        
+        if (finalCTOs.length > 0) {
+          const maisProxima = finalCTOs[0];
+          console.log(`   📍 CTO mais próxima: ${maisProxima.nome} a ${maisProxima.distancia_metros.toFixed(2)}m`);
+        }
+        
         if (condominiosCount > 0) {
           console.log(`🏢 [API] ${condominiosCount} CTOs são de condomínios/prédios`);
         }
