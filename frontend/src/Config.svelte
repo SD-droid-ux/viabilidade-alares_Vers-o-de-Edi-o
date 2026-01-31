@@ -2392,21 +2392,14 @@
           </div>
           
           {#if calculatingCoverage}
-            <div class="upload-status" style="margin-top: 1rem;">
-              <div class="loading-spinner"></div>
-              <span>{coverageMessage || 'Calculando área de cobertura...'}</span>
-            </div>
-            
-            {#if uploadProgress.stage === 'calculating'}
-              <div class="progress-container" style="margin-top: 1rem;">
-                <div class="progress-bar-wrapper">
-                  <div class="progress-label">Calculando área de cobertura: {Math.round(uploadProgress.calculationPercent)}%</div>
-                  <div class="progress-bar">
-                    <div class="progress-fill" style="width: {uploadProgress.calculationPercent}%;"></div>
-                  </div>
+            <div class="progress-container" style="margin-top: 1rem;">
+              <div class="progress-bar-wrapper">
+                <div class="progress-label">Calculando área de cobertura: {Math.round(uploadProgress.calculationPercent || 0)}%</div>
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: {uploadProgress.calculationPercent || 0}%;"></div>
                 </div>
               </div>
-            {/if}
+            </div>
           {/if}
           
           {#if coverageMessage && !calculatingCoverage}
