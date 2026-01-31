@@ -1994,11 +1994,19 @@
                       }
                     }, 2000); // Aumentar para 2s para garantir que chegue a 100%
                     uploadSuccess = true;
-                    totalCTOsLoaded = progressData.totalCTOs || progressData.importedRows || 0;
-                    uploadMessage = `✅ Base de dados carregada com sucesso! (${totalCTOsLoaded} CTOs carregadas)`;
                     
-                    // Recarregar dados
+                    // Recarregar dados primeiro para obter o total atual de CTOs
                     await loadBaseLastModified();
+                    
+                    // Formatar número com pontos (ex: 218908 -> 218.908)
+                    const formatNumber = (num) => {
+                      if (!num || num === 0) return '0';
+                      return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                    };
+                    
+                    // Usar totalCTOsLoaded atualizado pelo loadBaseLastModified, ou fallback
+                    const totalCTOs = totalCTOsLoaded || progressData.totalCTOs || progressData.importedRows || 0;
+                    uploadMessage = `✅ Base de dados Atualizada com sucesso!<br>                  (${formatNumber(totalCTOs)} CTOs)`;
                     if (onReloadCTOs) {
                       try {
                         await onReloadCTOs();
@@ -2061,7 +2069,6 @@
         } else {
           // Processamento imediato (não em background)
           uploadSuccess = true;
-          uploadMessage = data.message || 'Base de dados atualizada com sucesso!';
           
           if (data.lastModified) {
             baseLastModified = new Date(data.lastModified);
@@ -2076,6 +2083,19 @@
               console.error('Erro ao recarregar base de dados:', err);
             }
           }
+          
+          // Buscar total de CTOs atualizado
+          await loadBaseLastModified();
+          
+          // Formatar número com pontos (ex: 218908 -> 218.908)
+          const formatNumber = (num) => {
+            if (!num || num === 0) return '0';
+            return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+          };
+          
+          // Usar totalCTOsLoaded atualizado pelo loadBaseLastModified
+          const totalCTOs = totalCTOsLoaded || 0;
+          uploadMessage = `✅ Base de dados Atualizada com sucesso!<br>                  (${formatNumber(totalCTOs)} CTOs)`;
 
           event.target.value = '';
           uploadingBase = false;
@@ -2451,7 +2471,7 @@
 
           {#if uploadMessage && !uploadingBase}
             <div class="upload-message" class:success={uploadSuccess} class:error={!uploadSuccess}>
-              {uploadMessage}
+              {@html uploadMessage}
             </div>
           {/if}
         </div>
