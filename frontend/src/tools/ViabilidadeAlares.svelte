@@ -2464,8 +2464,10 @@
 
       // Carregar conteúdo inicial do InfoWindow
       createInfoWindowContent(clientCoords.lat, clientCoords.lng, false).then(content => {
-        clientInfoWindow.setContent(content);
-        clientInfoWindow.open(map, marker);
+        if (clientInfoWindow) {
+          clientInfoWindow.setContent(content);
+          clientInfoWindow.open(map, marker);
+        }
       });
 
       // Atualizar InfoWindow quando o marcador for arrastado
@@ -2507,9 +2509,11 @@
         clearCTOs();
 
         // Atualizar conteúdo do InfoWindow com endereço e coordenadas
-        const content = await createInfoWindowContent(newPosition.lat, newPosition.lng, true);
-        clientInfoWindow.setContent(content);
-        clientInfoWindow.open(map, marker);
+        if (clientInfoWindow) {
+          const content = await createInfoWindowContent(newPosition.lat, newPosition.lng, true);
+          clientInfoWindow.setContent(content);
+          clientInfoWindow.open(map, marker);
+        }
       });
 
       marker.addListener('click', () => {
@@ -2754,10 +2758,12 @@
       const ctosNormais = validCTOs.filter(cto => !cto.is_condominio || cto.is_condominio === false);
       
       if (ctosNormais.length === 0) {
-        console.log(`ℹ️ [Frontend] Todas as CTOs encontradas são de prédios`);
-        // Se todas são prédios, manter apenas os prédios já plotados
-        loadingCTOs = false;
-        return;
+        console.log(`ℹ️ [Frontend] Todas as CTOs encontradas dentro de 250m são de prédios`);
+        // IMPORTANTE: Mesmo que todas sejam prédios, continuar com busca progressiva
+        // para encontrar CTOs normais em raios maiores (500m, 700m, etc.)
+        // Não retornar aqui - deixar a busca progressiva acontecer na ETAPA 5
+      } else {
+        console.log(`✅ [Frontend] ${ctosNormais.length} CTOs normais (não são prédios) encontradas dentro de 250m`);
       }
       
       console.log(`✅ [Frontend] ${ctosNormais.length} CTOs normais (não são prédios) encontradas`);
@@ -2767,7 +2773,9 @@
       // ============================================
       // Buscar mais CTOs inicialmente (ex: 10-15) para garantir que temos 5 válidas após filtrar por distância real
       // Isso garante que mesmo que algumas fiquem fora de 250m real, ainda teremos 5 válidas
-      const ctosToCheck = ctosNormais.slice(0, 15); // Buscar até 15 para garantir 5 válidas
+      // IMPORTANTE: Se não há CTOs normais dentro de 250m, ctosNormais estará vazio e não calculará rotas aqui
+      // A busca progressiva na ETAPA 5 vai buscar CTOs normais em raios maiores
+      const ctosToCheck = ctosNormais.length > 0 ? ctosNormais.slice(0, 15) : []; // Buscar até 15 para garantir 5 válidas
 
       // OTIMIZAÇÃO: Calcular distâncias em paralelo (Promise.all)
       const distancePromises = ctosToCheck.map(async (cto) => {
@@ -2804,12 +2812,19 @@
         .filter(cto => cto !== null);
 
       // ============================================
-      // ETAPA 5: Se não encontrou CTOs dentro de 250m, buscar a mais próxima com busca progressiva
+      // ETAPA 5: Se não encontrou CTOs normais dentro de 250m, buscar a mais próxima com busca progressiva
+      // IMPORTANTE: Esta busca acontece mesmo se todas as CTOs dentro de 250m forem prédios
       // ============================================
       let ctosNormaisLimitadas = ctosWithRealDistance.slice(0, 5);
       
       // Limpar referência anterior (usar variável global)
       nearestCTOOutsideLimit = null;
+      
+      // IMPORTANTE: A busca progressiva deve acontecer se não há CTOs normais dentro de 250m
+      // Isso inclui o caso onde todas as CTOs dentro de 250m são prédios
+      if (ctosNormaisLimitadas.length === 0) {
+        console.log(`🔄 [Frontend] Nenhuma CTO normal encontrada dentro de 250m. Iniciando busca progressiva...`);
+      }
       
       // Se não encontrou nenhuma CTO dentro de 250m, buscar a mais próxima com raio LINEAR progressivo
       // IMPORTANTE: Buscar sempre, independente de estar dentro ou fora da área de cobertura
