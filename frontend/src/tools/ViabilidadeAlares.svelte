@@ -32,6 +32,12 @@
   let clientCoords = null; // Coordenadas do cliente
   let ctos = []; // CTOs encontradas
   
+  // Variáveis para mancha de cobertura (similar ao MapaConsulta.svelte)
+  let coveragePolygons = []; // Array para armazenar polígonos de cobertura
+  let coverageData = null; // Dados do polígono de cobertura (metadados)
+  let coveragePolygonGeoJSON = null; // GeoJSON do polígono de cobertura
+  let coverageOpacity = 0.4; // Opacidade das manchas (0-1)
+  
   // Filtrar apenas CTOs de rua (não prédios) para exibição nos boxes e lista
   $: ctosRua = ctos.filter(cto => !cto.is_condominio || cto.is_condominio === false);
   let routes = []; // Rotas desenhadas no mapa
@@ -1345,6 +1351,9 @@
     // Agora inicializar o mapa após o elemento estar no DOM
     initMap();
     
+    // A mancha de cobertura será carregada automaticamente dentro de initMap()
+    // após o mapa estar inicializado
+    
     // Iniciar heartbeat em background
     startHeartbeat();
       } catch (err) {
@@ -1387,6 +1396,9 @@
       }
       routes.forEach(route => route.setMap(null));
       routes = [];
+      
+      // Limpar polígonos de cobertura ao destruir componente
+      clearCoveragePolygons();
       routeData = [];
       ctos = [];
       clientCoords = null;
@@ -1897,7 +1909,185 @@
       scrollwheel: true, // Permite zoom com scroll do mouse
       gestureHandling: 'greedy' // Permite zoom direto com scroll, sem precisar Ctrl
     });
+    
+    // Carregar mancha de cobertura após inicializar o mapa
+    if (map) {
+      loadCoveragePolygon().then(loaded => {
+        if (loaded && coveragePolygonGeoJSON) {
+          drawCoverageArea();
+        }
+      }).catch(err => {
+        console.warn('⚠️ Erro ao carregar mancha de cobertura:', err);
+      });
+    }
   }
+
+  // ========== FUNÇÕES PARA MANCHA DE COBERTURA ==========
+  
+  // Função para carregar polígono de cobertura do backend
+  async function loadCoveragePolygon() {
+    try {
+      console.log('📥 [ViabilidadeAlares] Carregando polígono de cobertura do backend...');
+      
+      const response = await fetch(getApiUrl('/api/coverage/polygon?simplified=true'));
+      
+      if (!response.ok) {
+        console.warn('⚠️ [ViabilidadeAlares] Não foi possível carregar polígonos de cobertura:', response.status);
+        return false; // Não lançar erro, apenas retornar false
+      }
+      
+      const data = await response.json();
+      
+      if (!data.success) {
+        console.warn('⚠️ [ViabilidadeAlares] Nenhum polígono de cobertura encontrado. Execute o cálculo primeiro.');
+        return false; // Não lançar erro, apenas retornar false
+      }
+      
+      coverageData = data;
+      coveragePolygonGeoJSON = data.geometry;
+      
+      console.log(`✅ [ViabilidadeAlares] Polígono de cobertura carregado: ${data.total_ctos} CTOs, ${data.area_km2?.toFixed(2)} km²`);
+      
+      return true;
+    } catch (err) {
+      console.warn('⚠️ [ViabilidadeAlares] Erro ao carregar polígono de cobertura:', err);
+      return false; // Não lançar erro, apenas retornar false
+    }
+  }
+  
+  // Função para desenhar área de cobertura no mapa
+  async function drawCoverageArea() {
+    // Verificar se tudo está pronto
+    if (!map) {
+      console.error('❌ [ViabilidadeAlares] Mapa não está inicializado');
+      return;
+    }
+    
+    if (!googleMapsLoaded || !google || !google.maps) {
+      console.error('❌ [ViabilidadeAlares] Google Maps não está carregado');
+      return;
+    }
+    
+    if (!coveragePolygonGeoJSON) {
+      console.warn('⚠️ [ViabilidadeAlares] Nenhum polígono de cobertura carregado');
+      return;
+    }
+
+    // Verificar se o mapa está realmente visível no DOM
+    const mapElement = document.getElementById('map');
+    if (!mapElement) {
+      console.error('❌ [ViabilidadeAlares] Elemento do mapa não encontrado no DOM');
+      return;
+    }
+    
+    // Verificar se o mapa tem dimensões válidas
+    const mapRect = mapElement.getBoundingClientRect();
+    if (mapRect.width === 0 || mapRect.height === 0) {
+      console.warn('⚠️ [ViabilidadeAlares] Mapa não tem dimensões válidas, aguardando...');
+      await new Promise(resolve => setTimeout(resolve, 500));
+      google.maps.event.trigger(map, 'resize');
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    console.log(`🗺️ [ViabilidadeAlares] Desenhando polígono de cobertura (${coverageData?.total_ctos || 0} CTOs)...`);
+    console.log(`📐 [ViabilidadeAlares] Dimensões do mapa: ${mapRect.width}x${mapRect.height}`);
+
+    // Aguardar um pouco para garantir que o mapa está totalmente renderizado
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    const bounds = new google.maps.LatLngBounds();
+
+    // Converter GeoJSON para formato do Google Maps
+    try {
+      // GeoJSON pode ter múltiplos polígonos (MultiPolygon) ou um único Polygon
+      let polygonsToRender = [];
+      
+      if (coveragePolygonGeoJSON.type === 'Polygon') {
+        // Polígono simples
+        polygonsToRender = [coveragePolygonGeoJSON];
+      } else if (coveragePolygonGeoJSON.type === 'MultiPolygon') {
+        // Múltiplos polígonos - converter para array de polígonos
+        polygonsToRender = coveragePolygonGeoJSON.coordinates.map(coords => ({
+          type: 'Polygon',
+          coordinates: coords
+        }));
+      } else {
+        console.error('❌ [ViabilidadeAlares] Formato GeoJSON não suportado:', coveragePolygonGeoJSON.type);
+        return;
+      }
+      
+      console.log(`🎨 [ViabilidadeAlares] Renderizando ${polygonsToRender.length} polígono(s) de cobertura...`);
+      
+      // Limpar polígonos anteriores se existirem
+      clearCoveragePolygons();
+      
+      // Renderizar cada polígono
+      for (const geoJsonPolygon of polygonsToRender) {
+        // Converter coordenadas GeoJSON para formato do Google Maps
+        const paths = geoJsonPolygon.coordinates[0].map(coord => ({
+          lat: coord[1], // GeoJSON usa [lng, lat], Google Maps usa {lat, lng}
+          lng: coord[0]
+        }));
+        
+        // Criar polígono no Google Maps
+        const polygon = new google.maps.Polygon({
+          paths: paths,
+          strokeColor: '#8B7AE8',
+          strokeOpacity: 0.8,
+          strokeWeight: 1.2,
+          fillColor: '#6B8DD6',
+          fillOpacity: coverageOpacity,
+          map: map,
+          zIndex: 1, // Colocar atrás dos marcadores (zIndex padrão de marcadores é maior)
+          geodesic: true
+        });
+        
+        coveragePolygons.push(polygon);
+        
+        // Adicionar ao bounds para ajustar zoom (opcional - não vamos ajustar automaticamente)
+        // para não interferir com a visualização do usuário
+        for (const path of paths) {
+          bounds.extend(path);
+        }
+      }
+      
+      console.log(`✅ [ViabilidadeAlares] ${coveragePolygons.length} polígono(s) renderizado(s) com sucesso!`);
+      
+    } catch (err) {
+      console.error('❌ [ViabilidadeAlares] Erro ao renderizar polígono:', err);
+      return;
+    }
+  }
+  
+  // Função para atualizar opacidade das manchas
+  function updateCoverageOpacity() {
+    // Garantir que coverageOpacity está definido
+    if (coverageOpacity === undefined || coverageOpacity === null) {
+      coverageOpacity = 0.4;
+    }
+    
+    // Atualizar opacidade de todos os polígonos
+    coveragePolygons.forEach(polygon => {
+      if (polygon && polygon.setOptions) {
+        polygon.setOptions({ fillOpacity: coverageOpacity });
+      }
+    });
+  }
+  
+  // Função para limpar polígonos de cobertura
+  function clearCoveragePolygons() {
+    coveragePolygons.forEach(polygon => {
+      if (polygon && polygon.setMap) {
+        polygon.setMap(null);
+      }
+    });
+    coveragePolygons = [];
+  }
+  
+  // Reactive statement para opacidade percentual (para exibição)
+  $: coverageOpacityPercent = Math.round(coverageOpacity * 100);
+  
+  // ========== FIM FUNÇÕES PARA MANCHA DE COBERTURA ==========
 
   // Função auxiliar para converter geocoder callback em Promise
   function geocodeAddress(address) {
