@@ -1971,7 +1971,7 @@
       }
     } catch (coverageErr) {
       console.warn('⚠️ [Cobertura] Erro ao verificar cobertura:', coverageErr);
-      // Em caso de erro, considerar como não verificado (manter azul)
+      // Em caso de erro, considerar como não verificado (usar vermelho como padrão)
       isClientCovered = null;
       distanceToCoverage = null;
     }
@@ -1988,14 +1988,13 @@
     const housePath = 'M12 2L2 7v13h6v-6h8v6h6V7L12 2z';
     
     // Determinar cor baseado no status de cobertura
-    // null = não verificado (azul), true = dentro (verde), false = fora (vermelho)
+    // Apenas duas cores: verde (dentro) ou vermelho (fora/não verificado)
     let fillColor;
     if (isClientCovered === true) {
       fillColor = '#28A745'; // Verde - dentro da cobertura
-    } else if (isClientCovered === false) {
-      fillColor = '#DC3545'; // Vermelho - fora da cobertura
     } else {
-      fillColor = '#4285F4'; // Azul - não verificado ou endereço não localizado
+      // Vermelho para: fora da cobertura (false) ou não verificado (null)
+      fillColor = '#DC3545'; // Vermelho - fora da cobertura ou não verificado
     }
     
     const houseIcon = {
@@ -2376,14 +2375,13 @@
       const housePath = 'M12 2L2 7v13h6v-6h8v6h6V7L12 2z';
 
       // Determinar cor baseado no status de cobertura
-      // null = não verificado (azul), true = dentro (verde), false = fora (vermelho)
+      // Apenas duas cores: verde (dentro) ou vermelho (fora/não verificado)
       let fillColor;
       if (isClientCovered === true) {
         fillColor = '#28A745'; // Verde - dentro da cobertura
-      } else if (isClientCovered === false) {
-        fillColor = '#DC3545'; // Vermelho - fora da cobertura
       } else {
-        fillColor = '#4285F4'; // Azul - não verificado ou endereço não localizado
+        // Vermelho para: fora da cobertura (false) ou não verificado (null)
+        fillColor = '#DC3545'; // Vermelho - fora da cobertura ou não verificado
       }
 
       const houseIcon = {
