@@ -924,7 +924,8 @@ app.get('/api/ctos/nearby', async (req, res) => {
         };
         
         // SOLUÇÃO 5: Filtrar CTOs por ID (evitar duplicatas)
-        // 1. Buscar TODOS os prédios dentro de um raio maior (500m) para pegar todos os IDs
+        // 1. Buscar TODOS os prédios dentro do mesmo raio (ou maior) para pegar todos os IDs
+        // IMPORTANTE: Para raios grandes (>= 5000m), buscar prédios no mesmo raio para garantir que não perdemos CTOs
         let condominiosTableExists = false;
         let prédiosIds = new Set(); // Set para verificação rápida O(1)
         let prédiosMap = new Map(); // Map para armazenar dados dos prédios por ID
@@ -938,14 +939,19 @@ app.get('/api/ctos/nearby', async (req, res) => {
           if (!tableError || (tableError.code !== 'PGRST116' && !tableError.message.includes('does not exist'))) {
             condominiosTableExists = true;
             
-            // Buscar TODOS os prédios dentro de um raio maior (500m) para pegar todos os IDs
-            // Isso garante que pegamos todos os IDs, mesmo que o prédio esteja um pouco mais longe
+            // Buscar prédios no mesmo raio que estamos buscando CTOs
+            // Para raios >= 5000m, usar o mesmo raio. Para raios menores, usar pelo menos 500m
+            // Isso garante que pegamos todos os IDs de prédios que podem estar dentro do raio de busca
+            const radiusPrédios = Math.max(radiusMeters, 500); // Usar pelo menos 500m, ou o raio de busca se for maior
+            
+            console.log(`🏢 [API] Buscando prédios dentro de ${radiusPrédios}m para filtrar CTOs (raio de busca CTOs: ${radiusMeters}m)`);
+            
             // IMPORTANTE: Usar o mesmo cálculo de bounding box correto
             const latRadPrédios = lat * Math.PI / 180;
-            const deltaLatPrédios = 500 / 111000;
+            const deltaLatPrédios = radiusPrédios / 111000;
             const cosLatPrédios = Math.cos(latRadPrédios);
-            const deltaLngPrédios = cosLatPrédios > 0.01 ? 500 / (111000 * cosLatPrédios) : 500 / 111000;
-            const marginPrédios = 1.2;
+            const deltaLngPrédios = cosLatPrédios > 0.01 ? radiusPrédios / (111000 * cosLatPrédios) : radiusPrédios / 111000;
+            const marginPrédios = radiusPrédios > 5000 ? 1.3 : 1.2; // Margem maior para raios grandes
             const latMinPrédios = lat - (deltaLatPrédios * marginPrédios);
             const latMaxPrédios = lat + (deltaLatPrédios * marginPrédios);
             const lngMinPrédios = lng - (deltaLngPrédios * marginPrédios);
@@ -1113,17 +1119,29 @@ app.get('/api/ctos/nearby', async (req, res) => {
           // Se há CTOs na bounding box mas nenhuma foi retornada, investigar
           console.warn(`⚠️ [API] ATENÇÃO: ${data.length} CTO(s) na bounding box mas nenhuma retornada!`);
           console.warn(`   Possíveis causas: todas estão fora do raio ou foram filtradas como prédios`);
+          console.warn(`   📊 Estatísticas: ${ctosDentroDoRaio} dentro do raio, ${ctosForaDoRaio} fora, ${ctosFiltradasPrédios} filtradas como prédios`);
           
-          // Mostrar algumas CTOs para debug
-          const sampleCTOs = data.slice(0, 3);
+          // Mostrar mais CTOs para debug (até 10)
+          const sampleCTOs = data.slice(0, 10);
+          console.warn(`   📋 Primeiras ${sampleCTOs.length} CTOs encontradas na bounding box:`);
           sampleCTOs.forEach((row, idx) => {
             const rowLat = parseFloat(row.latitude);
             const rowLng = parseFloat(row.longitude);
             if (!isNaN(rowLat) && !isNaN(rowLng)) {
               const dist = calculateDistance(lat, lng, rowLat, rowLng);
-              console.warn(`   ${idx + 1}. ${row.cto || row.id_cto || 'sem nome'}: ${dist.toFixed(2)}m (${dist > radiusMeters ? 'FORA' : 'DENTRO'} do raio)`);
+              const ctoId = row.id_cto;
+              const isPrédio = condominiosTableExists && prédiosIds.size > 0 && ctoId && 
+                               (prédiosIds.has(ctoId) || prédiosIds.has(parseInt(ctoId)) || prédiosIds.has(String(ctoId)));
+              console.warn(`   ${idx + 1}. ${row.cto || row.id_cto || 'sem nome'} (ID: ${ctoId}): ${dist.toFixed(2)}m (${dist > radiusMeters ? 'FORA' : 'DENTRO'} do raio) ${isPrédio ? '🏢 [PRÉDIO]' : ''}`);
+            } else {
+              console.warn(`   ${idx + 1}. ${row.cto || row.id_cto || 'sem nome'}: coordenadas inválidas`);
             }
           });
+        } else if (!data || data.length === 0) {
+          // Se não há CTOs na bounding box, pode ser que não existam CTOs no banco nessa região
+          console.warn(`⚠️ [API] Nenhuma CTO encontrada na bounding box para raio de ${radiusMeters}m`);
+          console.warn(`   📍 Centro da busca: (${lat.toFixed(6)}, ${lng.toFixed(6)})`);
+          console.warn(`   📦 Bounding box: Lat [${latMin.toFixed(6)}, ${latMax.toFixed(6)}], Lng [${lngMin.toFixed(6)}, ${lngMax.toFixed(6)}]`);
         }
         
         if (condominiosCount > 0) {
