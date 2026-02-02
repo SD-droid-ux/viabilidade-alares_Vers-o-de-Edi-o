@@ -2810,163 +2810,158 @@
         .filter(cto => cto !== null);
 
       // ============================================
-      // ETAPA 5: Se não encontrou CTOs normais dentro de 250m, buscar a mais próxima com busca progressiva
-      // IMPORTANTE: Esta busca acontece mesmo se todas as CTOs dentro de 250m forem prédios
+      // ETAPA 5: Se não encontrou CTOs normais dentro de 250m, buscar a melhor CTO com busca única de 5000m
+      // IMPORTANTE: Esta busca acontece mesmo se todas as CTOs dentro de 250m são prédios
+      // NOVA LÓGICA: Busca todas as CTOs em 5000m, pega as 5 mais próximas (linear), 
+      // calcula rotas reais para todas, e escolhe a com menor rota real
       // ============================================
       let ctosNormaisLimitadas = ctosWithRealDistance.slice(0, 5);
       
       // Limpar referência anterior (usar variável global)
       nearestCTOOutsideLimit = null;
       
-      // IMPORTANTE: A busca progressiva deve acontecer se não há CTOs normais dentro de 250m
+      // IMPORTANTE: A busca detalhada deve acontecer se não há CTOs normais dentro de 250m
       // Isso inclui o caso onde todas as CTOs dentro de 250m são prédios
       if (ctosNormaisLimitadas.length === 0) {
-        console.log(`🔄 [Frontend] Nenhuma CTO normal encontrada dentro de 250m. Iniciando busca progressiva...`);
-      }
-      
-      // Se não encontrou nenhuma CTO dentro de 250m, buscar a mais próxima com raio LINEAR progressivo
-      // IMPORTANTE: Buscar sempre, independente de estar dentro ou fora da área de cobertura
-      // Raios progressivos expandidos: 500m → 700m → 900m → 1200m → 1400m → 2000m → 3000m → 4000m → 5000m → 6000m → 7000m → 8000m → 9000m → 10000m
-      if (ctosNormaisLimitadas.length === 0) {
-        console.log(`⚠️ [Frontend] Nenhuma CTO encontrada dentro de 250m. Buscando CTO mais próxima com raio LINEAR progressivo...`);
+        console.log(`🔄 [Frontend] Nenhuma CTO normal encontrada dentro de 250m. Iniciando busca detalhada em raio de 5000m...`);
         
-        // Raios progressivos expandidos
-        const searchRadii = [500, 700, 900, 1200, 1400, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000];
-        let nearestCTO = null;
-        let usedRadius = 0;
-        
-        // Tentar cada raio até encontrar uma CTO
-        for (const radius of searchRadii) {
-          console.log(`🔍 [Frontend] Buscando CTOs com raio LINEAR de ${radius}m...`);
+        try {
+          // Busca única de 5000m - pega TODAS as CTOs dentro desse raio
+          console.log(`🔍 [Frontend] Buscando TODAS as CTOs dentro de um raio LINEAR de 5000m...`);
           
-          try {
-            const nearestResponse = await fetch(getApiUrl(`/api/ctos/nearby?lat=${clientCoords.lat}&lng=${clientCoords.lng}&radius=${radius}`));
+          const searchResponse = await fetch(getApiUrl(`/api/ctos/nearby?lat=${clientCoords.lat}&lng=${clientCoords.lng}&radius=5000`));
+          
+          if (!searchResponse.ok) {
+            throw new Error(`Erro HTTP ${searchResponse.status} ao buscar CTOs com raio 5000m`);
+          }
+          
+          const searchData = await searchResponse.json();
+          
+          if (!searchData.success) {
+            throw new Error(searchData.error || 'Erro desconhecido ao buscar CTOs');
+          }
+          
+          if (!searchData.ctos || searchData.ctos.length === 0) {
+            console.warn(`⚠️ [Frontend] Nenhuma CTO encontrada dentro de 5000m`);
+            nearestCTOOutsideLimit = null;
+          } else {
+            console.log(`📦 [Frontend] API retornou ${searchData.ctos.length} CTO(s) no raio de 5000m`);
             
-            if (!nearestResponse.ok) {
-              console.warn(`⚠️ [Frontend] Erro HTTP ${nearestResponse.status} ao buscar CTOs com raio ${radius}m`);
-              continue; // Tentar próximo raio
-            }
+            // Filtrar apenas CTOs normais (não prédios)
+            const allCTOsNormais = searchData.ctos
+              .filter(cto => !cto.is_condominio || cto.is_condominio === false);
             
-            const nearestData = await nearestResponse.json();
+            console.log(`📦 [Frontend] Após filtrar prédios: ${allCTOsNormais.length} CTO(s) normal(is)`);
             
-            if (!nearestData.success) {
-              console.warn(`⚠️ [Frontend] API retornou success=false para raio ${radius}m:`, nearestData.error || 'Erro desconhecido');
-              continue; // Tentar próximo raio
-            }
-            
-            if (nearestData.ctos && nearestData.ctos.length > 0) {
-              console.log(`📦 [Frontend] API retornou ${nearestData.ctos.length} CTO(s) no raio de ${radius}m`);
-              
-              // Filtrar apenas CTOs normais (não prédios)
-              const nearestCTOsNormais = nearestData.ctos
-                .filter(cto => !cto.is_condominio || cto.is_condominio === false);
-              
-              console.log(`📦 [Frontend] Após filtrar prédios: ${nearestCTOsNormais.length} CTO(s) normal(is)`);
-              
-              if (nearestCTOsNormais.length > 0) {
-                // IMPORTANTE: Ordenar por distância LINEAR (distancia_metros) para garantir que pegamos a MAIS PRÓXIMA
-                // Mesmo que a API já retorne ordenada, vamos garantir ordenação correta
-                nearestCTOsNormais.sort((a, b) => {
-                  const distA = a.distancia_metros || 0;
-                  const distB = b.distancia_metros || 0;
-                  return distA - distB; // Ordenar do menor para o maior
-                });
-                
-                // Pegar a MAIS PRÓXIMA (menor distância linear)
-                nearestCTO = nearestCTOsNormais[0];
-                usedRadius = radius;
-                
-                console.log(`📍 [Frontend] ${nearestCTOsNormais.length} CTO(s) encontrada(s) no raio de ${radius}m`);
-                console.log(`📍 [Frontend] CTO mais próxima selecionada: ${nearestCTO.nome} a ${nearestCTO.distancia_metros}m (distância linear)`);
-                
-                // Se houver mais de uma CTO, mostrar as outras para debug
-                if (nearestCTOsNormais.length > 1) {
-                  console.log(`📊 [Frontend] Outras CTOs encontradas no mesmo raio:`);
-                  nearestCTOsNormais.slice(1, 4).forEach((cto, idx) => {
-                    console.log(`   ${idx + 2}. ${cto.nome} - ${cto.distancia_metros}m`);
-                  });
-                }
-                
-                break; // Parar a busca assim que encontrar CTOs
-              } else {
-                console.log(`ℹ️ [Frontend] Nenhuma CTO normal encontrada no raio de ${radius}m (apenas prédios)`);
-              }
+            if (allCTOsNormais.length === 0) {
+              console.warn(`⚠️ [Frontend] Nenhuma CTO normal encontrada dentro de 5000m (apenas prédios)`);
+              nearestCTOOutsideLimit = null;
             } else {
-              console.log(`ℹ️ [Frontend] Nenhuma CTO retornada pela API no raio de ${radius}m`);
+              // Ordenar por distância LINEAR (menor primeiro) para pegar as mais próximas
+              allCTOsNormais.sort((a, b) => {
+                const distA = a.distancia_metros || 0;
+                const distB = b.distancia_metros || 0;
+                return distA - distB;
+              });
+              
+              // Pegar as 5 mais próximas (ou menos, se houver menos de 5)
+              const top5CTOs = allCTOsNormais.slice(0, Math.min(5, allCTOsNormais.length));
+              
+              console.log(`📍 [Frontend] Selecionadas ${top5CTOs.length} CTO(s) mais próxima(s) por distância linear:`);
+              top5CTOs.forEach((cto, idx) => {
+                console.log(`   ${idx + 1}. ${cto.nome} - ${cto.distancia_metros}m (linear)`);
+              });
+              
+              // Calcular rotas REAIS em paralelo para todas as CTOs selecionadas
+              // IMPORTANTE: A rota vai da CTO até o endereço do cliente (origem: CTO, destino: cliente)
+              console.log(`🔄 [Frontend] Calculando rotas REAIS em paralelo para ${top5CTOs.length} CTO(s)...`);
+              
+              const routePromises = top5CTOs.map(async (cto, index) => {
+                try {
+                  console.log(`   🔄 [${index + 1}/${top5CTOs.length}] Calculando rota para ${cto.nome} (${cto.distancia_metros}m linear)...`);
+                  
+                  // Para distâncias muito longas (> 5000m), usar timeout maior
+                  const isLongDistance = cto.distancia_metros > 5000;
+                  const timeoutMs = isLongDistance ? 30000 : 15000;
+                  
+                  const realDistancePromise = calculateRealRouteDistance(
+                    cto.latitude,   // Origem: CTO
+                    cto.longitude,  // Origem: CTO
+                    clientCoords.lat,  // Destino: Endereço do cliente
+                    clientCoords.lng   // Destino: Endereço do cliente
+                  );
+                  
+                  // Adicionar timeout individual para cada rota
+                  const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Timeout ao calcular rota')), timeoutMs);
+                  });
+                  
+                  const realDistance = await Promise.race([realDistancePromise, timeoutPromise]);
+                  
+                  console.log(`   ✅ [${index + 1}/${top5CTOs.length}] ${cto.nome}: ${cto.distancia_metros}m linear → ${realDistance.toFixed(2)}m real`);
+                  
+                  return {
+                    ...cto,
+                    distancia_real: realDistance,
+                    distancia_linear_original: cto.distancia_metros,
+                    route_calculation_failed: false
+                  };
+                } catch (err) {
+                  console.warn(`   ⚠️ [${index + 1}/${top5CTOs.length}] Erro ao calcular rota para ${cto.nome}:`, err.message);
+                  console.warn(`   ⚠️ Usando distância linear como fallback para ${cto.nome}`);
+                  
+                  // Em caso de erro, usar distância linear como fallback
+                  return {
+                    ...cto,
+                    distancia_real: cto.distancia_metros, // Usar linear como fallback
+                    distancia_linear_original: cto.distancia_metros,
+                    route_calculation_failed: true
+                  };
+                }
+              });
+              
+              // Aguardar todas as rotas serem calculadas em paralelo
+              const ctosWithRealRoutes = await Promise.all(routePromises);
+              
+              console.log(`✅ [Frontend] Todas as ${ctosWithRealRoutes.length} rotas foram calculadas`);
+              
+              // Comparar distâncias REAIS e escolher a CTO com MENOR rota real
+              ctosWithRealRoutes.sort((a, b) => {
+                const distA = a.distancia_real || a.distancia_metros || Infinity;
+                const distB = b.distancia_real || b.distancia_metros || Infinity;
+                return distA - distB; // Ordenar do menor para o maior
+              });
+              
+              const bestCTO = ctosWithRealRoutes[0];
+              
+              console.log(`🏆 [Frontend] CTO selecionada (menor rota real): ${bestCTO.nome}`);
+              console.log(`   📏 Distância LINEAR: ${bestCTO.distancia_linear_original}m`);
+              console.log(`   🛣️  Distância REAL (rota): ${bestCTO.distancia_real.toFixed(2)}m`);
+              
+              // Mostrar comparação com outras CTOs para debug
+              if (ctosWithRealRoutes.length > 1) {
+                console.log(`📊 [Frontend] Comparação com outras CTOs:`);
+                ctosWithRealRoutes.slice(1, 4).forEach((cto, idx) => {
+                  console.log(`   ${idx + 2}. ${cto.nome}: ${cto.distancia_real.toFixed(2)}m real (${cto.distancia_linear_original}m linear)`);
+                });
+              }
+              
+              // Armazenar a melhor CTO
+              nearestCTOOutsideLimit = {
+                ...bestCTO,
+                distancia_metros: Math.round(bestCTO.distancia_real * 100) / 100,
+                distancia_km: Math.round((bestCTO.distancia_real / 1000) * 1000) / 1000,
+                is_out_of_limit: true, // Flag para indicar que está fora do limite de 250m
+                search_radius_used: 5000 // Raio usado para busca
+              };
+              
+              console.log(`✅ [Frontend] CTO mais próxima (por rota real) armazenada: ${nearestCTOOutsideLimit.nome} a ${nearestCTOOutsideLimit.distancia_real.toFixed(2)}m`);
             }
-          } catch (fetchErr) {
-            console.error(`❌ [Frontend] Erro ao buscar CTOs com raio ${radius}m:`, fetchErr);
-            // Continuar tentando próximo raio mesmo em caso de erro
-            continue;
           }
-        }
-        
-        // Se encontrou uma CTO, calcular distância REAL (rota) APENAS para ela
-        // A rota vai da CTO até o endereço do cliente (não alterar o endereço do cliente)
-        if (nearestCTO) {
-          console.log(`🔄 [Frontend] Calculando rota REAL da CTO mais próxima (${nearestCTO.nome}) até o endereço do cliente...`);
-          console.log(`   📍 CTO (origem): ${nearestCTO.latitude}, ${nearestCTO.longitude}`);
-          console.log(`   📍 Cliente (destino): ${clientCoords.lat}, ${clientCoords.lng}`);
-          console.log(`   📏 Distância linear: ${nearestCTO.distancia_metros}m`);
-          
-          try {
-            // Calcular rota REAL: da CTO até o cliente (origem: CTO, destino: cliente)
-            // IMPORTANTE: A rota vai da CTO até o endereço pesquisado pelo usuário
-            console.log(`🔄 [Frontend] Iniciando cálculo de rota real para CTO a ${nearestCTO.distancia_metros}m...`);
-            
-            // Para distâncias muito longas (> 5000m), adicionar timeout maior
-            const isLongDistance = nearestCTO.distancia_metros > 5000;
-            const timeoutMs = isLongDistance ? 30000 : 15000; // 30s para longas distâncias, 15s para normais
-            
-            const realDistancePromise = calculateRealRouteDistance(
-              nearestCTO.latitude,  // Origem: CTO
-              nearestCTO.longitude, // Origem: CTO
-              clientCoords.lat,    // Destino: Endereço do cliente
-              clientCoords.lng      // Destino: Endereço do cliente
-            );
-            
-            // Adicionar timeout para evitar travamento em rotas muito longas
-            const timeoutPromise = new Promise((_, reject) => {
-              setTimeout(() => reject(new Error('Timeout ao calcular rota: distância muito longa ou sem conexão')), timeoutMs);
-            });
-            
-            const realDistance = await Promise.race([realDistancePromise, timeoutPromise]);
-            
-            nearestCTOOutsideLimit = {
-              ...nearestCTO,
-              distancia_metros: Math.round(realDistance * 100) / 100,
-              distancia_km: Math.round((realDistance / 1000) * 1000) / 1000,
-              distancia_real: realDistance,
-              distancia_linear_original: nearestCTO.distancia_metros, // Manter distância linear original
-              is_out_of_limit: true, // Flag para indicar que está fora do limite de 250m
-              search_radius_used: usedRadius // Armazenar o raio usado para debug
-            };
-            
-            console.log(`✅ [Frontend] Rota real calculada para CTO mais próxima:`);
-            console.log(`   📍 CTO: ${nearestCTO.nome}`);
-            console.log(`   📏 Distância LINEAR (raio): ${nearestCTO.distancia_metros}m`);
-            console.log(`   🛣️  Distância REAL (rota): ${realDistance.toFixed(2)}m`);
-            console.log(`   📊 Diferença: ${(realDistance - nearestCTO.distancia_metros).toFixed(2)}m (${((realDistance / nearestCTO.distancia_metros - 1) * 100).toFixed(1)}% maior)`);
-          } catch (err) {
-            console.error(`❌ Erro ao calcular distância real da CTO mais próxima:`, err);
-            console.error(`   📍 CTO: ${nearestCTO.nome} a ${nearestCTO.distancia_metros}m (linear)`);
-            console.error(`   ⚠️ Usando distância linear como fallback`);
-            
-            // Em caso de erro, usar distância linear mas ainda marcar como fora do limite
-            // A rota será desenhada mesmo sem distância real calculada
-            nearestCTOOutsideLimit = {
-              ...nearestCTO,
-              distancia_real: nearestCTO.distancia_metros, // Usar linear como fallback
-              distancia_linear_original: nearestCTO.distancia_metros,
-              is_out_of_limit: true,
-              search_radius_used: usedRadius,
-              route_calculation_failed: true // Flag para indicar que o cálculo da rota falhou
-            };
-            
-            console.warn(`⚠️ [Frontend] CTO será exibida com distância linear (${nearestCTO.distancia_metros}m) devido a erro no cálculo da rota`);
-          }
-        } else {
-          console.warn(`⚠️ [Frontend] Nenhuma CTO encontrada mesmo após buscar até 10000m`);
+        } catch (searchErr) {
+          console.error(`❌ [Frontend] Erro na busca detalhada de CTOs:`, searchErr);
+          console.warn(`⚠️ [Frontend] Não foi possível buscar CTOs dentro de 5000m`);
+          nearestCTOOutsideLimit = null;
         }
       }
       
@@ -2979,7 +2974,7 @@
       const todasCTOs = [...predios, ...ctosNormaisLimitadas];
       
       // Se não encontrou nenhuma CTO dentro de 250m, adicionar a mais próxima (fora do limite)
-      // IMPORTANTE: Adicionar mesmo se houver prédios (a busca progressiva sempre acontece)
+      // IMPORTANTE: Adicionar mesmo se houver prédios (a busca detalhada sempre acontece)
       if (ctosNormaisLimitadas.length === 0 && nearestCTOOutsideLimit) {
         todasCTOs.push(nearestCTOOutsideLimit);
         console.log(`✅ [Frontend] CTO mais próxima adicionada ao array: ${nearestCTOOutsideLimit.nome}`);
@@ -2988,9 +2983,9 @@
         nearestCTOOutsideLimit = null;
       }
       
-      // Só mostrar erro se não encontrou NENHUMA CTO até 10000m (nem dentro de 250m, nem na busca progressiva)
+      // Só mostrar erro se não encontrou NENHUMA CTO até 5000m (nem dentro de 250m, nem na busca detalhada)
       if (todasCTOs.length === 0) {
-        error = 'Nenhuma CTO encontrada próxima ao endereço dentro de um raio de 10000m';
+        error = 'Nenhuma CTO encontrada próxima ao endereço dentro de um raio de 5000m';
         loadingCTOs = false;
         return;
       }
