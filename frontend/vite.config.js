@@ -2,7 +2,17 @@ import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [
+    svelte({
+      // Excluir ViabilidadeAlares.svelte da compilação Svelte
+      // Este arquivo contém código backend (Express) e não deve ser compilado como Svelte
+      exclude: (id) => {
+        // Excluir apenas o arquivo ViabilidadeAlares.svelte da compilação Svelte
+        // O Vite vai tratá-lo como módulo JavaScript comum
+        return id.includes('ViabilidadeAlares.svelte') && !id.includes('node_modules');
+      }
+    })
+  ],
   server: {
     host: "0.0.0.0",
     port: 5174,
