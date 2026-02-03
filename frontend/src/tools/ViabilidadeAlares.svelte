@@ -1,18 +1,3 @@
-<!-- 
-CÓDIGO BACKEND PRESERVADO - Este código não será executado no browser
-O código backend completo está preservado aqui em comentários HTML para manter as funcionalidades únicas.
-O código backend real deve estar em backend/server.js e ser chamado via APIs.
-
-TODAS AS FUNCIONALIDADES ÚNICAS ESTÃO PRESERVADAS AQUI PARA REFERÊNCIA:
--->
-
-<script context="module">
-// Este bloco está vazio - todo o código backend está em comentários HTML acima
-// As funcionalidades devem ser implementadas chamando as APIs do backend/server.js
-</script>
-
-<!--
-CÓDIGO BACKEND COMENTADO (não será parseado pelo compilador Svelte):
 import express from 'express';
 import cors from 'cors';
 import XLSX from 'xlsx';
@@ -8245,10 +8230,6 @@ process.on('unhandledRejection', (reason, promise) => {
   // Não encerrar o processo, apenas logar
 });
 
-// NOTA: O código abaixo (app.listen) não pode ser executado no browser
-// Este código deve estar no backend/server.js
-// Por enquanto, está comentado para evitar erros de compilação
-/*
 // Iniciar servidor - escutar em 0.0.0.0 para aceitar conexões externas (Railway)
 try {
   const server = app.listen(PORT, '0.0.0.0', async () => {
@@ -8305,90 +8286,15 @@ try {
   console.error('❌ [Fatal] Stack:', err.stack);
   process.exit(1);
 }
--->
 
-<!--
-NOTA: Para evitar quebra de linha na coluna CHASSE da tabela de resultados
-Adicione o seguinte CSS no componente Svelte que renderiza a tabela:
-
-.results-table th:nth-child(8),
-.results-table td:nth-child(8) {
-  white-space: nowrap;
-}
-
-Onde a coluna CHASSE é a 8ª coluna (após checkbox, N°, CTO, Status, Cidade, POP, CHASSE)
--->
-
-<script>
-  // CÓDIGO FRONTEND - Componente Svelte
-  // Props do componente
-  export let currentUser = '';
-  export let userTipo = 'user';
-  export let onBackToDashboard = () => {};
-  export let onSettingsRequest = null;
-  export let onSettingsHover = null;
-
-  // NOTA: O código backend acima (no context="module") não será executado no browser
-  // As rotas Express devem estar no backend/server.js
-  // Este componente é apenas um placeholder - as funcionalidades reais devem ser implementadas
-  // chamando as APIs do backend via fetch
-</script>
-
-<div class="viabilidade-alares-container">
-  <div class="placeholder-message">
-    <h2>Viabilidade Alares - Engenharia</h2>
-    <p>O código backend está preservado no contexto do módulo.</p>
-    <p>As funcionalidades devem chamar as APIs do backend/server.js.</p>
-    <button on:click={onBackToDashboard} class="back-button">
-      Voltar ao Dashboard
-    </button>
-  </div>
-</div>
-
-<style>
-  .viabilidade-alares-container {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-  }
-
-  .placeholder-message {
-    text-align: center;
-    max-width: 600px;
-    padding: 2rem;
-    background: #f5f5f5;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-
-  .placeholder-message h2 {
-    color: #7B68EE;
-    margin-bottom: 1rem;
-  }
-
-  .placeholder-message p {
-    color: #666;
-    margin-bottom: 1rem;
-    line-height: 1.6;
-  }
-
-  .back-button {
-    margin-top: 1.5rem;
-    padding: 0.75rem 1.5rem;
-    background: #7B68EE;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 1rem;
-    font-weight: 500;
-    transition: background 0.2s;
-  }
-
-  .back-button:hover {
-    background: #6A5ACD;
-  }
-</style>
+// ============================================
+// NOTA: Para evitar quebra de linha na coluna CHASSE da tabela de resultados
+// Adicione o seguinte CSS no componente Svelte que renderiza a tabela:
+// 
+// .results-table th:nth-child(8),
+// .results-table td:nth-child(8) {
+//   white-space: nowrap;
+// }
+// 
+// Onde a coluna CHASSE é a 8ª coluna (após checkbox, N°, CTO, Status, Cidade, POP, CHASSE)
+// ============================================
