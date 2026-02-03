@@ -2421,20 +2421,24 @@
             if (!response.ok) continue;
             
             const data = await response.json();
-            if (data?.success && data.ctos && data.ctos.length > 0) {
-              // Encontrou CTOs com este raio, usar este resultado
+            if (data?.success && data.ctos) {
+              // Se encontrou CTOs (mesmo que sejam poucas), usar este resultado
+              // Não verificar length > 0 aqui, pois pode ter CTOs que serão filtradas depois
+              // O importante é ter um resultado válido da API
               return { data, lat, lng, searchRadius: radius };
             }
-            // Guardar último resultado (pode ter CTOs mas foram filtradas)
-            lastData = data;
-            lastRadius = radius;
+            // Guardar último resultado válido
+            if (data?.success) {
+              lastData = data;
+              lastRadius = radius;
+            }
           } catch (err) {
             console.error(`Erro ao buscar CTOs próximas de ${lat}, ${lng} com raio ${radius}m:`, err);
             continue;
           }
         }
         
-        // Se não encontrou CTOs em nenhum raio, retornar último resultado (pode estar vazio)
+        // Se não encontrou resultado válido em nenhum raio, retornar último resultado (pode estar vazio)
         return { data: lastData, lat, lng, searchRadius: lastRadius };
       });
 
@@ -2582,7 +2586,12 @@
       // Usar as CTOs encontradas para a tabela
       ctos = foundCTOs;
 
-      console.log(`📍 Busca por endereço/coordenadas: ${ctos.length} CTOs únicas encontradas dentro de 250m`);
+      // Calcular raio máximo usado na busca para a mensagem de log
+      const maxRadiusUsed = nearbyResults.reduce((max, result) => {
+        return Math.max(max, result.searchRadius || 250);
+      }, 250);
+
+      console.log(`📍 Busca por endereço/coordenadas: ${ctos.length} CTOs únicas encontradas (raio máximo usado: ${maxRadiusUsed}m)`);
 
       // Inicializar visibilidade de todas as CTOs como verdadeira (todas visíveis por padrão)
       ctoVisibility.clear();
@@ -2626,7 +2635,11 @@
       }
 
       if (ctos.length === 0) {
-        error = 'Nenhuma CTO encontrada dentro de 250m dos pontos pesquisados.';
+        // Calcular raio máximo usado para a mensagem de erro
+        const maxRadiusUsed = nearbyResults.reduce((max, result) => {
+          return Math.max(max, result.searchRadius || 250);
+        }, 250);
+        error = `Nenhuma CTO encontrada dentro de ${maxRadiusUsed}m dos pontos pesquisados.`;
         loadingCTOs = false;
         return;
       }
