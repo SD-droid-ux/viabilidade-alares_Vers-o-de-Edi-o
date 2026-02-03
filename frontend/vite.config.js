@@ -4,8 +4,6 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 export default defineConfig({
   plugins: [
     svelte({
-      // Excluir ViabilidadeAlares.svelte do build - contém código backend Node.js/Express
-      exclude: /ViabilidadeAlares\.svelte$/,
     })
   ],
   server: {
