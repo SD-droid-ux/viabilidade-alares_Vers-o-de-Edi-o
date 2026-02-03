@@ -4,8 +4,8 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 export default defineConfig({
   plugins: [
     svelte({
-      // ViabilidadeAlares.svelte tem código backend em comentários HTML
-      // O compilador Svelte vai ignorar os comentários HTML e compilar apenas o componente válido
+      // Excluir ViabilidadeAlares.svelte do build - contém código backend Node.js/Express
+      exclude: /ViabilidadeAlares\.svelte$/,
     })
   ],
   server: {
