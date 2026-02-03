@@ -7,7 +7,7 @@
 // 2. Importe e registre aqui
 // ============================================
 
-import ViabilidadeAlares from './ViabilidadeAlares.svelte';
+import ViabilidadeAlares from './ViabilidadeAlares_1.0.svelte';
 import AnaliseCobertura from './AnaliseCobertura.svelte';
 import CalculadoraOrcamento from './CalculadoraOrcamento.svelte';
 import MapaConsulta from './MapaConsulta.svelte';
