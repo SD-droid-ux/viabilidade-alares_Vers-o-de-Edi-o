@@ -1957,8 +1957,27 @@
         const coverageCheckData = await coverageCheckResponse.json();
         if (coverageCheckData.success) {
           isClientCovered = coverageCheckData.is_covered;
-          distanceToCoverage = coverageCheckData.distance_to_coverage_meters;
-          console.log(`✅ [Cobertura] Cliente ${isClientCovered ? 'DENTRO' : 'FORA'} da área de cobertura${!isClientCovered && distanceToCoverage ? ` (${(distanceToCoverage / 1000).toFixed(2)} km)` : ''}`);
+          // Garantir que distanceToCoverage seja um número válido
+          const rawDistance = coverageCheckData.distance_to_coverage_meters;
+          console.log(`🔍 [Cobertura] Dados recebidos da API:`, {
+            is_covered: coverageCheckData.is_covered,
+            distance_to_coverage_meters: rawDistance,
+            tipo: typeof rawDistance
+          });
+          
+          if (rawDistance !== null && rawDistance !== undefined && !isNaN(rawDistance) && rawDistance >= 0) {
+            distanceToCoverage = parseFloat(rawDistance);
+            if (isClientCovered === false && distanceToCoverage === 0) {
+              console.warn(`⚠️ [Cobertura] Cliente está FORA da área, mas distância retornada é 0m. Isso pode indicar um problema na API.`);
+            }
+          } else {
+            // Se a distância não for válida, definir como null
+            distanceToCoverage = null;
+            if (isClientCovered === false) {
+              console.warn(`⚠️ [Cobertura] Cliente está FORA da área, mas distância não foi fornecida pela API (valor: ${rawDistance})`);
+            }
+          }
+          console.log(`✅ [Cobertura] Cliente ${isClientCovered ? 'DENTRO' : 'FORA'} da área de cobertura${!isClientCovered && distanceToCoverage !== null && distanceToCoverage > 0 ? ` (${(distanceToCoverage / 1000).toFixed(2)} km)` : !isClientCovered && distanceToCoverage === 0 ? ' (distância: 0m - possível erro na API)' : ''}`);
         } else {
           // Se não há mancha de cobertura calculada, considerar como não verificado
           isClientCovered = null;
@@ -6994,14 +7013,19 @@
           {/if}
           
           <!-- Box informativo de cobertura -->
-          {#if clientCoords && isClientCovered === false && distanceToCoverage !== null}
+          {#if clientCoords && isClientCovered === false}
+            {@const distanciaValida = distanceToCoverage !== null && distanceToCoverage !== undefined && !isNaN(distanceToCoverage) && distanceToCoverage > 0}
             <div class="coverage-info-box">
               <div class="coverage-info-header">
                 <span class="coverage-info-icon">⚠️</span>
                 <span class="coverage-info-title">Fora da Área de Cobertura</span>
               </div>
               <div class="coverage-info-content">
-                <p>O endereço está localizado a <strong>{distanceToCoverage && distanceToCoverage >= 1000 ? `${((distanceToCoverage || 0) / 1000).toFixed(2)} km` : `${Math.round(distanceToCoverage || 0)} m`}</strong> da área de cobertura mais próxima.</p>
+                {#if distanciaValida}
+                  <p>O endereço está localizado a <strong>{distanceToCoverage >= 1000 ? `${(distanceToCoverage / 1000).toFixed(2)} km` : `${Math.round(distanceToCoverage)} m`}</strong> da área de cobertura mais próxima.</p>
+                {:else}
+                  <p>O endereço está localizado <strong>fora da área de cobertura</strong>. A distância exata não está disponível no momento.</p>
+                {/if}
               </div>
             </div>
           {/if}
