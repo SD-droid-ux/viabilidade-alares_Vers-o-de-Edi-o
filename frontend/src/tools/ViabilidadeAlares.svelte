@@ -3079,12 +3079,17 @@
               }
               
               // Armazenar a melhor CTO encontrada neste raio
+              // IMPORTANTE: Preservar TODAS as propriedades da CTO original, especialmente pct_ocup
               melhorCTOEncontrada = {
                 ...bestCTO,
                 distancia_metros: Math.round(bestCTO.distancia_real * 100) / 100,
                 distancia_km: Math.round((bestCTO.distancia_real / 1000) * 1000) / 1000,
                 is_out_of_limit: true, // Flag para indicar que está fora do limite de 250m em rotas reais
-                search_radius_used: raioEncontrado // Raio linear usado para busca
+                search_radius_used: raioEncontrado, // Raio linear usado para busca
+                // Garantir que propriedades essenciais existam
+                pct_ocup: bestCTO.pct_ocup !== undefined ? bestCTO.pct_ocup : (bestCTO.vagas_total && bestCTO.vagas_total > 0 
+                  ? ((bestCTO.clientes_conectados || 0) / bestCTO.vagas_total) * 100 
+                  : 0)
               };
               
               raioUsado = raioEncontrado;
@@ -6994,7 +6999,8 @@
           {/if}
           
           <!-- Box informativo da CTO mais próxima (fora do limite) -->
-          {#if nearestCTOOutsideLimit && nearestCTOOutsideLimit.distancia_real}
+          {#if nearestCTOOutsideLimit && (nearestCTOOutsideLimit.distancia_real || nearestCTOOutsideLimit.distancia_metros)}
+            {@const distancia = nearestCTOOutsideLimit.distancia_real || nearestCTOOutsideLimit.distancia_metros || 0}
             <div class="coverage-info-box coverage-info-box-warning">
               <div class="coverage-info-header">
                 <span class="coverage-info-icon">📍</span>
@@ -7003,8 +7009,8 @@
               <div class="coverage-info-content">
                 <p>
                   Nenhuma CTO encontrada dentro de 250m. 
-                  A CTO mais próxima é <strong>{nearestCTOOutsideLimit.nome}</strong> a 
-                  <strong>{nearestCTOOutsideLimit.distancia_real >= 1000 ? `${(nearestCTOOutsideLimit.distancia_real / 1000).toFixed(2)} km` : `${nearestCTOOutsideLimit.distancia_real.toFixed(0)} m`}</strong> 
+                  A CTO mais próxima é <strong>{nearestCTOOutsideLimit.nome || 'N/A'}</strong> a 
+                  <strong>{distancia >= 1000 ? `${(distancia / 1000).toFixed(2)} km` : `${Math.round(distancia)} m`}</strong> 
                   de distância (rota pontilhada no mapa).
                 </p>
               </div>
@@ -7344,7 +7350,7 @@
                   {#each ctosRua as cto, rowIndex}
                     {@const ctoKey = getCTOKey(cto)}
                     {@const isVisible = ctoVisibility.get(ctoKey) !== false}
-                    {@const pctOcup = parseFloat(cto.pct_ocup || 0)}
+                    {@const pctOcup = isNaN(parseFloat(cto.pct_ocup)) ? 0 : parseFloat(cto.pct_ocup || 0)}
                     {@const occupationClass = pctOcup < 50 ? 'low' : pctOcup >= 50 && pctOcup < 80 ? 'medium' : 'high'}
                     {@const statusCto = getStatusCTO(cto)}
                     {@const statusCtoUpper = statusCto.toUpperCase().trim()}
@@ -7405,7 +7411,7 @@
                       <td class="numeric" class:cell-selected={selectedCells.includes(cellKey12) || selectedRows.includes(rowIndex) || selectedColumns.includes(12)} on:click={(e) => handleCellClick(e, rowIndex, 12)}>{cto.clientes_conectados || 0}</td>
                       <td class="numeric" class:cell-selected={selectedCells.includes(cellKey13) || selectedRows.includes(rowIndex) || selectedColumns.includes(13)} on:click={(e) => handleCellClick(e, rowIndex, 13)}>{(cto.vagas_total || 0) - (cto.clientes_conectados || 0)}</td>
                       <td class:cell-selected={selectedCells.includes(cellKey14) || selectedRows.includes(rowIndex) || selectedColumns.includes(14)} on:click={(e) => handleCellClick(e, rowIndex, 14)}>
-                        <span class="occupation-badge {occupationClass}">{pctOcup.toFixed(1)}%</span>
+                        <span class="occupation-badge {occupationClass}">{(pctOcup || 0).toFixed(1)}%</span>
                       </td>
                       <td class="numeric" class:cell-selected={selectedCells.includes(cellKey15) || selectedRows.includes(rowIndex) || selectedColumns.includes(15)} on:click={(e) => handleCellClick(e, rowIndex, 15)}>{cto.latitude || ''}</td>
                       <td class="numeric" class:cell-selected={selectedCells.includes(cellKey16) || selectedRows.includes(rowIndex) || selectedColumns.includes(16)} on:click={(e) => handleCellClick(e, rowIndex, 16)}>{cto.longitude || ''}</td>
