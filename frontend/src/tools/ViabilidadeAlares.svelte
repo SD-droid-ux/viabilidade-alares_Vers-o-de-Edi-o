@@ -7191,14 +7191,14 @@
             <div class="coverage-info-box coverage-info-box-warning">
               <div class="coverage-info-header">
                 <span class="coverage-info-icon">📍</span>
-                <span class="coverage-info-title">CTO Mais Próxima (Fora do Limite)</span>
+                <span class="coverage-info-title">Fora do Limite</span>
               </div>
               <div class="coverage-info-content">
                 <p>
                   Nenhuma CTO encontrada dentro de 250m. 
                   A CTO mais próxima é <strong>{nearestCTOOutsideLimit.nome || 'N/A'}</strong> a 
                   <strong>{distancia >= 1000 ? `${(distancia / 1000).toFixed(2)} km` : `${Math.round(distancia)} m`}</strong> 
-                  de distância (rota pontilhada no mapa).
+                  de distância.
                 </p>
               </div>
             </div>
