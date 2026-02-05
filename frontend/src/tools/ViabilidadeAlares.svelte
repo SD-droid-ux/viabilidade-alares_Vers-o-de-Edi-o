@@ -2705,110 +2705,128 @@
       }
       
       // ============================================
-      // ETAPA 2: Buscar CTOs dentro de 250m
+      // VERIFICAÇÃO: Se endereço está FORA da área de cobertura, pular direto para busca avançada
       // ============================================
-      console.log(`🔍 [Frontend] ETAPA 2: Buscando CTOs próximas de (${clientCoords.lat}, ${clientCoords.lng})...`);
+      // Declarar variável antes do if/else para estar disponível em ambos os casos
+      let ctosWithRealDistance = [];
       
-      const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${clientCoords.lat}&lng=${clientCoords.lng}&radius=250`));
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Erro HTTP ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success || !data.ctos || data.ctos.length === 0) {
-        // Se não há CTOs mas há prédios, está OK - não precisa buscar mais
-        if (predios.length > 0) {
-          loadingCTOs = false;
-          return;
-        }
-        // Se não há CTOs dentro de 250m, continuar para buscar progressivamente (500m, 700m, 900m, 1200m)
-        // Não mostrar erro ainda - só mostrar se não encontrar até 1200m
-        console.log(`⚠️ [Frontend] Nenhuma CTO retornada pela API dentro de 250m. Continuando busca progressiva...`);
-      }
-      
-      // Filtrar apenas CTOs dentro de 250m
-      const validCTOs = data.ctos
-        .filter(cto => cto.distancia_metros <= 250)
-        .map(cto => ({
-          ...cto,
-          distancia_km: Math.round((cto.distancia_metros / 1000) * 1000) / 1000
-        }));
-      
-      if (validCTOs.length === 0) {
-        // Se não há CTOs mas há prédios, está OK - não precisa buscar mais
-        if (predios.length > 0) {
-          loadingCTOs = false;
-          return;
-        }
-        // Se não há CTOs dentro de 250m, continuar para buscar progressivamente (500m, 700m, 900m, 1200m)
-        // Não mostrar erro ainda - só mostrar se não encontrar até 1200m
-        console.log(`⚠️ [Frontend] Nenhuma CTO encontrada dentro de 250m. Continuando busca progressiva...`);
-      }
-      
-      console.log(`✅ [Frontend] ${validCTOs.length} CTOs encontradas dentro de 250m`);
-      
-      // ============================================
-      // ETAPA 3: Filtrar CTOs que NÃO estão em prédios
-      // ============================================
-      const ctosNormais = validCTOs.filter(cto => !cto.is_condominio || cto.is_condominio === false);
-      
-      if (ctosNormais.length === 0) {
-        console.log(`ℹ️ [Frontend] Todas as CTOs encontradas dentro de 250m são de prédios`);
-        // IMPORTANTE: Mesmo que todas sejam prédios, continuar com busca progressiva
-        // para encontrar CTOs normais em raios maiores (500m, 700m, etc.)
-        // Não retornar aqui - deixar a busca progressiva acontecer na ETAPA 5
+      // Se o endereço está FORA da área de cobertura, pular ETAPA 2-4 e ir direto para busca progressiva
+      if (isClientCovered === false) {
+        console.log(`🚫 [Frontend] Endereço está FORA da área de cobertura. Pulando busca inicial (250m) e indo direto para busca avançada...`);
+        
+        // Pular ETAPA 2, 3 e 4 - ir direto para ETAPA 5 (busca progressiva)
+        // ctosWithRealDistance já está definido como array vazio acima
+        
+        // Continuar para ETAPA 5 (busca progressiva) abaixo
       } else {
-        console.log(`✅ [Frontend] ${ctosNormais.length} CTOs normais (não são prédios) encontradas dentro de 250m`);
-      }
-      
-      console.log(`✅ [Frontend] ${ctosNormais.length} CTOs normais (não são prédios) encontradas`);
-      
-      // ============================================
-      // ETAPA 4: Calcular rotas APENAS para CTOs normais
-      // ============================================
-      // Buscar mais CTOs inicialmente (ex: 10-15) para garantir que temos 5 válidas após filtrar por distância real
-      // Isso garante que mesmo que algumas fiquem fora de 250m real, ainda teremos 5 válidas
-      // IMPORTANTE: Se não há CTOs normais dentro de 250m, ctosNormais estará vazio e não calculará rotas aqui
-      // A busca progressiva na ETAPA 5 vai buscar CTOs normais em raios maiores
-      const ctosToCheck = ctosNormais.length > 0 ? ctosNormais.slice(0, 15) : []; // Buscar até 15 para garantir 5 válidas
+        // ============================================
+        // ETAPA 2: Buscar CTOs dentro de 250m (apenas se DENTRO da área de cobertura)
+        // ============================================
+        console.log(`🔍 [Frontend] ETAPA 2: Buscando CTOs próximas de (${clientCoords.lat}, ${clientCoords.lng})...`);
+        
+        const response = await fetch(getApiUrl(`/api/ctos/nearby?lat=${clientCoords.lat}&lng=${clientCoords.lng}&radius=250`));
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Erro HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success || !data.ctos || data.ctos.length === 0) {
+          // Se não há CTOs mas há prédios, está OK - não precisa buscar mais
+          if (predios.length > 0) {
+            loadingCTOs = false;
+            return;
+          }
+          // Se não há CTOs dentro de 250m, continuar para buscar progressivamente (500m, 700m, 900m, 1200m)
+          // Não mostrar erro ainda - só mostrar se não encontrar até 1200m
+          console.log(`⚠️ [Frontend] Nenhuma CTO retornada pela API dentro de 250m. Continuando busca progressiva...`);
+        }
+        
+        // Filtrar apenas CTOs dentro de 250m
+        const validCTOs = data.ctos
+          .filter(cto => cto.distancia_metros <= 250)
+          .map(cto => ({
+            ...cto,
+            distancia_km: Math.round((cto.distancia_metros / 1000) * 1000) / 1000
+          }));
+        
+        if (validCTOs.length === 0) {
+          // Se não há CTOs mas há prédios, está OK - não precisa buscar mais
+          if (predios.length > 0) {
+            loadingCTOs = false;
+            return;
+          }
+          // Se não há CTOs dentro de 250m, continuar para buscar progressivamente (500m, 700m, 900m, 1200m)
+          // Não mostrar erro ainda - só mostrar se não encontrar até 1200m
+          console.log(`⚠️ [Frontend] Nenhuma CTO encontrada dentro de 250m. Continuando busca progressiva...`);
+        }
+        
+        console.log(`✅ [Frontend] ${validCTOs.length} CTOs encontradas dentro de 250m`);
+        
+        // ============================================
+        // ETAPA 3: Filtrar CTOs que NÃO estão em prédios
+        // ============================================
+        const ctosNormais = validCTOs.filter(cto => !cto.is_condominio || cto.is_condominio === false);
+        
+        if (ctosNormais.length === 0) {
+          console.log(`ℹ️ [Frontend] Todas as CTOs encontradas dentro de 250m são de prédios`);
+          // IMPORTANTE: Mesmo que todas sejam prédios, continuar com busca progressiva
+          // para encontrar CTOs normais em raios maiores (500m, 700m, etc.)
+          // Não retornar aqui - deixar a busca progressiva acontecer na ETAPA 5
+        } else {
+          console.log(`✅ [Frontend] ${ctosNormais.length} CTOs normais (não são prédios) encontradas dentro de 250m`);
+        }
+        
+        console.log(`✅ [Frontend] ${ctosNormais.length} CTOs normais (não são prédios) encontradas`);
+        
+        // ============================================
+        // ETAPA 4: Calcular rotas APENAS para CTOs normais
+        // ============================================
+        // Buscar mais CTOs inicialmente (ex: 10-15) para garantir que temos 5 válidas após filtrar por distância real
+        // Isso garante que mesmo que algumas fiquem fora de 250m real, ainda teremos 5 válidas
+        // IMPORTANTE: Se não há CTOs normais dentro de 250m, ctosNormais estará vazio e não calculará rotas aqui
+        // A busca progressiva na ETAPA 5 vai buscar CTOs normais em raios maiores
+        const ctosToCheck = ctosNormais.length > 0 ? ctosNormais.slice(0, 15) : []; // Buscar até 15 para garantir 5 válidas
 
-      // OTIMIZAÇÃO: Calcular distâncias em paralelo (Promise.all)
-      const distancePromises = ctosToCheck.map(async (cto) => {
-        try {
-          const realDistance = await calculateRealRouteDistance(
-            clientCoords.lat,
-            clientCoords.lng,
-            cto.latitude,
-            cto.longitude
-          );
+        // OTIMIZAÇÃO: Calcular distâncias em paralelo (Promise.all)
+        const distancePromises = ctosToCheck.map(async (cto) => {
+          try {
+            const realDistance = await calculateRealRouteDistance(
+              clientCoords.lat,
+              clientCoords.lng,
+              cto.latitude,
+              cto.longitude
+            );
 
-          // Filtrar apenas as que estão dentro de 250m REAL
-          if (realDistance <= 250) {
+            // Filtrar apenas as que estão dentro de 250m REAL
+            if (realDistance <= 250) {
+              return {
+                ...cto,
+                distancia_metros: Math.round(realDistance * 100) / 100,
+                distancia_km: Math.round((realDistance / 1000) * 1000) / 1000,
+                distancia_real: realDistance
+              };
+            }
+            return null;
+          } catch (err) {
+            console.error(`❌ Erro ao calcular distância real para ${cto.nome}:`, err);
+            // Em caso de erro, manter a CTO com distância linear
             return {
               ...cto,
-              distancia_metros: Math.round(realDistance * 100) / 100,
-              distancia_km: Math.round((realDistance / 1000) * 1000) / 1000,
-              distancia_real: realDistance
+              distancia_real: cto.distancia_metros
             };
           }
-          return null;
-        } catch (err) {
-          console.error(`❌ Erro ao calcular distância real para ${cto.nome}:`, err);
-          // Em caso de erro, manter a CTO com distância linear
-          return {
-            ...cto,
-            distancia_real: cto.distancia_metros
-          };
-        }
-      });
+        });
 
-      // Aguardar todas as distâncias em paralelo
-      const ctosWithRealDistance = (await Promise.all(distancePromises))
-        .filter(cto => cto !== null);
-
+        // Aguardar todas as distâncias em paralelo
+        ctosWithRealDistance = (await Promise.all(distancePromises))
+          .filter(cto => cto !== null);
+        
+        // Continuar para ETAPA 5 abaixo
+      }
+      
       // ============================================
       // ETAPA 5: Se não encontrou CTOs normais dentro de 250m EM ROTAS REAIS, buscar progressivamente
       // IMPORTANTE: Esta busca acontece mesmo se todas as CTOs dentro de 250m são prédios
@@ -2819,8 +2837,10 @@
       // 4. Escolher a melhor por rota real
       // 5. Se encontrar CTOs no raio, parar e mostrar resultado
       // 6. Se não encontrar, expandir para próximo raio
+      // NOTA: Se endereço está FORA da área de cobertura, esta busca é iniciada automaticamente
       // ============================================
-      let ctosNormaisLimitadas = ctosWithRealDistance.slice(0, 5);
+      // ctosWithRealDistance já está definido (vazio se fora da área, ou com resultados se dentro)
+      const ctosNormaisLimitadas = ctosWithRealDistance.slice(0, 5);
       
       // Limpar referência anterior (usar variável global)
       nearestCTOOutsideLimit = null;
