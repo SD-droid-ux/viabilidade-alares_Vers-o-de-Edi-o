@@ -737,6 +737,136 @@
   const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || 'SUA_CHAVE_AQUI';
 
   // Função para calcular distância geodésica (linha reta) em metros
+  // Função para calcular distância mínima de um ponto até um polígono GeoJSON
+  // Calcula a distância até o ponto mais próximo do polígono (vértice ou aresta)
+  function calculateDistanceToPolygon(pointLat, pointLng, polygonGeoJSON) {
+    if (!polygonGeoJSON || !pointLat || !pointLng) {
+      return null;
+    }
+
+    let minDistance = Infinity;
+
+    try {
+      // Processar Polygon ou MultiPolygon
+      let rings = [];
+      
+      if (polygonGeoJSON.type === 'Polygon') {
+        // Polygon tem um array de rings (primeiro é o exterior, outros são buracos)
+        rings = polygonGeoJSON.coordinates;
+      } else if (polygonGeoJSON.type === 'MultiPolygon') {
+        // MultiPolygon tem múltiplos polígonos, cada um com seus rings
+        rings = polygonGeoJSON.coordinates.flat();
+      } else {
+        console.warn(`⚠️ [Cobertura] Tipo GeoJSON não suportado para cálculo de distância: ${polygonGeoJSON.type}`);
+        return null;
+      }
+
+      // Para cada ring (anel) do polígono
+      for (const ring of rings) {
+        // Ring é um array de coordenadas [lng, lat]
+        // Calcular distância até cada vértice e cada aresta
+        for (let i = 0; i < ring.length; i++) {
+          const [lng1, lat1] = ring[i];
+          
+          // Distância até o vértice
+          const distToVertex = calculateGeodesicDistance(pointLat, pointLng, lat1, lng1);
+          if (distToVertex < minDistance) {
+            minDistance = distToVertex;
+          }
+          
+          // Distância até a aresta (segmento entre vértices consecutivos)
+          if (i < ring.length - 1) {
+            const [lng2, lat2] = ring[i + 1];
+            const distToEdge = calculateDistanceToSegment(pointLat, pointLng, lat1, lng1, lat2, lng2);
+            if (distToEdge < minDistance) {
+              minDistance = distToEdge;
+            }
+          }
+        }
+      }
+
+      return minDistance === Infinity ? null : minDistance;
+    } catch (err) {
+      console.error('❌ [Cobertura] Erro ao calcular distância até polígono:', err);
+      return null;
+    }
+  }
+
+  // Função auxiliar para calcular distância de um ponto até um segmento de linha (aresta do polígono)
+  function calculateDistanceToSegment(pointLat, pointLng, segLat1, segLng1, segLat2, segLng2) {
+    // Calcular distâncias até os pontos finais do segmento
+    const distToPoint1 = calculateGeodesicDistance(pointLat, pointLng, segLat1, segLng1);
+    const distToPoint2 = calculateGeodesicDistance(pointLat, pointLng, segLat2, segLng2);
+    const distSegment = calculateGeodesicDistance(segLat1, segLng1, segLat2, segLng2);
+
+    // Se o segmento tem comprimento zero, retornar distância até o ponto
+    if (distSegment < 0.1) { // Tolerância de 0.1m
+      return distToPoint1;
+    }
+
+    // Usar fórmula de distância de ponto a linha em coordenadas esféricas
+    // Aproximação: calcular usando produto escalar em coordenadas cartesianas locais
+    const toRad = (deg) => deg * Math.PI / 180;
+    const R = 6371000; // Raio da Terra em metros
+
+    const lat1Rad = toRad(segLat1);
+    const lng1Rad = toRad(segLng1);
+    const lat2Rad = toRad(segLat2);
+    const lng2Rad = toRad(segLng2);
+    const pointLatRad = toRad(pointLat);
+    const pointLngRad = toRad(pointLng);
+
+    // Coordenadas cartesianas (aproximação local)
+    const x1 = Math.cos(lat1Rad) * Math.cos(lng1Rad);
+    const y1 = Math.cos(lat1Rad) * Math.sin(lng1Rad);
+    const z1 = Math.sin(lat1Rad);
+
+    const x2 = Math.cos(lat2Rad) * Math.cos(lng2Rad);
+    const y2 = Math.cos(lat2Rad) * Math.sin(lng2Rad);
+    const z2 = Math.sin(lat2Rad);
+
+    const xp = Math.cos(pointLatRad) * Math.cos(pointLngRad);
+    const yp = Math.cos(pointLatRad) * Math.sin(pointLngRad);
+    const zp = Math.sin(pointLatRad);
+
+    // Vetor do segmento
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const dz = z2 - z1;
+
+    // Vetor do ponto1 ao ponto
+    const px = xp - x1;
+    const py = yp - y1;
+    const pz = zp - z1;
+
+    // Produto escalar para encontrar projeção
+    const dot = px * dx + py * dy + pz * dz;
+    const lenSq = dx * dx + dy * dy + dz * dz;
+    
+    if (lenSq === 0) {
+      return distToPoint1;
+    }
+
+    const t = Math.max(0, Math.min(1, dot / lenSq));
+
+    // Ponto projetado no segmento
+    const projX = x1 + t * dx;
+    const projY = y1 + t * dy;
+    const projZ = z1 + t * dz;
+
+    // Normalizar para obter coordenadas esféricas
+    const projLen = Math.sqrt(projX * projX + projY * projY + projZ * projZ);
+    if (projLen === 0) {
+      return distToPoint1;
+    }
+
+    const projLat = Math.asin(projZ / projLen) * 180 / Math.PI;
+    const projLng = Math.atan2(projY, projX) * 180 / Math.PI;
+
+    // Calcular distância do ponto até o ponto projetado
+    return calculateGeodesicDistance(pointLat, pointLng, projLat, projLng);
+  }
+
   // Usa a fórmula de Haversine
   function calculateGeodesicDistance(lat1, lng1, lat2, lng2) {
     const R = 6371000; // Raio da Terra em metros
@@ -1971,10 +2101,26 @@
               console.warn(`⚠️ [Cobertura] Cliente está FORA da área, mas distância retornada é 0m. Isso pode indicar um problema na API.`);
             }
           } else {
-            // Se a distância não for válida, definir como null
-            distanceToCoverage = null;
+            // Se a distância não for válida, calcular no frontend usando o polígono de cobertura
             if (isClientCovered === false) {
-              console.warn(`⚠️ [Cobertura] Cliente está FORA da área, mas distância não foi fornecida pela API (valor: ${rawDistance})`);
+              console.warn(`⚠️ [Cobertura] Cliente está FORA da área, mas distância não foi fornecida pela API (valor: ${rawDistance}). Calculando no frontend...`);
+              
+              // Tentar calcular distância usando o polígono de cobertura
+              if (coveragePolygonGeoJSON) {
+                const calculatedDistance = calculateDistanceToPolygon(lat, lng, coveragePolygonGeoJSON);
+                if (calculatedDistance !== null && calculatedDistance >= 0) {
+                  distanceToCoverage = calculatedDistance;
+                  console.log(`✅ [Cobertura] Distância calculada no frontend: ${calculatedDistance.toFixed(2)}m`);
+                } else {
+                  distanceToCoverage = null;
+                  console.warn(`⚠️ [Cobertura] Não foi possível calcular distância no frontend`);
+                }
+              } else {
+                distanceToCoverage = null;
+                console.warn(`⚠️ [Cobertura] Polígono de cobertura não está carregado, não é possível calcular distância`);
+              }
+            } else {
+              distanceToCoverage = null;
             }
           }
           console.log(`✅ [Cobertura] Cliente ${isClientCovered ? 'DENTRO' : 'FORA'} da área de cobertura${!isClientCovered && distanceToCoverage !== null && distanceToCoverage > 0 ? ` (${(distanceToCoverage / 1000).toFixed(2)} km)` : !isClientCovered && distanceToCoverage === 0 ? ' (distância: 0m - possível erro na API)' : ''}`);
@@ -7014,7 +7160,7 @@
           
           <!-- Box informativo de cobertura -->
           {#if clientCoords && isClientCovered === false}
-            {@const distanciaValida = distanceToCoverage !== null && distanceToCoverage !== undefined && !isNaN(distanceToCoverage) && distanceToCoverage > 0}
+            {@const distanciaValida = distanceToCoverage !== null && distanceToCoverage !== undefined && !isNaN(distanceToCoverage) && distanceToCoverage >= 0}
             <div class="coverage-info-box">
               <div class="coverage-info-header">
                 <span class="coverage-info-icon">⚠️</span>
@@ -7024,7 +7170,7 @@
                 {#if distanciaValida}
                   <p>O endereço está localizado a <strong>{distanceToCoverage >= 1000 ? `${(distanceToCoverage / 1000).toFixed(2)} km` : `${Math.round(distanceToCoverage)} m`}</strong> da área de cobertura mais próxima.</p>
                 {:else}
-                  <p>O endereço está localizado <strong>fora da área de cobertura</strong>. A distância exata não está disponível no momento.</p>
+                  <p>O endereço está localizado <strong>fora da área de cobertura</strong>. Calculando distância...</p>
                 {/if}
               </div>
             </div>
