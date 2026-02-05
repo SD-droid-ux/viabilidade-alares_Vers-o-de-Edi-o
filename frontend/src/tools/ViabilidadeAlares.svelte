@@ -145,8 +145,8 @@
   // Função para gerar uma chave única para uma CTO
   function getCTOKey(cto) {
     const id = cto.id_cto || cto.id || 'NO_ID';
-    const lat = parseFloat(cto.latitude || 0).toFixed(6);
-    const lng = parseFloat(cto.longitude || 0).toFixed(6);
+    const lat = isNaN(parseFloat(cto.latitude)) ? '0.000000' : parseFloat(cto.latitude || 0).toFixed(6);
+    const lng = isNaN(parseFloat(cto.longitude)) ? '0.000000' : parseFloat(cto.longitude || 0).toFixed(6);
     return `${id}_${cto.nome || 'UNKNOWN'}_${lat}_${lng}`;
   }
 
@@ -2445,7 +2445,7 @@
           content += `<strong>Endereço:</strong><br>${address}<br><br>`;
         }
 
-        content += `<strong>Latitude/Longitude:</strong><br>${lat.toFixed(10)}, ${lng.toFixed(10)}<br><br>`;
+        content += `<strong>Latitude/Longitude:</strong><br>${(lat || 0).toFixed(10)}, ${(lng || 0).toFixed(10)}<br><br>`;
 
         if (isManual) {
           content += '<small>Posição ajustada manualmente</small>';
@@ -2482,8 +2482,8 @@
         await checkClientCoverage(newPosition.lat, newPosition.lng);
 
         // Atualizar coordenadas no input se estiver no modo coordenadas
-        if (searchMode === 'coordinates') {
-          coordinatesInput = `${newPosition.lat.toFixed(10)}, ${newPosition.lng.toFixed(10)}`;
+        if (searchMode === 'coordinates' && newPosition && newPosition.lat !== undefined && newPosition.lng !== undefined) {
+          coordinatesInput = `${(newPosition.lat || 0).toFixed(10)}, ${(newPosition.lng || 0).toFixed(10)}`;
         }
 
         // Atualizar endereço usando reverse geocoding
@@ -3068,13 +3068,13 @@
               
               console.log(`🏆 [Frontend] CTO selecionada (menor rota real) no raio ${raioEncontrado}m: ${bestCTO.nome}`);
               console.log(`   📏 Distância LINEAR: ${bestCTO.distancia_linear_original}m`);
-              console.log(`   🛣️  Distância REAL (rota): ${bestCTO.distancia_real.toFixed(2)}m`);
+              console.log(`   🛣️  Distância REAL (rota): ${(bestCTO.distancia_real || 0).toFixed(2)}m`);
               
               // Mostrar comparação com outras CTOs para debug
               if (ctosWithRealRoutes.length > 1) {
                 console.log(`📊 [Frontend] Comparação com outras CTOs no raio ${raioEncontrado}m:`);
                 ctosWithRealRoutes.slice(1, Math.min(5, ctosWithRealRoutes.length)).forEach((cto, idx) => {
-                  console.log(`   ${idx + 2}. ${cto.nome}: ${cto.distancia_real.toFixed(2)}m real (${cto.distancia_linear_original}m linear)`);
+                  console.log(`   ${idx + 2}. ${cto.nome}: ${(cto.distancia_real || 0).toFixed(2)}m real (${cto.distancia_linear_original || 0}m linear)`);
                 });
               }
               
@@ -3094,7 +3094,7 @@
               
               raioUsado = raioEncontrado;
               
-              console.log(`✅ [Frontend] CTO mais próxima encontrada no raio ${raioUsado}m: ${melhorCTOEncontrada.nome} a ${melhorCTOEncontrada.distancia_real.toFixed(2)}m real`);
+              console.log(`✅ [Frontend] CTO mais próxima encontrada no raio ${raioUsado}m: ${melhorCTOEncontrada.nome} a ${(melhorCTOEncontrada.distancia_real || 0).toFixed(2)}m real`);
               
               // PARAR aqui - encontramos CTOs neste raio, não precisa expandir mais
               break;
@@ -3109,7 +3109,7 @@
           // Armazenar resultado final
           if (melhorCTOEncontrada) {
             nearestCTOOutsideLimit = melhorCTOEncontrada;
-            console.log(`✅ [Frontend] Busca progressiva concluída. CTO selecionada: ${nearestCTOOutsideLimit.nome} (raio linear ${raioUsado}m, rota real ${nearestCTOOutsideLimit.distancia_real.toFixed(2)}m)`);
+            console.log(`✅ [Frontend] Busca progressiva concluída. CTO selecionada: ${nearestCTOOutsideLimit.nome} (raio linear ${raioUsado}m, rota real ${(nearestCTOOutsideLimit.distancia_real || 0).toFixed(2)}m)`);
             console.log(`📋 [Frontend] CTO armazenada em nearestCTOOutsideLimit:`, {
               nome: nearestCTOOutsideLimit.nome,
               distancia_real: nearestCTOOutsideLimit.distancia_real,
@@ -3204,8 +3204,18 @@
       ctoVisibility = ctoVisibility; // Forçar reatividade
       ctoNumbersVersion++; // Forçar atualização da numeração
       
-      // Aguardar a reatividade do Svelte recalcular ctoNumbers antes de atualizar o mapa
+      // Aguardar a reatividade do Svelte recalcular ctosRua e ctoNumbers antes de atualizar o mapa
       await tick();
+      await tick(); // Duplo tick para garantir que todas as reatividades sejam processadas
+      
+      // Verificar se ctoNumbers foi calculado corretamente
+      console.log(`🔢 [Frontend] Verificando numeração: ctosRua.length=${ctosRua.length}, ctoNumbers.size=${ctoNumbers.size}`);
+      if (ctosRua.length > 0 && ctoNumbers.size === 0) {
+        console.warn(`⚠️ [Frontend] ctoNumbers está vazio! Forçando recálculo...`);
+        ctoNumbers = calculateCTONumbers();
+        ctoNumbersVersion++;
+        await tick();
+      }
       
       // Desenhar rotas e marcadores
       // IMPORTANTE: Garantir que ctos.length > 0 antes de desenhar
@@ -3236,6 +3246,13 @@
       // GARANTIR que loadingCTOs seja sempre desativado, mesmo em caso de erro
       loadingCTOs = false;
       console.log(`✅ [Frontend] Loading desativado. Busca de CTOs finalizada.`);
+      
+      // IMPORTANTE: Se searchCTOs foi chamado de searchClientLocation, garantir que loading também seja desativado
+      // Isso evita que o botão fique travado em "Localizando.."
+      if (loading) {
+        console.log(`✅ [Frontend] Desativando loading principal também...`);
+        loading = false;
+      }
     }
   }
 
@@ -6984,7 +7001,7 @@
                 <span class="coverage-info-title">Fora da Área de Cobertura</span>
               </div>
               <div class="coverage-info-content">
-                <p>O endereço está localizado a <strong>{distanceToCoverage >= 1000 ? `${(distanceToCoverage / 1000).toFixed(2)} km` : `${distanceToCoverage.toFixed(0)} m`}</strong> da área de cobertura mais próxima.</p>
+                <p>O endereço está localizado a <strong>{distanceToCoverage && distanceToCoverage >= 1000 ? `${((distanceToCoverage || 0) / 1000).toFixed(2)} km` : `${Math.round(distanceToCoverage || 0)} m`}</strong> da área de cobertura mais próxima.</p>
               </div>
             </div>
           {/if}
