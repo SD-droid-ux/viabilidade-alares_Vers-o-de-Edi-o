@@ -3105,6 +3105,11 @@
           if (melhorCTOEncontrada) {
             nearestCTOOutsideLimit = melhorCTOEncontrada;
             console.log(`✅ [Frontend] Busca progressiva concluída. CTO selecionada: ${nearestCTOOutsideLimit.nome} (raio linear ${raioUsado}m, rota real ${nearestCTOOutsideLimit.distancia_real.toFixed(2)}m)`);
+            console.log(`📋 [Frontend] CTO armazenada em nearestCTOOutsideLimit:`, {
+              nome: nearestCTOOutsideLimit.nome,
+              distancia_real: nearestCTOOutsideLimit.distancia_real,
+              is_out_of_limit: nearestCTOOutsideLimit.is_out_of_limit
+            });
           } else {
             console.warn(`⚠️ [Frontend] Nenhuma CTO encontrada em nenhum dos raios lineares testados (até 1000m)`);
             nearestCTOOutsideLimit = null;
@@ -3112,10 +3117,19 @@
           
         } catch (searchErr) {
           console.error(`❌ [Frontend] Erro na busca progressiva de CTOs:`, searchErr);
+          console.error(`❌ [Frontend] Stack trace:`, searchErr.stack);
           console.warn(`⚠️ [Frontend] Não foi possível buscar CTOs`);
           nearestCTOOutsideLimit = null;
         }
       }
+      
+      // Log de debug para verificar estado antes da ETAPA 6
+      console.log(`🔍 [Frontend] ANTES ETAPA 6 - Estado atual:`, {
+        ctosNormaisLimitadas: ctosNormaisLimitadas.length,
+        nearestCTOOutsideLimit: nearestCTOOutsideLimit ? nearestCTOOutsideLimit.nome : null,
+        predios: predios.length,
+        isClientCovered: isClientCovered
+      });
       
       // ============================================
       // ETAPA 6: Combinar prédios + CTOs normais + CTO mais próxima (se houver)
@@ -3123,6 +3137,11 @@
       // IMPORTANTE: Limitar a no máximo 5 CTOs de RUA (não contar prédios no limite)
       // Prédios são mostrados separadamente e não contam no limite de 5
       // Se houver CTO mais próxima fora do limite, adicionar ela também
+      console.log(`🔄 [Frontend] ETAPA 6: Combinando resultados...`);
+      console.log(`   - Prédios: ${predios.length}`);
+      console.log(`   - CTOs normais dentro de 250m: ${ctosNormaisLimitadas.length}`);
+      console.log(`   - CTO mais próxima fora do limite: ${nearestCTOOutsideLimit ? nearestCTOOutsideLimit.nome : 'nenhuma'}`);
+      
       const todasCTOs = [...predios, ...ctosNormaisLimitadas];
       
       // Se não encontrou nenhuma CTO dentro de 250m, adicionar a mais próxima (fora do limite)
@@ -3130,10 +3149,19 @@
       if (ctosNormaisLimitadas.length === 0 && nearestCTOOutsideLimit) {
         todasCTOs.push(nearestCTOOutsideLimit);
         console.log(`✅ [Frontend] CTO mais próxima adicionada ao array: ${nearestCTOOutsideLimit.nome}`);
+        console.log(`   📋 Detalhes da CTO:`, {
+          nome: nearestCTOOutsideLimit.nome,
+          distancia_real: nearestCTOOutsideLimit.distancia_real,
+          distancia_metros: nearestCTOOutsideLimit.distancia_metros,
+          is_out_of_limit: nearestCTOOutsideLimit.is_out_of_limit
+        });
       } else if (ctosNormaisLimitadas.length > 0) {
         // Limpar referência se encontrou CTOs dentro do limite
+        console.log(`ℹ️ [Frontend] CTOs encontradas dentro do limite, não usando nearestCTOOutsideLimit`);
         nearestCTOOutsideLimit = null;
       }
+      
+      console.log(`📊 [Frontend] Total de CTOs após combinação: ${todasCTOs.length}`);
       
       // Só mostrar erro se não encontrou NENHUMA CTO até 5000m (nem dentro de 250m, nem na busca detalhada)
       if (todasCTOs.length === 0) {
@@ -3159,6 +3187,8 @@
       // Atribuir ao array final (prédios + até 5 CTOs de rua)
       ctos = todasCTOs;
       
+      console.log(`✅ [Frontend] Total de ${ctos.length} CTO(s) encontrada(s) (${predios.length} prédio(s) + ${ctos.length - predios.length} CTO(s) normal(is))`);
+      
       // Inicializar visibilidade de TODAS as CTOs como verdadeira (todas visíveis por padrão)
       // IMPORTANTE: Usar ctos (array final) e não apenas ctosRua, para incluir prédios também
       ctoVisibility.clear();
@@ -3173,18 +3203,34 @@
       await tick();
       
       // Desenhar rotas e marcadores
-      // Prédios já foram plotados, agora plotar CTOs normais com rotas
-      await drawRoutesAndMarkers();
-      
-      // Atualizar numeração dos marcadores para garantir que corresponda à coluna N°
-      await tick(); // Aguardar ctoNumbers ser recalculado
-      await updateMarkerNumbers();
+      // IMPORTANTE: Garantir que ctos.length > 0 antes de desenhar
+      if (ctos.length > 0) {
+        try {
+          console.log(`🗺️ [Frontend] Desenhando ${ctos.length} CTO(s) no mapa...`);
+          await drawRoutesAndMarkers();
+          
+          // Atualizar numeração dos marcadores para garantir que corresponda à coluna N°
+          await tick(); // Aguardar ctoNumbers ser recalculado
+          await updateMarkerNumbers();
+          
+          console.log(`✅ [Frontend] Busca de CTOs concluída com sucesso. ${ctos.length} CTO(s) exibida(s).`);
+        } catch (drawErr) {
+          console.error(`❌ [Frontend] Erro ao desenhar rotas e marcadores:`, drawErr);
+          // Não lançar erro aqui - apenas logar e continuar
+          // O importante é que as CTOs foram encontradas e adicionadas ao array
+        }
+      } else {
+        console.warn(`⚠️ [Frontend] Nenhuma CTO para desenhar no mapa`);
+      }
 
     } catch (err) {
       error = err.message || 'Erro ao buscar CTOs';
-      console.error(err);
+      console.error(`❌ [Frontend] Erro na busca de CTOs:`, err);
+      console.error(`❌ [Frontend] Stack trace:`, err.stack);
     } finally {
+      // GARANTIR que loadingCTOs seja sempre desativado, mesmo em caso de erro
       loadingCTOs = false;
+      console.log(`✅ [Frontend] Loading desativado. Busca de CTOs finalizada.`);
     }
   }
 
