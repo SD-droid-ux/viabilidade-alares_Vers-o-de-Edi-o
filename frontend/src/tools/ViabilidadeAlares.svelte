@@ -16,6 +16,42 @@
   // Helper para URL da API - usando função do config.js
   // (getApiUrl já foi importado acima)
 
+  // ========== CONSTANTES ==========
+  // Raios de busca de CTOs (em metros)
+  const SEARCH_RADIUS_INITIAL = 250; // Raio inicial de busca
+  const SEARCH_RADIUS_PROGRESSIVE = [500, 700, 900, 1200]; // Raios progressivos
+  const SEARCH_RADIUS_MAX = 5000; // Raio máximo para busca
+  const MAX_CTOS_TO_DISPLAY = 5; // Máximo de CTOs normais a exibir
+  const MAX_CTOS_TO_CHECK = 15; // Máximo de CTOs para calcular rotas
+  
+  // Cores para marcadores e rotas
+  const COLOR_CTO_GREEN = '#4CAF50'; // Verde (0-49.99%)
+  const COLOR_CTO_ORANGE = '#FF9800'; // Laranja (50-79.99%)
+  const COLOR_CTO_RED = '#F44336'; // Vermelho (80-100% ou fora do limite)
+  const COLOR_CTO_OUT_OF_LIMIT = '#FF9800'; // Laranja para CTO fora do limite
+  
+  // Configurações de rota
+  const ROUTE_STROKE_WEIGHT = 4;
+  const ROUTE_STROKE_OPACITY_NORMAL = 0.6;
+  const ROUTE_STROKE_OPACITY_OUT_OF_LIMIT = 0.5;
+  
+  // Opacidades para rotas tracejadas quando CTO está fora do limite (acima de 250m)
+  // Você pode ajustar essas opacidades independentemente
+  const ROUTE_ORANGE_OPACITY_OUT_OF_LIMIT = 1.0; // Opacidade dos traços laranja (0.0 a 1.0)
+  const ROUTE_GRAY_OPACITY_OUT_OF_LIMIT = 1.0; // Opacidade dos traços cinza (0.0 a 1.0)
+  
+  // Configurações de cobertura
+  const COVERAGE_OPACITY_DEFAULT = 0.4;
+  
+  // Configurações de heartbeat
+  const HEARTBEAT_INTERVAL_MS = 120000; // 2 minutos
+  
+  // Limites de ocupação para cores
+  const OCCUPATION_THRESHOLD_LOW = 0;
+  const OCCUPATION_THRESHOLD_MEDIUM = 50;
+  const OCCUPATION_THRESHOLD_HIGH = 80;
+  const OCCUPATION_THRESHOLD_MAX = 100;
+
   let map;
   let googleMapsLoaded = false;
   let searchMode = 'address'; // 'address' ou 'coordinates'
@@ -106,6 +142,8 @@
   // Estado para tooltips de informação
   let showInfoEquipamentos = false;
   let showInfoPortas = false;
+  let showInfoForaCobertura = false;
+  let showInfoForaLimite = false;
 
   // Estado de loading (apenas para esta ferramenta)
   let isLoading = false;
@@ -408,10 +446,8 @@
     return 'N/A';
   }
   
-  // Função para formatar data de criação (formato: MM/YYYY)
-  function formatDataCriacao(cto) {
-    const dataCriacao = cto.data_criacao || cto.data_cadastro || cto.created_at || '';
-    
+  // Função utilitária para formatar data para MM/YYYY (reutilizável)
+  function formatDateToMMYYYY(dataCriacao) {
     // Verificar se está vazio, null ou undefined
     if (!dataCriacao || dataCriacao === 'null' || dataCriacao === 'undefined' || String(dataCriacao).trim() === '') {
       return 'N/A';
@@ -478,6 +514,12 @@
     // Se não conseguiu formatar, retornar N/A
     return 'N/A';
   }
+
+  // Função para formatar data de criação (formato: MM/YYYY)
+  function formatDataCriacao(cto) {
+    const dataCriacao = cto.data_criacao || cto.data_cadastro || cto.created_at || '';
+    return formatDateToMMYYYY(dataCriacao);
+  }
   
   // Função para obter o valor de uma célula baseado em rowIndex e colIndex
   // Nova ordem: 0=Checkbox, 1=N°, 2=CTO, 3=Status, 4=Cidade, 5=POP, 6=CHASSE, 7=PLACA, 8=OLT, 9=ID CTO, 10=Data Criação, 11=Portas Total, 12=Ocupadas, 13=Disponíveis, 14=Ocupação, 15=Latitude, 16=Longitude
@@ -494,72 +536,9 @@
       case 8: return cto.pon || 'N/A'; // OLT (usa campo pon)
       case 9: return (cto.id_cto || cto.id || 'N/A').toString(); // ID CTO
       case 10: {
-        // Data de Criação - formatar se existir (formato: MM/YYYY)
+        // Data de Criação - usar função utilitária para formatação
         const dataCriacao = cto.data_criacao || cto.data_cadastro || cto.created_at || '';
-        if (!dataCriacao || dataCriacao === 'null' || dataCriacao === 'undefined' || String(dataCriacao).trim() === '') {
-          return 'N/A';
-        }
-        
-        // Se for string, verificar se já está no formato MM/YYYY
-        if (typeof dataCriacao === 'string') {
-          const dataStr = dataCriacao.trim();
-          
-          // Verificar se já está no formato MM/YYYY (ex: "04/2023")
-          const mmYYYYMatch = dataStr.match(/^(\d{1,2})\/(\d{4})$/);
-          if (mmYYYYMatch) {
-            const mes = mmYYYYMatch[1].padStart(2, '0');
-            const ano = mmYYYYMatch[2];
-            return `${mes}/${ano}`;
-          }
-          
-          // Tentar formato YYYY-MM (ex: "2023-04")
-          const yyyyMMMatch = dataStr.match(/^(\d{4})-(\d{1,2})$/);
-          if (yyyyMMMatch) {
-            const ano = yyyyMMMatch[1];
-            const mes = yyyyMMMatch[2].padStart(2, '0');
-            return `${mes}/${ano}`;
-          }
-          
-          // Tentar formato YYYY-MM-DD (ex: "2023-04-15")
-          const yyyyMMDDMatch = dataStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-          if (yyyyMMDDMatch) {
-            const ano = yyyyMMDDMatch[1];
-            const mes = yyyyMMDDMatch[2].padStart(2, '0');
-            return `${mes}/${ano}`;
-          }
-          
-          // Tentar formato DD/MM/YYYY (ex: "15/04/2023")
-          const ddMMYYYYMatch = dataStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-          if (ddMMYYYYMatch) {
-            const mes = ddMMYYYYMatch[2].padStart(2, '0');
-            const ano = ddMMYYYYMatch[3];
-            return `${mes}/${ano}`;
-          }
-          
-          // Se não bateu com nenhum padrão conhecido e não é uma string vazia, retornar como está
-          if (dataStr.length > 0) {
-            return dataStr;
-          }
-        }
-        
-        // Tentar converter para Date apenas se não for string ou se não bateu com nenhum padrão
-        try {
-          const data = new Date(dataCriacao);
-          if (!isNaN(data.getTime()) && data.getTime() > 0) {
-            // Verificar se a data não é uma data inválida padrão (1970-01-01)
-            const ano = data.getFullYear();
-            if (ano >= 2000 && ano <= 2100) {
-              // Formato: MM/YYYY (apenas mês e ano)
-              const mes = String(data.getMonth() + 1).padStart(2, '0');
-              return `${mes}/${ano}`;
-            }
-          }
-        } catch (e) {
-          // Ignorar erro
-        }
-        
-        // Se não conseguiu formatar, retornar N/A
-        return 'N/A';
+        return formatDateToMMYYYY(dataCriacao);
       }
       case 11: return (cto.vagas_total || 0).toString(); // Portas Total
       case 12: return (cto.clientes_conectados || 0).toString(); // Ocupadas
@@ -3656,37 +3635,55 @@
               ? '#FF9800' // Laranja para CTO fora do limite
               : getCTOColor(cto.pct_ocup || 0);
             
-            // Configuração da rota
-            const routeConfig = {
-              path: offsetPath,
-              geodesic: false, // CRÍTICO: false = seguir exatamente os pontos (não fazer linha reta entre eles)
-              strokeColor: routeColor,
-              strokeOpacity: cto.is_out_of_limit ? 0.6 : 0.7, // Opacidade menor para fora do limite
-              strokeWeight: 5, // Espessura aumentada para melhor visibilidade
-              map: map,
-              zIndex: 500 + index,
-              editable: editingRoutes // Tornar editável se estiver no modo de edição
-            };
+            let routePolyline;
             
-            // Se estiver fora do limite, adicionar estilo pontilhado
+            // Se estiver fora do limite, criar traços laranja com espaços vazios entre eles
             if (cto.is_out_of_limit) {
-              // Criar padrão pontilhado usando icons
+              // Polyline com traços laranja tracejados (linha base transparente, apenas traços visíveis)
+              const routeConfig = {
+                path: offsetPath,
+                geodesic: false, // CRÍTICO: false = seguir exatamente os pontos (não fazer linha reta entre eles)
+                strokeColor: '#FF9800', // Laranja (não será visível pois strokeOpacity é 0)
+                strokeOpacity: 0, // Linha base transparente - apenas os traços (ícones) serão visíveis
+                strokeWeight: 6,
+                map: map,
+                zIndex: 500 + index,
+                editable: editingRoutes // Tornar editável se estiver no modo de edição
+              };
+              
+              // Traços laranja com espaços vazios entre eles
+              // A cor vem do strokeColor da polyline base, apenas controlamos a opacidade nos ícones
               routeConfig.icons = [{
                 icon: {
-                  path: 'M 0,-1 0,1',
-                  strokeOpacity: 1,
-                  strokeWeight: 3,
-                  scale: 4
+                  path: 'M 0,-4 0,4', // Traço vertical
+                  strokeOpacity: ROUTE_ORANGE_OPACITY_OUT_OF_LIMIT, // Opacidade configurável
+                  strokeWeight: 6,
+                  scale: 1
                 },
                 offset: '0%',
-                repeat: '20px'
+                repeat: '22px' // Espaçamento menor entre traços para ter mais traços e gaps menores
               }];
+              
+              routePolyline = new google.maps.Polyline(routeConfig);
+            } else {
+              // Configuração da rota normal (dentro do limite)
+              const routeConfig = {
+                path: offsetPath,
+                geodesic: false, // CRÍTICO: false = seguir exatamente os pontos (não fazer linha reta entre eles)
+                strokeColor: routeColor,
+                strokeOpacity: 0.7,
+                strokeWeight: 5, // Espessura aumentada para melhor visibilidade
+                map: map,
+                zIndex: 500 + index,
+                editable: editingRoutes // Tornar editável se estiver no modo de edição
+              };
+              
+              routePolyline = new google.maps.Polyline(routeConfig);
             }
             
             // Desenhar Polyline usando TODOS os pontos detalhados SEM offset
             // IMPORTANTE: geodesic: false garante que a rota siga EXATAMENTE os pontos fornecidos
             // Isso faz com que a rota siga cada curva e mudança de direção das ruas
-            const routePolyline = new google.maps.Polyline(routeConfig);
 
             // Adicionar rota ao array ANTES de criar listeners para garantir índice correto
             routes.push(routePolyline);
@@ -3780,32 +3777,49 @@
             // Aplicar offset lateral para evitar sobreposição
             const offsetFallbackPath = applyRouteOffset(fallbackPath, index);
             
-            // Configuração da rota fallback
-            const fallbackRouteConfig = {
-              path: offsetFallbackPath,
-              geodesic: true,
-              strokeColor: routeColor,
-              strokeOpacity: cto.is_out_of_limit ? 0.5 : 0.6,
-              strokeWeight: 4,
-              map: map,
-              zIndex: 500 + index
-            };
+            let routePolyline;
             
-            // Se estiver fora do limite, adicionar estilo pontilhado
+            // Se estiver fora do limite, criar traços laranja com espaços vazios entre eles
             if (cto.is_out_of_limit) {
+              // Polyline com traços laranja tracejados (linha base transparente, apenas traços visíveis)
+              const fallbackRouteConfig = {
+                path: offsetFallbackPath,
+                geodesic: true,
+                strokeColor: '#FF9800', // Laranja (não será visível pois strokeOpacity é 0)
+                strokeOpacity: 0, // Linha base transparente - apenas os traços (ícones) serão visíveis
+                strokeWeight: 5,
+                map: map,
+                zIndex: 500 + index
+              };
+              
+              // Traços laranja com espaços vazios entre eles
+              // A cor vem do strokeColor da polyline base, apenas controlamos a opacidade nos ícones
               fallbackRouteConfig.icons = [{
                 icon: {
-                  path: 'M 0,-1 0,1',
-                  strokeOpacity: 1,
-                  strokeWeight: 3,
-                  scale: 4
+                  path: 'M 0,-4 0,4', // Traço vertical
+                  strokeOpacity: ROUTE_ORANGE_OPACITY_OUT_OF_LIMIT, // Opacidade configurável
+                  strokeWeight: 5,
+                  scale: 1
                 },
                 offset: '0%',
-                repeat: '20px'
+                repeat: '50px' // Espaçamento menor entre traços para ter mais traços e gaps menores
               }];
+              
+              routePolyline = new google.maps.Polyline(fallbackRouteConfig);
+            } else {
+              // Configuração da rota fallback normal (dentro do limite)
+              const fallbackRouteConfig = {
+                path: offsetFallbackPath,
+                geodesic: true,
+                strokeColor: routeColor,
+                strokeOpacity: 0.6,
+                strokeWeight: 4,
+                map: map,
+                zIndex: 500 + index
+              };
+              
+              routePolyline = new google.maps.Polyline(fallbackRouteConfig);
             }
-            
-            const routePolyline = new google.maps.Polyline(fallbackRouteConfig);
             routes.push(routePolyline);
             const actualRouteIndex = routes.length - 1;
 
@@ -4522,6 +4536,45 @@
         routeData = [...routeData];
       }
       
+      // Se a CTO editada está fora do limite, atualizar nearestCTOOutsideLimit também
+      if (updatedCTO.is_out_of_limit) {
+        // Verificar se é a mesma CTO que está em nearestCTOOutsideLimit
+        // Usar ID da CTO para comparação (mais confiável que coordenadas que podem mudar)
+        if (nearestCTOOutsideLimit) {
+          const nearestId = nearestCTOOutsideLimit.id_cto || nearestCTOOutsideLimit.id;
+          const updatedId = updatedCTO.id_cto || updatedCTO.id;
+          const nearestNome = nearestCTOOutsideLimit.nome;
+          const updatedNome = updatedCTO.nome;
+          
+          console.log(`🔍 Comparando CTOs: nearestId=${nearestId}, updatedId=${updatedId}, nearestNome=${nearestNome}, updatedNome=${updatedNome}`);
+          
+          // Comparar por ID ou nome (caso ID não esteja disponível)
+          if ((nearestId && updatedId && nearestId === updatedId) || 
+              (nearestNome && updatedNome && nearestNome === updatedNome)) {
+            // Atualizar nearestCTOOutsideLimit com os novos valores
+            nearestCTOOutsideLimit = {
+              ...nearestCTOOutsideLimit,
+              distancia_metros: distanciaMetros,
+              distancia_km: distanciaKm,
+              distancia_real: newDistance
+            };
+            // Forçar reatividade do Svelte criando um novo objeto
+            nearestCTOOutsideLimit = {...nearestCTOOutsideLimit};
+            console.log(`🔄 nearestCTOOutsideLimit atualizado com nova distância: ${distanciaMetros}m (${distanciaKm}km)`);
+            console.log(`📋 nearestCTOOutsideLimit após atualização:`, {
+              nome: nearestCTOOutsideLimit.nome,
+              distancia_metros: nearestCTOOutsideLimit.distancia_metros,
+              distancia_km: nearestCTOOutsideLimit.distancia_km,
+              distancia_real: nearestCTOOutsideLimit.distancia_real
+            });
+          } else {
+            console.log(`⚠️ CTO editada não corresponde à nearestCTOOutsideLimit. IDs: ${nearestId} vs ${updatedId}, Nomes: ${nearestNome} vs ${updatedNome}`);
+          }
+        } else {
+          console.log(`⚠️ CTO editada está fora do limite mas nearestCTOOutsideLimit é null`);
+        }
+      }
+      
       console.log(`✅ Rota da CTO ${ctoIndex} (${updatedCTO.nome}) editada. Nova distância: ${distanciaMetros}m (${distanciaKm}km)`);
       console.log(`📋 CTO após atualização:`, {
         nome: ctos[ctoIndex].nome,
@@ -4710,7 +4763,8 @@
         
         // Se não existe rota no mapa e a CTO precisa de rota, criar
         // IMPORTANTE: Cada CTO tem sua própria rota, mesmo que compartilhe coordenadas com outras
-        if (!routeExists && !cto.is_condominio && cto.distancia_metros && cto.distancia_metros > 0 && cto.distancia_real) {
+        // Incluir CTOs normais dentro de 250m OU CTOs fora do limite (is_out_of_limit)
+        if (!routeExists && !cto.is_condominio && cto.distancia_metros && cto.distancia_metros > 0 && (cto.distancia_real || cto.is_out_of_limit)) {
           const ctoIndex = ctos.findIndex(c => getCTOKey(c) === ctoKey);
           if (ctoIndex !== -1) {
             console.log(`📍 Criando rota ÚNICA para CTO ${cto.nome} (${ctoKey}) - mesmo que outras CTOs tenham mesma coordenada`);
@@ -4797,7 +4851,13 @@
       const isAtivado = statusCto && statusCto.toUpperCase().trim() === 'ATIVADO';
       ctoColor = isAtivado ? '#28A745' : '#95A5A6';
     } else {
-      ctoColor = getCTOColor(cto.pct_ocup || 0);
+      // Para CTOs normais, usar cor baseada na porcentagem de ocupação
+      // Se estiver fora do limite, usar cor laranja
+      if (cto.is_out_of_limit) {
+        ctoColor = '#FF9800'; // Laranja para CTO fora do limite
+      } else {
+        ctoColor = getCTOColor(cto.pct_ocup || 0);
+      }
     }
     
     // Criar ícone
@@ -6726,6 +6786,17 @@
         return isVisible;
       });
       
+      // Verificar se há CTO fora do limite e preparar texto do total
+      const ctoForaLimite = ctosRuaReport.find(cto => cto.is_out_of_limit);
+      let totalEquipamentosTexto = '';
+      if (ctoForaLimite) {
+        const distancia = ctoForaLimite.distancia_real || ctoForaLimite.distancia_metros || 0;
+        const distanciaTexto = distancia >= 1000 ? `${(distancia / 1000).toFixed(2)} km` : `${Math.round(distancia)} m`;
+        totalEquipamentosTexto = `<p><strong style="font-weight: bold; color: #F44336;">Fora do limite: Equipamento mais próximo está a ${distanciaTexto} de distância.</strong></p>`;
+      } else {
+        totalEquipamentosTexto = `<p><strong>Total:</strong> <span style="font-weight: bold; color: #000000;">${ctosRuaReport.length}</span> <strong style="font-weight: bold; color: #000000;">${ctosRuaReport.length === 1 ? 'Equipamento encontrado' : 'Equipamentos encontrados'} dentro de 250m</strong></p>`;
+      }
+      
       let htmlContent = `
         <html>
           <head>
@@ -6781,7 +6852,7 @@
                   </div>
                 </div>
                 <div class="summary-stats">
-                  <p><strong>Total:</strong> <span style="font-weight: bold; color: #000000;">${ctosRuaReport.length}</span> <strong style="font-weight: bold; color: #000000;">${ctosRuaReport.length === 1 ? 'Equipamento encontrado' : 'Equipamentos encontrados'} dentro de 250m</strong></p>
+                  ${totalEquipamentosTexto}
                   <p><strong>Total de Portas Disponíveis:</strong> <span style="font-weight: bold; color: #000000;">${ctosRuaReport.reduce((sum, cto) => sum + (cto.vagas_total - cto.clientes_conectados), 0)}</span> <strong style="font-weight: bold; color: #000000;">portas</strong></p>
                 </div>
               </div>
@@ -7165,6 +7236,18 @@
               <div class="coverage-info-header">
                 <span class="coverage-info-icon">⚠️</span>
                 <span class="coverage-info-title">Fora da Área de Cobertura</span>
+                <button 
+                  class="info-icon" 
+                  on:click={() => showInfoForaCobertura = !showInfoForaCobertura}
+                  title="Informação"
+                  aria-label="Informação sobre área de cobertura"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" fill="#7B68EE" stroke="#7B68EE" stroke-width="1"/>
+                    <path d="M12 16V12" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="12" cy="8" r="1" fill="white"/>
+                  </svg>
+                </button>
               </div>
               <div class="coverage-info-content">
                 {#if distanciaValida}
@@ -7174,6 +7257,33 @@
                 {/if}
               </div>
             </div>
+            {#if showInfoForaCobertura}
+              <div 
+                class="info-modal-overlay" 
+                on:click={() => showInfoForaCobertura = false}
+                on:keydown={(e) => e.key === 'Escape' && (showInfoForaCobertura = false)}
+                role="button"
+                tabindex="-1"
+                aria-label="Fechar modal de informação"
+              >
+                <div 
+                  class="info-modal-box" 
+                  on:click|stopPropagation
+                  on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
+                  role="dialog"
+                  tabindex="0"
+                  aria-modal="true"
+                >
+                  <div class="info-modal-header">
+                    <h3>Informação</h3>
+                    <button class="info-modal-close" on:click={() => showInfoForaCobertura = false} aria-label="Fechar">×</button>
+                  </div>
+                  <div class="info-modal-body">
+                    <p>O endereço pesquisado está localizado fora da área de cobertura da rede. A distância informada representa a distância em metros ou quilômetros até a área de cobertura mais próxima.</p>
+                  </div>
+                </div>
+              </div>
+            {/if}
           {/if}
           
           {#if clientCoords && isClientCovered === true}
@@ -7192,16 +7302,58 @@
               <div class="coverage-info-header">
                 <span class="coverage-info-icon">📍</span>
                 <span class="coverage-info-title">Fora do Limite</span>
+                <button 
+                  class="info-icon" 
+                  on:click={() => showInfoForaLimite = !showInfoForaLimite}
+                  title="Informação"
+                  aria-label="Informação sobre CTO fora do limite"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" fill="#7B68EE" stroke="#7B68EE" stroke-width="1"/>
+                    <path d="M12 16V12" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="12" cy="8" r="1" fill="white"/>
+                  </svg>
+                </button>
               </div>
               <div class="coverage-info-content">
                 <p>
-                  Nenhuma CTO encontrada dentro de 250m. 
-                  A CTO mais próxima é <strong>{nearestCTOOutsideLimit.nome || 'N/A'}</strong> a 
-                  <strong>{distancia >= 1000 ? `${(distancia / 1000).toFixed(2)} km` : `${Math.round(distancia)} m`}</strong> 
-                  de distância.
+                  Equipamento mais próximo é <strong>{nearestCTOOutsideLimit.nome || 'N/A'}</strong> a 
+                  <strong>{distancia >= 1000 ? `${(distancia / 1000).toFixed(2)} km` : `${Math.round(distancia)} m`}</strong>.
                 </p>
               </div>
             </div>
+            {#if showInfoForaLimite}
+              <div 
+                class="info-modal-overlay" 
+                on:click={() => showInfoForaLimite = false}
+                on:keydown={(e) => e.key === 'Escape' && (showInfoForaLimite = false)}
+                role="button"
+                tabindex="-1"
+                aria-label="Fechar modal de informação"
+              >
+                <div 
+                  class="info-modal-box" 
+                  on:click|stopPropagation
+                  on:keydown={(e) => e.key === 'Enter' && e.stopPropagation()}
+                  role="dialog"
+                  tabindex="0"
+                  aria-modal="true"
+                >
+                  <div class="info-modal-header">
+                    <h3>Informação</h3>
+                    <button class="info-modal-close" on:click={() => showInfoForaLimite = false} aria-label="Fechar">×</button>
+                  </div>
+                  <div class="info-modal-body">
+                    <p>
+                      Nenhuma CTO foi encontrada dentro do limite padrão de 250 metros do endereço pesquisado. 
+                      O sistema realizou uma busca progressiva e encontrou a CTO mais próxima disponível, 
+                      que está além da metragem limite padrão para atendimento. A distância informada representa 
+                      a distância real calculada através de rotas.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            {/if}
           {/if}
 
           {#if ctos.length > 0}
@@ -7244,7 +7396,17 @@
                       <button class="info-modal-close" on:click={() => showInfoEquipamentos = false} aria-label="Fechar">×</button>
                     </div>
                     <div class="info-modal-body">
-                      <p>Quantidade total de equipamentos CTO encontrados dentro de um raio de 250 metros do endereço pesquisado.</p>
+                      {#if nearestCTOOutsideLimit && ctosRua.some(cto => cto.is_out_of_limit)}
+                        {@const ctoForaLimite = ctosRua.find(cto => cto.is_out_of_limit) || nearestCTOOutsideLimit}
+                        {@const distancia = ctoForaLimite.distancia_real || ctoForaLimite.distancia_metros || 0}
+                        <p>
+                          Esse equipamento está além da metragem limite padrão para atendimento que é de 250m. 
+                          Com isso o sistema buscou o equipamento mais próximo <strong>{ctoForaLimite.nome || 'N/A'}</strong> 
+                          que está a <strong>{distancia >= 1000 ? `${(distancia / 1000).toFixed(2)} km` : `${Math.round(distancia)} m`}</strong> de distância.
+                        </p>
+                      {:else}
+                        <p>Quantidade total de equipamentos CTO encontrados dentro de um raio de 250 metros do endereço pesquisado.</p>
+                      {/if}
                     </div>
                   </div>
                 </div>
@@ -7291,7 +7453,15 @@
                       <button class="info-modal-close" on:click={() => showInfoPortas = false} aria-label="Fechar">×</button>
                     </div>
                     <div class="info-modal-body">
-                      <p>Soma total de portas disponíveis (não conectadas) de todos os equipamentos CTO encontrados dentro de um raio de 250 metros do endereço pesquisado.</p>
+                      {#if nearestCTOOutsideLimit && ctosRua.some(cto => cto.is_out_of_limit)}
+                        {@const ctoForaLimite = ctosRua.find(cto => cto.is_out_of_limit) || nearestCTOOutsideLimit}
+                        <p>
+                          Soma total de portas disponível do equipamento <strong>{ctoForaLimite.nome || 'N/A'}</strong> 
+                          que se encontra fora da metragem limite padrão para atendimento que é de 250m.
+                        </p>
+                      {:else}
+                        <p>Soma total de portas disponíveis (não conectadas) de todos os equipamentos CTO encontrados dentro de um raio de 250 metros do endereço pesquisado.</p>
+                      {/if}
                     </div>
                   </div>
                 </div>
@@ -8698,6 +8868,7 @@
     -moz-user-select: none;
     -ms-user-select: none;
     cursor: cell;
+    white-space: nowrap; /* Evitar quebra de linha - manter conteúdo em uma única linha */
   }
 
   .results-table .cto-name-cell {
@@ -8820,6 +8991,11 @@
 
   /* Garantir que a célula de Status não quebre linha */
   .results-table td:nth-child(4) {
+    white-space: nowrap;
+  }
+
+  /* Garantir que a célula de Cidade não quebre linha */
+  .results-table td:nth-child(5) {
     white-space: nowrap;
   }
 
@@ -9656,6 +9832,36 @@
     font-weight: 600;
     font-size: 0.95rem;
     color: #856404;
+    flex: 1; /* Ocupar espaço disponível para empurrar o botão para a direita */
+  }
+
+  .coverage-info-header .info-icon {
+    margin-left: auto; /* Empurrar o botão para a direita */
+    flex-shrink: 0;
+  }
+
+  /* Botão informativo no box "Fora da Área de Cobertura" - usar cor amarela */
+  .coverage-info-box .coverage-info-header .info-icon svg circle {
+    fill: #ffc107;
+    stroke: #ffc107;
+  }
+
+  .coverage-info-box .coverage-info-header .info-icon:focus {
+    outline: 2px solid #ffc107;
+    outline-offset: 2px;
+    border-radius: 50%;
+  }
+
+  /* Botão informativo no box "Fora do Limite" - usar cor laranja */
+  .coverage-info-box-warning .coverage-info-header .info-icon svg circle {
+    fill: #FF9800;
+    stroke: #FF9800;
+  }
+
+  .coverage-info-box-warning .coverage-info-header .info-icon:focus {
+    outline: 2px solid #FF9800;
+    outline-offset: 2px;
+    border-radius: 50%;
   }
 
   .coverage-info-box-success .coverage-info-title {
